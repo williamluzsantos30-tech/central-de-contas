@@ -1,0 +1,103 @@
+export type Cargo =
+  | 'gestor_trafego'
+  | 'account_manager'
+  | 'designer'
+  | 'social_media'
+  | 'diretoria'
+  | 'head'
+
+export const CARGOS: Cargo[] = [
+  'gestor_trafego',
+  'account_manager',
+  'designer',
+  'social_media',
+  'diretoria',
+  'head',
+]
+
+export const cargoLabel: Record<Cargo, string> = {
+  gestor_trafego: 'Gestor de Tráfego',
+  account_manager: 'Account Manager',
+  designer: 'Designer',
+  social_media: 'Social Media',
+  diretoria: 'Diretoria',
+  head: 'Head',
+}
+
+export const cargoDescricao: Record<Cargo, string> = {
+  gestor_trafego: 'Roda campanhas em Google Ads e Meta Ads.',
+  account_manager: 'Atende o cliente, acompanha entregas e SLA.',
+  designer: 'Produz peças de criativos e landing pages.',
+  social_media: 'Cria planejamento e artes do feed do cliente.',
+  diretoria: 'Visão completa da operação. Acesso total.',
+  head: 'Lidera squads de tráfego e webdesign.',
+}
+
+/** Módulos do app que podem ser concedidos por cargo */
+export type Modulo = 'trafego' | 'webdesign' | 'social_media' | 'admin'
+
+export const MODULOS: Modulo[] = ['trafego', 'webdesign', 'social_media', 'admin']
+
+export const moduloLabel: Record<Modulo, string> = {
+  trafego: 'Operacional Tráfego',
+  webdesign: 'Operacional Webdesign',
+  social_media: 'Operacional Social Media',
+  admin: 'Admin',
+}
+
+export const moduloDescricao: Record<Modulo, string> = {
+  trafego: 'Clientes, tarefas, métricas, leads, otimizações.',
+  webdesign: 'Landing pages, criativos e produção de social media.',
+  social_media: 'Calendário editorial e métricas de redes sociais.',
+  admin: 'Gerenciar acessos, equipe e configurações do sistema.',
+}
+
+/** Permissões padrão por cargo conforme regra do produto */
+export const cargoPermissoesDefault: Record<Cargo, Modulo[]> = {
+  gestor_trafego: ['trafego', 'webdesign'],
+  account_manager: ['trafego', 'webdesign', 'social_media'],
+  designer: ['webdesign', 'social_media'],
+  social_media: ['webdesign', 'social_media'],
+  diretoria: ['trafego', 'webdesign', 'social_media', 'admin'],
+  head: ['trafego', 'webdesign', 'social_media'],
+}
+
+const STORAGE_KEY = 'movmed-cargo-permissoes-v1'
+
+/** Lê permissões persistidas (ou usa default) */
+export function loadCargoPermissoes(): Record<Cargo, Modulo[]> {
+  if (typeof window === 'undefined') return { ...cargoPermissoesDefault }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { ...cargoPermissoesDefault }
+    const parsed = JSON.parse(raw) as Partial<Record<Cargo, Modulo[]>>
+    const result = { ...cargoPermissoesDefault }
+    for (const c of CARGOS) {
+      if (Array.isArray(parsed[c])) result[c] = parsed[c] as Modulo[]
+    }
+    return result
+  } catch {
+    return { ...cargoPermissoesDefault }
+  }
+}
+
+export function saveCargoPermissoes(perms: Record<Cargo, Modulo[]>) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(perms))
+  } catch {
+    /* noop */
+  }
+}
+
+/** Reset ao default */
+export function resetCargoPermissoes(): Record<Cargo, Modulo[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* noop */
+    }
+  }
+  return { ...cargoPermissoesDefault }
+}

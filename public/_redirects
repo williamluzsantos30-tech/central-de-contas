@@ -1,0 +1,3 @@
+# SPA fallback — todas as rotas devolvem index.html, deixando
+# o React Router resolver a navegação no cliente.
+/*    /index.html   200
