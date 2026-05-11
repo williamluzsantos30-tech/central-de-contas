@@ -32,6 +32,7 @@ import {
   AlertCircle,
   CircleDot,
   ListChecks,
+  BarChart3,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -59,9 +60,11 @@ import {
 } from '@/lib/cargos'
 import { Textarea } from '@/components/ui/Textarea'
 import { TemplatesTab } from '@/pages/Templates'
+import MetricasSocialMedia from '@/pages/social/Metricas'
+import { EditarFotoPerfilModal } from '@/components/layout/EditarFotoPerfilModal'
 import type { Profile, Squad, Tarefa } from '@/types/database'
 
-type AdminTab = 'geral' | 'equipe' | 'performance' | 'templates' | 'acessos'
+type AdminTab = 'geral' | 'equipe' | 'performance' | 'metricas' | 'templates' | 'acessos'
 
 interface Stats {
   total: number
@@ -128,6 +131,7 @@ export default function Admin() {
     { key: 'geral', label: 'Geral', icon: Settings2 },
     { key: 'equipe', label: 'Equipe Operacional', icon: Users2 },
     { key: 'performance', label: 'Performance', icon: TrendingUp },
+    { key: 'metricas', label: 'Métricas Social Media', icon: BarChart3 },
     { key: 'templates', label: 'Templates', icon: ListChecks },
     { key: 'acessos', label: 'Gerenciar Acessos', icon: ShieldCheck },
   ]
@@ -168,6 +172,7 @@ export default function Admin() {
         <EquipeOperacionalTab usuarios={aprovados} onChange={load} />
       )}
       {tab === 'performance' && <PerformanceTab usuarios={aprovados} />}
+      {tab === 'metricas' && <MetricasSocialMedia embedded />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'acessos' && (
         <AcessosTab
@@ -1696,6 +1701,7 @@ function AcessosTab({
   onChange: () => void
 }) {
   const [criarOpen, setCriarOpen] = useState(false)
+  const [editFoto, setEditFoto] = useState<Profile | null>(null)
 
   async function aprovar(p: Profile) {
     await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', p.id)
@@ -1844,7 +1850,16 @@ function AcessosTab({
                   className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2.5"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <Avatar name={u.nome} url={u.avatar_url} size="sm" />
+                    <button
+                      onClick={() => setEditFoto(u)}
+                      className="group relative shrink-0"
+                      title="Trocar foto"
+                    >
+                      <Avatar name={u.nome} url={u.avatar_url} size="sm" />
+                      <span className="absolute inset-0 grid place-items-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                        <span className="text-[8px] text-white">📷</span>
+                      </span>
+                    </button>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-zinc-100 truncate">{u.nome}</p>
                       <p className="text-[11px] text-muted truncate">{u.email}</p>
@@ -1892,6 +1907,15 @@ function AcessosTab({
       </Card>
 
       <CriarUsuarioModal open={criarOpen} onClose={() => setCriarOpen(false)} onCreated={onChange} />
+
+      {editFoto && (
+        <EditarFotoPerfilModal
+          open
+          onClose={() => setEditFoto(null)}
+          profile={editFoto}
+          onSaved={onChange}
+        />
+      )}
     </div>
   )
 }

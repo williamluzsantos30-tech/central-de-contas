@@ -28,6 +28,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
+import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
 import {
   cn,
   relativeDueLabel,
@@ -334,11 +335,13 @@ function ProjetoAccordion({
   }, [projeto.titulo])
 
   useEffect(() => {
+    // Só designers podem ser responsáveis por landing pages.
     supabase
       .from('profiles')
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
+      .eq('cargo', 'designer')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])
@@ -489,7 +492,10 @@ function ProjetoAccordion({
               title="Briefing PDF"
             />
             <IconBadge
-              on={!!projeto.identidade_visual_url && !isDeadBlobUrl(projeto.identidade_visual_url)}
+              on={
+                ((projeto.identidade_visual_urls ?? []).filter((u) => !isDeadBlobUrl(u)).length > 0) ||
+                (!!projeto.identidade_visual_url && !isDeadBlobUrl(projeto.identidade_visual_url))
+              }
               icon={Palette}
               title="Identidade visual"
             />
@@ -629,19 +635,22 @@ function ProjetoEditor({
   onSaved: () => void
   onDeleted: () => void
 }) {
-  const initialForm = useMemo(
-    () => ({
+  const initialForm = useMemo(() => {
+    const idsArr = stripBlobUrls(projeto.identidade_visual_urls ?? [])
+    const idsLegacySingle = stripBlobUrl(projeto.identidade_visual_url)
+    const identidadeVisualUrls =
+      idsArr.length > 0 ? idsArr : idsLegacySingle ? [idsLegacySingle] : []
+    return {
       status: projeto.status,
       url_producao: stripBlobUrl(projeto.url_producao),
       briefing: projeto.briefing ?? '',
       briefing_pdf_url: stripBlobUrl(projeto.briefing_pdf_url),
-      identidade_visual_url: stripBlobUrl(projeto.identidade_visual_url),
+      identidade_visual_urls: identidadeVisualUrls,
       fotos: stripBlobUrls(projeto.fotos),
       copy_arquivo_url: stripBlobUrl(projeto.copy_arquivo_url),
       observacoes: projeto.observacoes ?? '',
-    }),
-    [projeto],
-  )
+    }
+  }, [projeto])
   const [form, setForm] = useState(initialForm)
   // Baseline pro save baseado em diff (evita lost-update entre usuários)
   const baselineRef = useRef(initialForm)
@@ -657,12 +666,28 @@ function ProjetoEditor({
     if (url) setForm((f) => ({ ...f, briefing_pdf_url: url }))
     setUploadingKind(null)
   }
-  async function handleUploadIdentidade(file: File | null) {
-    if (!file) return
+  async function handleUploadIdentidade(files: FileList | null) {
+    if (!files || files.length === 0) return
     setUploadingKind('identidade')
-    const url = await uploadArquivo(file, 'projetos/identidade')
-    if (url) setForm((f) => ({ ...f, identidade_visual_url: url }))
+    const urls: string[] = []
+    for (const file of Array.from(files)) {
+      const u = await uploadArquivo(file, 'projetos/identidade')
+      if (u) urls.push(u)
+    }
+    if (urls.length > 0)
+      setForm((f) => ({ ...f, identidade_visual_urls: [...f.identidade_visual_urls, ...urls] }))
     setUploadingKind(null)
+  }
+  function addIdentidadeUrl(url: string) {
+    const u = url.trim()
+    if (!u) return
+    setForm((f) => ({ ...f, identidade_visual_urls: [...f.identidade_visual_urls, u] }))
+  }
+  function removeIdentidadeUrl(i: number) {
+    setForm((f) => ({
+      ...f,
+      identidade_visual_urls: f.identidade_visual_urls.filter((_, idx) => idx !== i),
+    }))
   }
   async function handleUploadFotos(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -703,8 +728,13 @@ function ProjetoEditor({
     if (form.briefing !== base.briefing) payload.briefing = form.briefing || null
     if (form.briefing_pdf_url !== base.briefing_pdf_url)
       payload.briefing_pdf_url = form.briefing_pdf_url || null
-    if (form.identidade_visual_url !== base.identidade_visual_url)
-      payload.identidade_visual_url = form.identidade_visual_url || null
+    if (
+      JSON.stringify(form.identidade_visual_urls) !==
+      JSON.stringify(base.identidade_visual_urls)
+    ) {
+      payload.identidade_visual_urls = form.identidade_visual_urls
+      payload.identidade_visual_url = null
+    }
     if (JSON.stringify(form.fotos) !== JSON.stringify(base.fotos))
       payload.fotos = form.fotos
     if (form.copy_arquivo_url !== base.copy_arquivo_url)
@@ -802,43 +832,16 @@ function ProjetoEditor({
 
       <Section
         title="Identidade visual"
-        subtitle="Upload de imagem/PDF ou link para o Drive"
+        subtitle="Logo, paleta, manual de marca — pode anexar vários arquivos"
         icon={Palette}
       >
-        <Field label="Identidade visual">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={form.identidade_visual_url}
-              onChange={(e) => setForm({ ...form, identidade_visual_url: e.target.value })}
-              placeholder="Cole um link OU clique em Upload ao lado"
-              className="flex-1 min-w-[200px]"
-            />
-            <FileUploadButton
-              accept="image/*,application/pdf"
-              onFile={handleUploadIdentidade}
-              busy={uploadingKind === 'identidade'}
-              label="Upload"
-            />
-            {form.identidade_visual_url && (
-              <a
-                href={form.identidade_visual_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs text-zinc-200 hover:bg-bg-elev"
-              >
-                <ExternalLink size={12} />
-                Abrir
-              </a>
-            )}
-          </div>
-        </Field>
-        {form.identidade_visual_url && isImageUrl(form.identidade_visual_url) && (
-          <img
-            src={form.identidade_visual_url}
-            alt="identidade visual"
-            className="mt-3 max-h-48 rounded-lg border border-border object-contain bg-bg-soft"
-          />
-        )}
+        <IdentidadeVisualEditor
+          urls={form.identidade_visual_urls}
+          onAdd={addIdentidadeUrl}
+          onRemove={removeIdentidadeUrl}
+          onUpload={handleUploadIdentidade}
+          busy={uploadingKind === 'identidade'}
+        />
       </Section>
 
       <Section

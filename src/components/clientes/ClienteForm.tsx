@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -10,6 +10,8 @@ import {
   tipoClienteLabel,
   JORNADAS_CLIENTE,
   jornadaClienteLabel,
+  JORNADAS_SOCIAL,
+  jornadaSocialLabel,
 } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import type { Cliente, ModuloCliente, Profile } from '@/types/database'
@@ -42,6 +44,7 @@ const empty = {
   social_media_id: '',
   status: 'ativo',
   jornada: '',
+  jornada_social: '',
   nps: '' as string | number,
   semaforo: '',
   plataformas: 'ambos',
@@ -56,10 +59,25 @@ const empty = {
 
 export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = 'trafego' }: Props) {
   const [form, setForm] = useState({ ...empty, modulos: [defaultModulo] as ModuloCliente[] })
-  const [gestores, setGestores] = useState<Profile[]>([])
+  const [profilesAll, setProfilesAll] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { nomes: squadsAtivos } = useSquads()
+
+  // Profiles agrupados por cargo — cada dropdown só lista quem é
+  // diretamente vinculado àquela função.
+  const accountManagers = useMemo(
+    () => profilesAll.filter((p) => p.cargo === 'account_manager'),
+    [profilesAll],
+  )
+  const gestoresTrafego = useMemo(
+    () => profilesAll.filter((p) => p.cargo === 'gestor_trafego'),
+    [profilesAll],
+  )
+  const socialMedias = useMemo(
+    () => profilesAll.filter((p) => p.cargo === 'social_media'),
+    [profilesAll],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -69,7 +87,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       .eq('ativo', true)
       .eq('aprovado', true)
       .order('nome')
-      .then(({ data }) => setGestores((data as Profile[]) ?? []))
+      .then(({ data }) => setProfilesAll((data as Profile[]) ?? []))
     if (cliente) {
       setForm({
         nome: cliente.nome,
@@ -85,6 +103,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
         social_media_id: cliente.social_media_id ?? '',
         status: cliente.status,
         jornada: cliente.jornada ?? '',
+        jornada_social: cliente.jornada_social ?? '',
         nps: cliente.nps ?? '',
         semaforo: cliente.semaforo ?? '',
         plataformas: cliente.plataformas ?? 'ambos',
@@ -125,6 +144,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       social_media_id: form.social_media_id || null,
       status: form.status,
       jornada: form.jornada || null,
+      jornada_social: form.jornada_social || null,
       nps: form.nps === '' ? null : Number(form.nps),
       semaforo: form.semaforo || null,
       plataformas: form.plataformas || null,
@@ -141,6 +161,12 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       setSaving(false)
       return
     }
+    // Cliente em SM precisa ter Social Media responsável vinculado
+    if (form.modulos.includes('social_media') && !form.social_media_id) {
+      setError('Cliente em Social Media precisa ter um responsável vinculado.')
+      setSaving(false)
+      return
+    }
     const { error: err } = cliente
       ? await supabase.from('clientes').update(payload).eq('id', cliente.id)
       : await supabase.from('clientes').insert(payload)
@@ -152,6 +178,10 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     onSaved()
     onClose()
   }
+
+  // Flags pra mostrar/esconder campos conforme os módulos selecionados.
+  const temTrafego = form.modulos.includes('trafego')
+  const temSocial = form.modulos.includes('social_media')
 
   return (
     <Modal
@@ -244,39 +274,43 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             onChange={(e) => setForm({ ...form, account_manager_id: e.target.value })}
           >
             <option value="">—</option>
-            {gestores.map((g) => (
+            {accountManagers.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.nome}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Gestor de Tráfego">
-          <Select
-            value={form.gestor_id}
-            onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
-          >
-            <option value="">—</option>
-            {gestores.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nome}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Social Media (responsável)">
-          <Select
-            value={form.social_media_id}
-            onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
-          >
-            <option value="">—</option>
-            {gestores.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nome}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {temTrafego && (
+          <Field label="Gestor de Tráfego">
+            <Select
+              value={form.gestor_id}
+              onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
+            >
+              <option value="">—</option>
+              {gestoresTrafego.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nome}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {temSocial && (
+          <Field label="Social Media (responsável) *">
+            <Select
+              value={form.social_media_id}
+              onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
+            >
+              <option value="">— selecione —</option>
+              {socialMedias.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nome}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Status">
           <Select
             value={form.status}
@@ -288,29 +322,48 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             <option value="churn">Churn</option>
           </Select>
         </Field>
-        <Field label="Jornada">
-          <Select
-            value={form.jornada}
-            onChange={(e) => setForm({ ...form, jornada: e.target.value })}
-          >
-            <option value="">—</option>
-            {JORNADAS_CLIENTE.map((j) => (
-              <option key={j} value={j}>
-                {jornadaClienteLabel[j]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Plataformas">
-          <Select
-            value={form.plataformas}
-            onChange={(e) => setForm({ ...form, plataformas: e.target.value })}
-          >
-            <option value="google_ads">Google Ads</option>
-            <option value="meta_ads">Meta Ads</option>
-            <option value="ambos">Google + Meta</option>
-          </Select>
-        </Field>
+        {temTrafego && (
+          <Field label={temSocial ? 'Jornada (Tráfego)' : 'Jornada'}>
+            <Select
+              value={form.jornada}
+              onChange={(e) => setForm({ ...form, jornada: e.target.value })}
+            >
+              <option value="">—</option>
+              {JORNADAS_CLIENTE.map((j) => (
+                <option key={j} value={j}>
+                  {jornadaClienteLabel[j]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {temSocial && (
+          <Field label={temTrafego ? 'Jornada (Social Media)' : 'Jornada'}>
+            <Select
+              value={form.jornada_social}
+              onChange={(e) => setForm({ ...form, jornada_social: e.target.value })}
+            >
+              <option value="">—</option>
+              {JORNADAS_SOCIAL.map((j) => (
+                <option key={j} value={j}>
+                  {jornadaSocialLabel[j]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {temTrafego && (
+          <Field label="Plataformas">
+            <Select
+              value={form.plataformas}
+              onChange={(e) => setForm({ ...form, plataformas: e.target.value })}
+            >
+              <option value="google_ads">Google Ads</option>
+              <option value="meta_ads">Meta Ads</option>
+              <option value="ambos">Google + Meta</option>
+            </Select>
+          </Field>
+        )}
         <Field label="Data de entrada">
           <Input
             type="date"
@@ -318,40 +371,44 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
           />
         </Field>
-        <Field label="Verba Google (R$)">
-          <Input
-            type="number"
-            step="0.01"
-            value={form.verba_google}
-            onChange={(e) => setForm({ ...form, verba_google: e.target.value })}
-            placeholder="0,00"
-          />
-        </Field>
-        <Field label="Verba Meta (R$)">
-          <Input
-            type="number"
-            step="0.01"
-            value={form.verba_meta}
-            onChange={(e) => setForm({ ...form, verba_meta: e.target.value })}
-            placeholder="0,00"
-          />
-        </Field>
-        <Field label="Fonte CRM">
-          <Select
-            value={form.fonte_crm}
-            onChange={(e) => setForm({ ...form, fonte_crm: e.target.value })}
-          >
-            <option value="nativo">Nativo</option>
-            <option value="kommo">Kommo</option>
-          </Select>
-        </Field>
-        {form.fonte_crm === 'kommo' && (
-          <Field label="Kommo account ID">
-            <Input
-              value={form.kommo_account_id}
-              onChange={(e) => setForm({ ...form, kommo_account_id: e.target.value })}
-            />
-          </Field>
+        {temTrafego && (
+          <>
+            <Field label="Verba Google (R$)">
+              <Input
+                type="number"
+                step="0.01"
+                value={form.verba_google}
+                onChange={(e) => setForm({ ...form, verba_google: e.target.value })}
+                placeholder="0,00"
+              />
+            </Field>
+            <Field label="Verba Meta (R$)">
+              <Input
+                type="number"
+                step="0.01"
+                value={form.verba_meta}
+                onChange={(e) => setForm({ ...form, verba_meta: e.target.value })}
+                placeholder="0,00"
+              />
+            </Field>
+            <Field label="Fonte CRM">
+              <Select
+                value={form.fonte_crm}
+                onChange={(e) => setForm({ ...form, fonte_crm: e.target.value })}
+              >
+                <option value="nativo">Nativo</option>
+                <option value="kommo">Kommo</option>
+              </Select>
+            </Field>
+            {form.fonte_crm === 'kommo' && (
+              <Field label="Kommo account ID">
+                <Input
+                  value={form.kommo_account_id}
+                  onChange={(e) => setForm({ ...form, kommo_account_id: e.target.value })}
+                />
+              </Field>
+            )}
+          </>
         )}
         <Field label="Observações" full>
           <Textarea

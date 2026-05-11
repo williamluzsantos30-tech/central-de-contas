@@ -56,7 +56,14 @@ export default function Clientes() {
         // ainda assim aparecem porque a migration faz backfill com {trafego})
         .contains('modulos', ['trafego'])
         .order('nome'),
-      supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true).order('nome'),
+      // Filtro "Todos gestores" só lista cargo gestor_trafego
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .eq('cargo', 'gestor_trafego')
+        .order('nome'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setGestores((gRes.data as Profile[]) ?? [])

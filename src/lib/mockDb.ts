@@ -21,6 +21,9 @@ type Tables =
   | 'criativos_webdesign'
   | 'producoes_social_media'
   | 'producoes_social_media_items'
+  | 'cliente_perfil_setup'
+  | 'cliente_metricas_social'
+  | 'cliente_ideias_social'
 
 let counter = 0
 const uid = () => `m-${(++counter).toString().padStart(5, '0')}`
@@ -82,12 +85,12 @@ const task_templates: Row[] = [
 ]
 
 const clientes: Row[] = [
-  { id: c1, nome: 'Dra. Fernanda Reis', nicho: 'Dermatologia', squad: 'BlackOps', tipo: 'assessoria', gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'ativo', jornada: 'otimizacao', nps: 9, semaforo: 'verde', data_inicio: daysISO(-120), plataformas: 'ambos', verba_mensal: 6000, verba_google: 3500, verba_meta: 2500, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-fernanda', observacoes: 'Atendimento particular, foco em botox e rejuvenescimento.', created_at: daysISO(-120) + 'T00:00:00Z', updated_at: daysISO(-2) + 'T00:00:00Z' },
-  { id: c2, nome: 'Clínica Olhar Claro', nicho: 'Oftalmologia', squad: 'BlackOps', tipo: 'assessoria', gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'atencao', jornada: 'retencao', nps: 6, semaforo: 'laranja', data_inicio: daysISO(-200), plataformas: 'google_ads', verba_mensal: 4500, verba_google: 4500, verba_meta: 0, fonte_crm: 'kommo', kommo_account_id: 'kommo-1234', link_grupo: 'https://chat.whatsapp.com/demo-olhar', observacoes: 'Foco em catarata e lentes premium.', created_at: daysISO(-200) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
-  { id: c3, nome: 'Dr. Rafael Azevedo', nicho: 'Ortopedia', squad: 'Delta', tipo: 'consultoria', gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: null, status: 'ativo', jornada: 'onboarding', nps: 8, semaforo: 'verde', data_inicio: daysISO(-60), plataformas: 'meta_ads', verba_mensal: 3200, verba_google: 0, verba_meta: 3200, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Especialista em joelho e esporte.', created_at: daysISO(-60) + 'T00:00:00Z', updated_at: daysISO(-5) + 'T00:00:00Z' },
-  { id: c4, nome: 'Instituto Neuro+', nicho: 'Neurologia', squad: 'Alpha', tipo: 'assessoria', gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'ativo', jornada: 'expansao', nps: 10, semaforo: 'verde', data_inicio: daysISO(-310), plataformas: 'ambos', verba_mensal: 8500, verba_google: 5000, verba_meta: 3500, fonte_crm: 'kommo', kommo_account_id: 'kommo-5678', link_grupo: 'https://chat.whatsapp.com/demo-neuro', observacoes: 'Cliente-âncora. Envolve 3 neurologistas.', created_at: daysISO(-310) + 'T00:00:00Z', updated_at: daysISO(-3) + 'T00:00:00Z' },
-  { id: c5, nome: 'Estética Renascer', nicho: 'Cirurgia plástica', squad: 'Beta', tipo: 'assessoria', gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: null, status: 'pausado', jornada: 'onboarding', nps: null, semaforo: 'amarelo', data_inicio: daysISO(-25), plataformas: 'ambos', verba_mensal: 5000, verba_google: 3000, verba_meta: 2000, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Em onboarding — aguardando aprovação do pixel.', created_at: daysISO(-25) + 'T00:00:00Z', updated_at: daysISO(-10) + 'T00:00:00Z' },
-  { id: c6, nome: 'Dr. Daniel Oliveira', nicho: 'Gastroenterologia', squad: 'BlackOps', tipo: 'assessoria', gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'atencao', jornada: 'otimizacao', nps: 7, semaforo: 'laranja', data_inicio: daysISO(-180), plataformas: 'ambos', verba_mensal: 7500, verba_google: 4500, verba_meta: 3000, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-daniel', observacoes: 'Cirurgião do aparelho digestivo.', created_at: daysISO(-180) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
+  { id: c1, nome: 'Dra. Fernanda Reis', nicho: 'Dermatologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'ativo', jornada: 'otimizacao', jornada_social: 'postando', nps: 9, semaforo: 'verde', data_inicio: daysISO(-120), plataformas: 'ambos', verba_mensal: 6000, verba_google: 3500, verba_meta: 2500, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-fernanda', observacoes: 'Atendimento particular, foco em botox e rejuvenescimento.', created_at: daysISO(-120) + 'T00:00:00Z', updated_at: daysISO(-2) + 'T00:00:00Z' },
+  { id: c2, nome: 'Clínica Olhar Claro', nicho: 'Oftalmologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'atencao', jornada: 'retencao', jornada_social: null, nps: 6, semaforo: 'laranja', data_inicio: daysISO(-200), plataformas: 'google_ads', verba_mensal: 4500, verba_google: 4500, verba_meta: 0, fonte_crm: 'kommo', kommo_account_id: 'kommo-1234', link_grupo: 'https://chat.whatsapp.com/demo-olhar', observacoes: 'Foco em catarata e lentes premium.', created_at: daysISO(-200) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
+  { id: c3, nome: 'Dr. Rafael Azevedo', nicho: 'Ortopedia', squad: 'Delta', tipo: 'consultoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'ativo', jornada: 'onboarding', jornada_social: 'onboarding', nps: 8, semaforo: 'verde', data_inicio: daysISO(-60), plataformas: 'meta_ads', verba_mensal: 3200, verba_google: 0, verba_meta: 3200, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Especialista em joelho e esporte.', created_at: daysISO(-60) + 'T00:00:00Z', updated_at: daysISO(-5) + 'T00:00:00Z' },
+  { id: c4, nome: 'Instituto Neuro+', nicho: 'Neurologia', squad: 'Alpha', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'ativo', jornada: 'expansao', jornada_social: 'postando', nps: 10, semaforo: 'verde', data_inicio: daysISO(-310), plataformas: 'ambos', verba_mensal: 8500, verba_google: 5000, verba_meta: 3500, fonte_crm: 'kommo', kommo_account_id: 'kommo-5678', link_grupo: 'https://chat.whatsapp.com/demo-neuro', observacoes: 'Cliente-âncora. Envolve 3 neurologistas.', created_at: daysISO(-310) + 'T00:00:00Z', updated_at: daysISO(-3) + 'T00:00:00Z' },
+  { id: c5, nome: 'Estética Renascer', nicho: 'Cirurgia plástica', squad: 'Beta', tipo: 'assessoria', modulos: ['social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'pausado', jornada: 'onboarding', jornada_social: 'onboarding', nps: null, semaforo: 'amarelo', data_inicio: daysISO(-25), plataformas: null, verba_mensal: null, verba_google: null, verba_meta: null, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Em onboarding — só Social Media.', created_at: daysISO(-25) + 'T00:00:00Z', updated_at: daysISO(-10) + 'T00:00:00Z' },
+  { id: c6, nome: 'Dr. Daniel Oliveira', nicho: 'Gastroenterologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'atencao', jornada: 'otimizacao', jornada_social: 'postando', nps: 7, semaforo: 'laranja', data_inicio: daysISO(-180), plataformas: 'ambos', verba_mensal: 7500, verba_google: 4500, verba_meta: 3000, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-daniel', observacoes: 'Cirurgião do aparelho digestivo.', created_at: daysISO(-180) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
 ]
 
 const tarefas: Row[] = []
@@ -400,6 +403,11 @@ const projetos_webdesign: Row[] = [
     briefing: 'Site one-page com hero, serviços (4 áreas), depoimentos, bio da médica, agendamento via WhatsApp. Visual clean com tons neutros.',
     briefing_pdf_url: 'https://drive.google.com/file/d/demo-briefing-fernanda/view',
     identidade_visual_url: 'https://drive.google.com/drive/folders/demo-identidade-fernanda',
+    identidade_visual_urls: [
+      'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400',
+      'https://images.unsplash.com/photo-1626785774573-4b799315345d?w=400',
+      'https://drive.google.com/drive/folders/demo-manual-marca-fernanda',
+    ],
     fotos: [
       'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400',
       'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=400',
@@ -651,6 +659,16 @@ const producoes_social_media: Row[] = [
       'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400',
     ],
     observacoes: '12 posts planejados para abril. Foco em cirurgia do refluxo e bariátrica.',
+    tema_mes: 'Bariátrica humanizada — quebrando estigmas',
+    pilares: ['educacional', 'transformação', 'oferta'],
+    ganchos_para_ads:
+      '• Carrossel "Bariátrica X Canetas emagrecedoras" — alto potencial de saves\n• Reel da consulta com paciente real (autorizado)\n• Estático "10 causas silenciosas do refluxo" pode virar ad de TOFU',
+    campanha_ativa_url: 'https://ads.google.com/aw/campaigns/demo-daniel-bariatrica',
+    texto_introducao:
+      'Nós trabalharemos com um funil de conteúdo, intercalando entre Conexão, Objeções e Autoridade. O posicionamento do Dr. Daniel será reforçado através de conteúdos que mostrem casos reais e desmistifiquem a bariátrica.',
+    cadencia: '3 posts/semana — Seg, Qua e Sex',
+    data_envio_aprovacao: daysISO(-3),
+    aprovado_em: daysISO(-1) + 'T16:00:00Z',
     created_at: daysISO(-10) + 'T09:00:00Z',
     updated_at: daysISO(-1) + 'T14:00:00Z',
   },
@@ -664,6 +682,16 @@ const producoes_social_media: Row[] = [
     briefing_pdf_url: null,
     referencias: [],
     observacoes: 'Planejamento mensal de dermato — foco em rejuvenescimento.',
+    tema_mes: 'Rejuvenescimento sem invasão — protocolo combinado',
+    pilares: ['educacional', 'prova social', 'institucional'],
+    ganchos_para_ads:
+      '• Antes/depois (com autorização) tem alto CTR\n• Mitos sobre botox vira lookalike de mulheres 35-50\n• Depoimento em vídeo — testar como ad de retargeting',
+    campanha_ativa_url: null,
+    texto_introducao:
+      'Trabalharemos com um funil de Conexão → Objeções → Autoridade. O foco do mês é desmistificar tratamentos estéticos e mostrar casos reais com aprovação.',
+    cadencia: '3 posts/semana — Ter, Qui e Sáb',
+    data_envio_aprovacao: daysISO(2),
+    aprovado_em: null,
     created_at: daysISO(-7) + 'T10:00:00Z',
     updated_at: daysISO(-2) + 'T11:00:00Z',
   },
@@ -677,6 +705,15 @@ const producoes_social_media: Row[] = [
     briefing_pdf_url: null,
     referencias: [],
     observacoes: 'Conteúdo educativo sobre cefaleia e esclerose múltipla.',
+    tema_mes: 'Cefaleia primária — quando suspeitar e quando tratar',
+    pilares: ['educacional', 'autoridade'],
+    ganchos_para_ads: '• Carrossel "5 sinais de cefaleia que precisam de neuro" — gancho TOFU clássico',
+    campanha_ativa_url: null,
+    texto_introducao:
+      'O mês foca em educar o público sobre cefaleia primária. Posts intercalam entre conteúdo educacional e demonstração de autoridade clínica.',
+    cadencia: '2 posts/semana — Seg e Qui',
+    data_envio_aprovacao: daysISO(5),
+    aprovado_em: null,
     created_at: daysISO(-5) + 'T09:00:00Z',
     updated_at: daysISO(-1) + 'T15:00:00Z',
   },
@@ -690,6 +727,14 @@ const producoes_social_media: Row[] = [
     briefing_pdf_url: null,
     referencias: [],
     observacoes: 'Mês fechado — todas as artes aprovadas e publicadas.',
+    tema_mes: 'Lesões esportivas — primeira consulta',
+    pilares: ['educacional', 'institucional'],
+    ganchos_para_ads: null,
+    campanha_ativa_url: null,
+    texto_introducao: 'Mês de onboarding. Primeiros posts introduzem o Dr. Rafael e seu posicionamento.',
+    cadencia: '2 posts/semana — Ter e Sex',
+    data_envio_aprovacao: daysISO(-25),
+    aprovado_em: daysISO(-22) + 'T11:00:00Z',
     created_at: daysISO(-30) + 'T09:00:00Z',
     updated_at: daysISO(-15) + 'T18:00:00Z',
   },
@@ -697,18 +742,18 @@ const producoes_social_media: Row[] = [
 
 const producoes_social_media_items: Row[] = [
   // Planejamento do Dr. Daniel — 12 items variados (inspirado no print)
-  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: '4 conselhos que eu, como cirurgião do aparelho digestivo, sempre dou', status: 'design', responsavel_id: pAmanda, prazo: daysISO(3), copy_texto: 'Slide 1: Você sabia que 3 em cada 10 brasileiros sofrem de refluxo?\nSlide 2: Conselho 1 — não deite logo após comer\n...', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 1, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Tudo o que você precisa saber antes de fazer uma cirurgia bariátrica', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(3), copy_texto: 'Carrossel informativo 8 slides. Requisitos, expectativas, pós-cirúrgico.', copy_arquivo_url: null, fotos: [], observacoes: 'Enviado pro médico há 2 dias.', ordem: 2, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Você tem refluxo, e mesmo tratando ele sempre volta?', status: 'pendente', responsavel_id: null, prazo: daysISO(3), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 3, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Os benefícios da Cirurgia videolaparoscópica', status: 'pendente', responsavel_id: null, prazo: daysISO(6), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 4, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: '10 principais causas do refluxo [estilo checklist]', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(6), copy_texto: 'Título: 10 causas silenciosas do refluxo\n1. Alimentação desregulada\n2. Sobrepeso...', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 5, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'O que torna um Aparelho digestivo saudável [círculo com 5 pilares]', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(6), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 6, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Toda dor e desconforto tem uma causa. Ignorar só adia o diagnóstico', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 7, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Dor no estômago: o que geralmente acham que é vs o que realmente é', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 8, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: 'Cirurgia videolaparoscópica: como é feita?', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 9, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: 'Bariátrica X Canetas emagrecedoras: qual é a opção mais indicada?', status: 'pendente', responsavel_id: null, prazo: daysISO(12), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 10, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: '[CAIXINHA DE PERGUNTA] "Fui diagnosticado com hérnia..."', status: 'pendente', responsavel_id: null, prazo: daysISO(12), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 11, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Agende sua consulta — primeira avaliação humanizada', status: 'conclusao', responsavel_id: pAmanda, prazo: daysISO(12), copy_texto: 'CTA final do mês. Post estático com link na bio.', copy_arquivo_url: null, fotos: [], observacoes: 'Já programado pra 30/04.', ordem: 12, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: '4 conselhos que eu, como cirurgião do aparelho digestivo, sempre dou', ideia_conteudo: 'Lista didática com 4 dicas práticas que reforçam autoridade e geram identificação com quem tem desconfortos digestivos.', status: 'design', responsavel_id: pAmanda, prazo: daysISO(3), copy_texto: 'Slide 1: Você sabia que 3 em cada 10 brasileiros sofrem de refluxo?\nSlide 2: Conselho 1 — não deite logo após comer\n...', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 1, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Tudo o que você precisa saber antes de fazer uma cirurgia bariátrica', ideia_conteudo: 'Quebra de objeções clássicas sobre bariátrica. Requisitos, expectativas e pós-cirúrgico em linguagem acessível.', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(3), copy_texto: 'Carrossel informativo 8 slides.', copy_arquivo_url: null, fotos: [], observacoes: 'Enviado pro médico há 2 dias.', ordem: 2, reaproveitado_para_ad: true, reaproveitado_url: 'https://business.facebook.com/ads/manager/demo-ad-123', created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Você tem refluxo, e mesmo tratando ele sempre volta?', ideia_conteudo: 'Conexão com quem já tentou tudo. Mostrar que muitas vezes o problema é estrutural e tem solução cirúrgica.', status: 'pendente', responsavel_id: null, prazo: daysISO(3), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 3, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'carrossel', titulo: 'Os benefícios da Cirurgia videolaparoscópica', ideia_conteudo: 'Autoridade técnica. Explicar de forma simples por que é menos invasiva e tem recuperação melhor.', status: 'pendente', responsavel_id: null, prazo: daysISO(6), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 4, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: '10 principais causas do refluxo', ideia_conteudo: 'Checklist visual e direto. Posts estáticos do tipo gancho — alto índice de saves.', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(6), copy_texto: '1. Alimentação desregulada\n2. Sobrepeso...', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 5, reaproveitado_para_ad: true, reaproveitado_url: null, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'O que torna um Aparelho digestivo saudável', ideia_conteudo: 'Infográfico circular com 5 pilares — descanso, alimentação, hidratação, movimento, acompanhamento.', status: 'em_aprovacao', responsavel_id: pAmanda, prazo: daysISO(6), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 6, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Toda dor e desconforto tem uma causa', ideia_conteudo: 'Frase de impacto com linguagem direta. Quebra a auto-medicação e leva à consulta.', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 7, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Dor no estômago: o que geralmente acham X o que realmente é', ideia_conteudo: 'Comparação visual entre crenças populares e diagnósticos reais. Posicionamento de autoridade.', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 8, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: 'Cirurgia videolaparoscópica: como é feita?', ideia_conteudo: 'Reel curto mostrando o procedimento de forma didática. Transparência gera confiança.', status: 'pendente', responsavel_id: null, prazo: daysISO(9), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 9, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: 'Bariátrica X Canetas emagrecedoras: qual é a opção mais indicada?', ideia_conteudo: 'Comparação direta entre tratamentos. Quebra de objeção do tipo "vou fazer caneta porque é mais fácil".', status: 'pendente', responsavel_id: null, prazo: daysISO(12), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 10, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'reel', titulo: '[CAIXINHA DE PERGUNTA] "Fui diagnosticado com hérnia..."', ideia_conteudo: 'Resposta a uma pergunta real do público. Conexão e autoridade.', status: 'pendente', responsavel_id: null, prazo: daysISO(12), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 11, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Agende sua consulta — primeira avaliação humanizada', ideia_conteudo: 'CTA do mês. Post estático com link da bio e fala calorosa pra o paciente.', status: 'conclusao', responsavel_id: pAmanda, prazo: daysISO(-2), copy_texto: 'CTA final do mês.', copy_arquivo_url: null, fotos: [], observacoes: 'Já programado.', ordem: 12, publicado_url: 'https://instagram.com/p/DEMO_DR_DANIEL_CTA/', publicado_em: daysISO(-2) + 'T18:30:00Z', publicado_por: pAmanda, created_at: nowISO(), updated_at: nowISO() },
 
   // Planejamento Dra. Fernanda — 6 items
   { id: uid(), producao_id: prod2Id, formato: 'carrossel', titulo: '5 mitos sobre botox que você ainda acredita', status: 'design_finalizado', responsavel_id: pAmanda, prazo: daysISO(2), copy_texto: 'Carrossel 6 slides, desmitificando crenças comuns.', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 1, created_at: nowISO(), updated_at: nowISO() },
@@ -729,6 +774,139 @@ const producoes_social_media_items: Row[] = [
   { id: uid(), producao_id: 'prod-4', formato: 'estatico', titulo: 'Dor crônica no joelho: causas e tratamentos', status: 'conclusao', responsavel_id: pAmanda, prazo: daysISO(-18), copy_texto: 'Estático informativo.', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 3, created_at: daysISO(-30) + 'T09:00:00Z', updated_at: daysISO(-18) + 'T16:00:00Z' },
 ]
 
+// Métricas mensais de Social Media — dados realistas pra alimentar
+// o dashboard de KPIs do playbook 7. Geramos pros últimos 3 meses
+// dos clientes que estão "postando".
+const cliente_metricas_social: Row[] = (() => {
+  const out: Row[] = []
+  const hoje = new Date()
+  const clientesPostando = clientes.filter(
+    (c) =>
+      Array.isArray(c.modulos) && c.modulos.includes('social_media') && c.jornada_social === 'postando',
+  )
+  for (const c of clientesPostando) {
+    for (let offset = 0; offset < 3; offset++) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - offset, 1)
+      const mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+      // Engajamento médio cresce um pouco por mês (efeito de aprendizado)
+      const baseEng = 3.2 + (3 - offset) * 0.4 + Math.random() * 0.5
+      out.push({
+        cliente_id: c.id,
+        mes_referencia: mes,
+        engajamento_medio: Number(baseEng.toFixed(2)),
+        alcance_medio: Math.round(8000 + (3 - offset) * 1500 + Math.random() * 2000),
+        seguidores: Math.round(12000 + (3 - offset) * 280 + Math.random() * 100),
+        nota_qualitativa: offset === 0 ? null : 7 + Math.floor(Math.random() * 3), // mês corrente vazio (ainda não avaliado)
+        observacoes:
+          offset === 0
+            ? null
+            : offset === 1
+            ? 'Reels começaram a engajar mais. Continuar testando formato em primeira pessoa.'
+            : 'Mês de adaptação. Identidade visual ainda em ajuste.',
+        created_at: d.toISOString(),
+        updated_at: d.toISOString(),
+      })
+    }
+  }
+  return out
+})()
+
+// Banco de ideias / referências (playbook 3.4 — Inovação)
+const cliente_ideias_social: Row[] = (() => {
+  const out: Row[] = []
+  // Apenas clientes com módulo social_media
+  const clientesSM = clientes.filter(
+    (c) => Array.isArray(c.modulos) && c.modulos.includes('social_media'),
+  )
+
+  // Algumas ideias variadas pro Dr. Daniel (mais ricas)
+  const ideiasDaniel = [
+    {
+      titulo: 'Carrossel de "antes do sintoma"',
+      descricao:
+        'Mostrar comportamentos que precedem sintomas digestivos por anos. Inspiração: @dra.lifestyleclinical.',
+      url: 'https://www.instagram.com/reel/REF_LIFESTYLE/',
+      formato_alvo: 'carrossel',
+      status: 'a_testar',
+      tags: ['educacional', 'gancho'],
+    },
+    {
+      titulo: 'Reel de bastidor — sala de cirurgia',
+      descricao: 'Vídeo de 30s mostrando a equipe se preparando, com voz over explicando procedimento.',
+      url: null,
+      formato_alvo: 'reel',
+      status: 'em_teste',
+      tags: ['bastidores', 'autoridade'],
+    },
+    {
+      titulo: 'Estático "antes vs depois" da consulta',
+      descricao:
+        'Comparativo de "como você chega ansioso" vs "como sai com plano de tratamento". Estilo split-screen.',
+      url: null,
+      formato_alvo: 'estatico',
+      status: 'testado',
+      tags: ['conexão', 'transformação'],
+    },
+  ]
+
+  for (const ideia of ideiasDaniel) {
+    out.push({
+      id: uid(),
+      cliente_id: clientesSM.find((c) => c.nome.includes('Daniel'))?.id ?? clientesSM[0]?.id,
+      ...ideia,
+      criado_por: pAmanda,
+      created_at: daysISO(-12) + 'T10:00:00Z',
+      updated_at: daysISO(-3) + 'T15:00:00Z',
+    })
+  }
+
+  // Uma ideia genérica pros outros clientes SM
+  for (const c of clientesSM) {
+    if (c.nome.includes('Daniel')) continue
+    out.push({
+      id: uid(),
+      cliente_id: c.id,
+      titulo: 'Trend "POV: você está saindo da consulta..."',
+      descricao: 'Aproveitar trend atual com áudio engraçado pra humanizar a experiência médica.',
+      url: 'https://www.instagram.com/reel/DEMO_TREND/',
+      formato_alvo: 'reel',
+      status: 'a_testar',
+      tags: ['trend', 'humanização'],
+      criado_por: c.social_media_id ?? pAmanda,
+      created_at: daysISO(-5) + 'T11:00:00Z',
+      updated_at: daysISO(-5) + 'T11:00:00Z',
+    })
+  }
+
+  return out
+})()
+
+// Setup do perfil — uma linha por cliente que tem o módulo social_media.
+// Inicia tudo como pendente (estado real do dia-a-dia).
+const cliente_perfil_setup: Row[] = clientes
+  .filter((c) => Array.isArray(c.modulos) && c.modulos.includes('social_media'))
+  .map((c) => {
+    // Pra demo: clientes "postando" já têm setup completo, "onboarding" ainda incompleto
+    const completo = c.jornada_social === 'postando'
+    return {
+      cliente_id: c.id,
+      foto_status: completo ? 'ok' : 'em_revisao',
+      foto_url: completo ? 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=200' : null,
+      foto_obs: completo ? 'Foto profissional aprovada em sessão.' : 'Aguardando nova foto profissional.',
+      bio_status: completo ? 'ok' : 'pendente',
+      bio_texto: completo ? `${c.nome} — especialista em ${c.nicho ?? 'medicina'}.\n📍 Atendimento humanizado\n📞 WhatsApp na bio` : null,
+      bio_obs: completo ? 'Bio reescrita com foco em autoridade.' : null,
+      destaques_status: completo ? 'ok' : 'pendente',
+      destaques_obs: completo ? '6 destaques organizados: Sobre, Procedimentos, Depoimentos, Antes/Depois, Equipe, FAQ' : null,
+      contato_status: completo ? 'ok' : 'pendente',
+      contato_obs: completo ? 'Endereço, WhatsApp e e-mail validados.' : null,
+      ultima_revisao_em: completo ? daysISO(-15) + 'T10:00:00Z' : null,
+      ultima_revisao_por: completo ? c.social_media_id : null,
+      created_at: c.created_at,
+      updated_at: completo ? daysISO(-15) + 'T10:00:00Z' : nowISO(),
+    }
+  })
+
 const db: Record<Tables, Row[]> = {
   profiles,
   squads,
@@ -746,6 +924,9 @@ const db: Record<Tables, Row[]> = {
   criativos_webdesign,
   producoes_social_media,
   producoes_social_media_items,
+  cliente_perfil_setup,
+  cliente_metricas_social,
+  cliente_ideias_social,
 }
 
 // ---------- Persistência em localStorage (demo) ----------
@@ -766,7 +947,10 @@ const PERSISTED_TABLES: Tables[] = [
   'producoes_social_media',
   'producoes_social_media_items',
 ]
-const STORAGE_KEY = 'movmed-mockdb-v2'
+// v3 — adicionou modulos, jornada_social, social_media_id em cliente,
+// cliente_perfil_setup, métricas social, ideias, items.publicado_*, etc.
+// Bump pra invalidar caches antigos sem esses campos.
+const STORAGE_KEY = 'movmed-mockdb-v3'
 
 function hydrateFromStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
@@ -905,6 +1089,43 @@ class Q {
   lt(f: string, v: any) { this._filters.push((r) => r[f] < v); return this }
   lte(f: string, v: any) { this._filters.push((r) => r[f] <= v); return this }
   in(f: string, arr: any[]) { this._filters.push((r) => arr.includes(r[f])); return this }
+  /** `.is(field, null)` — filtra registros onde o campo é null/undefined */
+  is(f: string, v: any) {
+    this._filters.push((r) => {
+      if (v === null) return r[f] === null || r[f] === undefined
+      return r[f] === v
+    })
+    return this
+  }
+  /**
+   * Equivalente a `.not(field, 'is', null)` ou `.not(field, 'eq', value)`.
+   * Suporta o que a gente realmente usa no app.
+   */
+  not(f: string, op: string, v: any) {
+    this._filters.push((r) => {
+      const val = r[f]
+      if (op === 'is') {
+        if (v === null) return val !== null && val !== undefined
+        return val !== v
+      }
+      if (op === 'eq') return val !== v
+      if (op === 'in') return Array.isArray(v) ? !v.includes(val) : true
+      return true
+    })
+    return this
+  }
+  /**
+   * Filtra arrays/jsonb que contenham todos os valores informados.
+   * Equivale ao operador `@>` do Postgres usado pra `modulos`, `fotos`, etc.
+   */
+  contains(f: string, arr: any[]) {
+    this._filters.push((r) => {
+      const v = r[f]
+      if (!Array.isArray(v)) return false
+      return arr.every((x: any) => v.includes(x))
+    })
+    return this
+  }
   order(f: string, o: { ascending?: boolean } = {}) {
     this._orders.push({ field: f, asc: o.ascending !== false })
     return this

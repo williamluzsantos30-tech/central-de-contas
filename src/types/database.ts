@@ -4,6 +4,7 @@ export type FonteCrm = 'kommo' | 'nativo'
 export type StatusCliente = 'ativo' | 'atencao' | 'pausado' | 'churn'
 export type TipoCliente = 'assessoria' | 'consultoria'
 export type JornadaCliente = 'onboarding' | 'otimizacao' | 'expansao' | 'retencao'
+export type JornadaSocial = 'onboarding' | 'postando'
 export type SemaforoCliente = 'verde' | 'amarelo' | 'laranja' | 'vermelho'
 export type FrequenciaTarefa = 'diaria' | 'semanal' | 'mensal' | 'esporadica'
 export type PrioridadeTarefa = 'baixa' | 'media' | 'alta'
@@ -57,6 +58,8 @@ export type StatusSocialMedia =
   | 'em_aprovacao'
   | 'conclusao'
 
+export type PerfilItemStatus = 'pendente' | 'em_revisao' | 'ok'
+
 export type Cargo =
   | 'gestor_trafego'
   | 'account_manager'
@@ -104,6 +107,7 @@ export interface Cliente {
   social_media_id: string | null
   status: StatusCliente
   jornada: JornadaCliente | null
+  jornada_social: JornadaSocial | null
   nps: number | null
   semaforo: SemaforoCliente | null
   data_inicio: string
@@ -115,11 +119,33 @@ export interface Cliente {
   kommo_account_id: string | null
   link_grupo: string | null
   observacoes: string | null
+  // Campos de Social Media
+  instagram_handle: string | null
+  instagram_user_id: string | null
+  instagram_token_id: string | null
   created_at: string
   updated_at: string
   gestor?: Profile | null
   account_manager?: Profile | null
   social_media?: Profile | null
+}
+
+export interface ClientePerfilSetup {
+  cliente_id: string
+  foto_status: PerfilItemStatus
+  foto_url: string | null
+  foto_obs: string | null
+  bio_status: PerfilItemStatus
+  bio_texto: string | null
+  bio_obs: string | null
+  destaques_status: PerfilItemStatus
+  destaques_obs: string | null
+  contato_status: PerfilItemStatus
+  contato_obs: string | null
+  ultima_revisao_em: string | null
+  ultima_revisao_por: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CriacaoAnexo {
@@ -156,7 +182,9 @@ export interface ProjetoWebdesign {
   url_producao: string | null
   briefing: string | null
   briefing_pdf_url: string | null
+  /** @deprecated usar identidade_visual_urls (array). Legado retroativo. */
   identidade_visual_url: string | null
+  identidade_visual_urls: string[]
   fotos: string[]
   copy_arquivo_url: string | null
   observacoes: string | null
@@ -175,7 +203,9 @@ export interface CriativoWebdesign {
   responsavel_id: string | null
   prazo: string | null
   url_criativo: string | null
+  /** @deprecated usar identidade_visual_urls (array). Legado retroativo. */
   identidade_visual_url: string | null
+  identidade_visual_urls: string[]
   fotos: string[]
   copy_texto: string | null
   copy_arquivo_url: string | null
@@ -195,7 +225,18 @@ export interface PlanejamentoSocialMedia {
   prazo: string | null
   briefing_pdf_url: string | null
   referencias: string[]
+  identidade_visual_urls: string[]
   observacoes: string | null
+  // Camada estratégica (playbook 3.2, 3.4, 3.5)
+  tema_mes: string | null
+  pilares: string[]
+  ganchos_para_ads: string | null
+  campanha_ativa_url: string | null
+  // Camada do PDF de planejamento (template do cliente)
+  texto_introducao: string | null
+  cadencia: string | null
+  data_envio_aprovacao: string | null
+  aprovado_em: string | null
   created_at: string
   updated_at: string
   cliente?: Cliente | null
@@ -207,6 +248,8 @@ export interface ItemSocialMedia {
   producao_id: string
   formato: FormatoSocialMedia
   titulo: string
+  /** Descrição da "ideia do conteúdo" — 2ª coluna do PDF de planejamento */
+  ideia_conteudo: string | null
   status: StatusSocialMedia
   responsavel_id: string | null
   prazo: string | null
@@ -215,9 +258,44 @@ export interface ItemSocialMedia {
   artes_prontas: string[]
   observacoes: string | null
   ordem: number
+  // Marcação de publicação (playbook 3.3 e KPI #1)
+  publicado_url: string | null
+  publicado_em: string | null
+  publicado_por: string | null
+  // Reaproveitamento pra tráfego (KPI #4)
+  reaproveitado_para_ad: boolean
+  reaproveitado_url: string | null
   created_at: string
   updated_at: string
   responsavel?: Profile | null
+}
+
+export interface MetricasSocialMensal {
+  cliente_id: string
+  mes_referencia: string
+  engajamento_medio: number | null
+  alcance_medio: number | null
+  seguidores: number | null
+  nota_qualitativa: number | null
+  observacoes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type StatusIdeiaSocial = 'a_testar' | 'em_teste' | 'testado' | 'descartado'
+
+export interface IdeiaSocial {
+  id: string
+  cliente_id: string
+  titulo: string
+  descricao: string | null
+  url: string | null
+  formato_alvo: 'carrossel' | 'estatico' | 'reel' | null
+  status: StatusIdeiaSocial
+  tags: string[]
+  criado_por: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface TaskTemplate {

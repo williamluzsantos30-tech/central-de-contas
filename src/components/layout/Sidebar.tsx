@@ -12,8 +12,6 @@ import {
   Sparkles,
   Share2,
   CalendarDays,
-  BarChart3,
-  Sun,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -73,10 +71,8 @@ const nav: Group[] = [
     defaultOpen: true,
     modulo: 'social_media',
     items: [
-      { to: '/social/agenda', label: 'Minha agenda', icon: Sun },
       { to: '/social/clientes', label: 'Clientes', icon: Users },
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
-      { to: '/social/metricas', label: 'Métricas', icon: BarChart3 },
     ],
   },
   { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
@@ -113,13 +109,19 @@ export function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
-      <div className="flex h-14 items-center gap-2.5 border-b border-border/80 px-5">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-gradient text-white font-bold shadow-[0_4px_14px_-4px_rgba(249,115,22,0.6)] transition-transform duration-300 hover:scale-105 hover:rotate-3">
-          M
-        </div>
+      <div className="flex h-16 items-center gap-2.5 border-b border-border/80 bg-black px-5">
+        <img
+          src="/logo-movmed.png"
+          alt="MovMed"
+          className="h-9 w-auto object-contain"
+        />
         <div>
-          <p className="text-sm font-semibold leading-none tracking-tight">MovMed</p>
-          <p className="text-[10px] text-muted mt-0.5 tracking-wide">Central de Contas</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 leading-none">
+            Central
+          </p>
+          <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-zinc-400 leading-none">
+            de Contas
+          </p>
         </div>
       </div>
       <nav className="p-2 space-y-1">

@@ -1,11 +1,14 @@
-import { LogOut, FlaskConical } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, LogOut, FlaskConical } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Avatar } from '@/components/ui/Avatar'
 import { userRoleLabel } from '@/lib/utils'
 import { isDemoMode } from '@/lib/supabase'
+import { EditarFotoPerfilModal } from '@/components/layout/EditarFotoPerfilModal'
 
 export function Header() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, refreshProfile } = useAuth()
+  const [editFotoOpen, setEditFotoOpen] = useState(false)
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border/60 bg-bg-soft/70 px-6 backdrop-blur-xl">
@@ -19,15 +22,24 @@ export function Header() {
       </div>
       <div className="flex items-center gap-3">
         {profile && (
-          <div className="flex items-center gap-2 rounded-lg border border-transparent px-1 transition-colors hover:border-border">
-            <Avatar name={profile.nome} url={profile.avatar_url} size="sm" />
+          <button
+            onClick={() => setEditFotoOpen(true)}
+            className="group flex items-center gap-2 rounded-lg border border-transparent px-1 transition-colors hover:border-border"
+            title="Trocar foto de perfil"
+          >
+            <span className="relative">
+              <Avatar name={profile.nome} url={profile.avatar_url} size="sm" />
+              <span className="absolute inset-0 grid place-items-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                <Camera size={10} className="text-white" />
+              </span>
+            </span>
             <div className="hidden text-right md:block">
               <p className="text-xs font-medium leading-tight">{profile.nome}</p>
               <p className="text-[10px] text-muted leading-tight">
                 {userRoleLabel[profile.role]}
               </p>
             </div>
-          </div>
+          </button>
         )}
         <button
           onClick={signOut}
@@ -37,6 +49,15 @@ export function Header() {
           <LogOut size={16} />
         </button>
       </div>
+
+      {profile && (
+        <EditarFotoPerfilModal
+          open={editFotoOpen}
+          onClose={() => setEditFotoOpen(false)}
+          profile={profile}
+          onSaved={refreshProfile}
+        />
+      )}
     </header>
   )
 }

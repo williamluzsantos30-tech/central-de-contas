@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { ChevronLeft, Pencil, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -17,6 +17,13 @@ import { OtimizacaoForm } from '@/components/otimizacoes/OtimizacaoForm'
 import { MetasPanel } from '@/components/metas/MetasPanel'
 import { LeadsPanel } from '@/components/leads/LeadsPanel'
 import { CriacoesPanel } from '@/components/criacoes/CriacoesPanel'
+import { SocialClienteHeader } from '@/components/social/SocialClienteHeader'
+import { SetupPerfilPanel } from '@/components/social/SetupPerfilPanel'
+import { PainelSocial } from '@/components/social/PainelSocial'
+import { PlanejamentoMensalPanel } from '@/components/social/PlanejamentoMensalPanel'
+import { CalendarioSocialPanel } from '@/components/social/CalendarioSocialPanel'
+import { MetricasSocialPanel } from '@/components/social/MetricasSocialPanel'
+import { IdeiasSocialPanel } from '@/components/social/IdeiasSocialPanel'
 import { supabase } from '@/lib/supabase'
 import {
   cn,
@@ -34,13 +41,18 @@ import {
 import type {
   Ativo,
   Cliente,
+  ClientePerfilSetup,
   FrequenciaTarefa,
+  ItemSocialMedia,
   Otimizacao,
+  PlanejamentoSocialMedia,
   TipoAtivo,
   Tarefa,
 } from '@/types/database'
 
 type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'crm' | 'log' | 'criacoes'
+type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas' | 'ideias'
+type Modo = 'trafego' | 'social'
 
 const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLeft: string }> = {
   diaria: {
@@ -67,22 +79,42 @@ const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLe
 
 export default function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  // O modo é definido PURAMENTE pela URL — sem toggle.
+  // /social/clientes/:id  → modo Social Media
+  // /clientes/:id         → modo Tráfego
+  const modoUrl: Modo = location.pathname.startsWith('/social/') ? 'social' : 'trafego'
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [ativos, setAtivos] = useState<Ativo[]>([])
   const [otimizacoes, setOtimizacoes] = useState<Otimizacao[]>([])
   const [comentariosCount, setComentariosCount] = useState<Map<string, number>>(new Map())
   const [tab, setTab] = useState<Tab>('visao')
+  const [socialTab, setSocialTab] = useState<SocialTab>('painel')
+  // Mantém compatível com o resto do código que lê `modo`. Atualiza
+  // sempre que a URL muda (navegação entre as 2 visões).
+  const modo: Modo = modoUrl
   const [editOpen, setEditOpen] = useState(false)
   const [novaFreq, setNovaFreq] = useState<FrequenciaTarefa | null>(null)
   const [drawerTarefa, setDrawerTarefa] = useState<Tarefa | null>(null)
   const [novaOtimOpen, setNovaOtimOpen] = useState(false)
   const [filtroPlatform, setFiltroPlatform] = useState('')
 
+  // Dados específicos de Social Media
+  const [perfilSetup, setPerfilSetup] = useState<ClientePerfilSetup | null>(null)
+  const [planejamentos, setPlanejamentos] = useState<PlanejamentoSocialMedia[]>([])
+  const [itemsSocial, setItemsSocial] = useState<ItemSocialMedia[]>([])
+
   async function load() {
     if (!id) return
-    const [cRes, tRes, aRes, oRes, ccRes] = await Promise.all([
-      supabase.from('clientes').select('*, gestor:profiles!gestor_id(*)').eq('id', id).single(),
+    const [cRes, tRes, aRes, oRes, ccRes, psRes, plRes] = await Promise.all([
+      supabase
+        .from('clientes')
+        .select(
+          '*, gestor:profiles!gestor_id(*), account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
+        )
+        .eq('id', id)
+        .single(),
       supabase
         .from('tarefas')
         .select('*, responsavel:profiles(*), template:task_templates(*)')
@@ -95,8 +127,11 @@ export default function ClienteDetalhe() {
         .eq('cliente_id', id)
         .order('data_otimizacao', { ascending: false }),
       supabase.from('tarefa_comentarios').select('tarefa_id'),
+      supabase.from('cliente_perfil_setup').select('*').eq('cliente_id', id).maybeSingle(),
+      supabase.from('producoes_social_media').select('*').eq('cliente_id', id),
     ])
-    setCliente(cRes.data as Cliente)
+    const cli = cRes.data as Cliente
+    setCliente(cli)
     setTarefas((tRes.data as Tarefa[]) ?? [])
     setAtivos((aRes.data as Ativo[]) ?? [])
     setOtimizacoes((oRes.data as Otimizacao[]) ?? [])
@@ -105,10 +140,28 @@ export default function ClienteDetalhe() {
       map.set(row.tarefa_id, (map.get(row.tarefa_id) ?? 0) + 1)
     }
     setComentariosCount(map)
+    setPerfilSetup((psRes.data as ClientePerfilSetup | null) ?? null)
+    const plans = (plRes.data as PlanejamentoSocialMedia[]) ?? []
+    setPlanejamentos(plans)
+
+    // Carrega items das produções desse cliente
+    if (plans.length > 0) {
+      const planIds = plans.map((p) => p.id)
+      const itRes = await supabase
+        .from('producoes_social_media_items')
+        .select('*')
+        .in('producao_id', planIds)
+      setItemsSocial((itRes.data as ItemSocialMedia[]) ?? [])
+    } else {
+      setItemsSocial([])
+    }
+
+    // Modo é definido pela URL (modoUrl) — não muda aqui.
   }
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const grouped = useMemo(() => {
@@ -150,40 +203,154 @@ export default function ClienteDetalhe() {
   const ativosOk = ativos.filter((a) => a.status === 'funcional').length
   const ativosProblema = ativos.filter((a) => a.status === 'com_problema').length
 
+  const modulos = cliente.modulos ?? ['trafego']
+  const temSocial = modulos.includes('social_media')
+  const temTrafego = modulos.includes('trafego')
+
+  // Aviso quando alguém entra na rota errada (cliente não tem o módulo solicitado)
+  const moduloFaltante =
+    (modo === 'trafego' && !temTrafego) || (modo === 'social' && !temSocial)
+
   return (
     <div>
-      <Link to="/clientes" className="mb-3 inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-200">
+      <Link
+        to={modo === 'social' ? '/social/clientes' : '/clientes'}
+        className="mb-3 inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-200"
+      >
         <ChevronLeft size={14} /> voltar aos clientes
       </Link>
 
-      <ClienteHeader cliente={cliente} onChanged={load} onEdit={() => setEditOpen(true)} />
+      {moduloFaltante && (
+        <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          ⚠️ Esse cliente não está cadastrado no módulo{' '}
+          <strong>{modo === 'social' ? 'Social Media' : 'Tráfego'}</strong>. Os dados aqui podem estar vazios.
+          {modo === 'social' && temTrafego && (
+            <>
+              {' '}
+              <Link to={`/clientes/${cliente.id}`} className="underline hover:text-amber-100">
+                ver no Tráfego
+              </Link>
+            </>
+          )}
+          {modo === 'trafego' && temSocial && (
+            <>
+              {' '}
+              <Link to={`/social/clientes/${cliente.id}`} className="underline hover:text-amber-100">
+                ver no Social Media
+              </Link>
+            </>
+          )}
+        </div>
+      )}
 
-      <div className="mb-6 flex gap-1 border-b border-border">
-        {([
-          ['visao', 'Visão geral'],
-          ['tarefas', 'Tarefas'],
-          ['ativos', 'Ativos'],
-          ['criacoes', 'Criações'],
-          ['metas', 'Metas'],
-          ['crm', 'CRM'],
-          ['log', 'Log de otimização'],
-        ] as [Tab, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              'relative px-4 py-2 text-sm -mb-px border-b-2 transition-all duration-200',
-              tab === key
-                ? 'border-brand-500 text-brand-200 drop-shadow-[0_0_4px_rgba(249,115,22,0.4)]'
-                : 'border-transparent text-muted hover:text-zinc-200 hover:border-brand-500/30',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Modo Tráfego: header + tabs originais */}
+      {modo === 'trafego' && (
+        <>
+          <ClienteHeader cliente={cliente} onChanged={load} onEdit={() => setEditOpen(true)} />
+          <div className="mb-6 flex gap-1 border-b border-border">
+            {([
+              ['visao', 'Visão geral'],
+              ['tarefas', 'Tarefas'],
+              ['ativos', 'Ativos'],
+              ['criacoes', 'Criações'],
+              ['metas', 'Metas'],
+              ['crm', 'CRM'],
+              ['log', 'Log de otimização'],
+            ] as [Tab, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  'relative px-4 py-2 text-sm -mb-px border-b-2 transition-all duration-200',
+                  tab === key
+                    ? 'border-brand-500 text-brand-200 drop-shadow-[0_0_4px_rgba(249,115,22,0.4)]'
+                    : 'border-transparent text-muted hover:text-zinc-200 hover:border-brand-500/30',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
-      {tab === 'visao' && (
+      {/* Modo Social Media: header SM + tabs SM */}
+      {modo === 'social' && (
+        <>
+          <SocialClienteHeader
+            cliente={cliente}
+            perfilSetup={perfilSetup}
+            itemsDoMes={itemsSocial.filter((i) => {
+              if (!i.prazo) return false
+              const m = new Date().toISOString().slice(0, 7)
+              return i.prazo.slice(0, 7) === m
+            })}
+            onChanged={load}
+          />
+          <div className="mb-6 flex gap-1 border-b border-border overflow-x-auto">
+            {([
+              ['painel', 'Painel'],
+              ['setup', 'Setup do perfil'],
+              ['planejamento', 'Planejamento mensal'],
+              ['calendario', 'Calendário'],
+              ['metricas', 'Métricas'],
+              ['ideias', 'Ideias e referências'],
+            ] as [SocialTab, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setSocialTab(key)}
+                className={cn(
+                  'relative whitespace-nowrap px-4 py-2 text-sm -mb-px border-b-2 transition-all duration-200',
+                  socialTab === key
+                    ? 'border-pink-500 text-pink-200 drop-shadow-[0_0_4px_rgba(236,72,153,0.4)]'
+                    : 'border-transparent text-muted hover:text-zinc-200 hover:border-pink-500/30',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {socialTab === 'painel' && (
+            <PainelSocial
+              cliente={cliente}
+              setup={perfilSetup}
+              items={itemsSocial}
+              planejamentos={planejamentos}
+            />
+          )}
+
+          {socialTab === 'setup' && (
+            <SetupPerfilPanel cliente={cliente} setup={perfilSetup} onChanged={load} />
+          )}
+
+          {socialTab === 'planejamento' && (
+            <PlanejamentoMensalPanel
+              cliente={cliente}
+              planejamentos={planejamentos}
+              items={itemsSocial}
+              onChanged={load}
+            />
+          )}
+
+          {socialTab === 'calendario' && (
+            <CalendarioSocialPanel
+              cliente={cliente}
+              items={itemsSocial}
+              planejamentos={planejamentos}
+              onChanged={load}
+            />
+          )}
+
+          {socialTab === 'metricas' && (
+            <MetricasSocialPanel cliente={cliente} items={itemsSocial} />
+          )}
+
+          {socialTab === 'ideias' && <IdeiasSocialPanel cliente={cliente} />}
+        </>
+      )}
+
+      {modo === 'trafego' && tab === 'visao' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card>
             <CardHeader>
@@ -234,7 +401,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {tab === 'tarefas' && (
+      {modo === 'trafego' && tab === 'tarefas' && (
         <div className="space-y-5">
           {(['diaria', 'semanal', 'mensal', 'esporadica'] as FrequenciaTarefa[]).map((freq) => {
             const style = freqStyle[freq]
@@ -273,7 +440,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {tab === 'ativos' && (
+      {modo === 'trafego' && tab === 'ativos' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {TIPOS_ATIVO.map((tipo) => {
             const a = ativosByTipo.get(tipo)
@@ -284,13 +451,13 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
+      {modo === 'trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
 
-      {tab === 'metas' && <MetasPanel clienteId={cliente.id} />}
+      {modo === 'trafego' && tab === 'metas' && <MetasPanel clienteId={cliente.id} />}
 
-      {tab === 'crm' && <LeadsPanel cliente={cliente} />}
+      {modo === 'trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
 
-      {tab === 'log' && (
+      {modo === 'trafego' && tab === 'log' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <Select

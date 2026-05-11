@@ -13,7 +13,6 @@ import SocialMedia from '@/pages/webdesign/SocialMedia'
 import AgendaSocialMedia from '@/pages/social/Agenda'
 import SocialClientes from '@/pages/social/Clientes'
 import CalendarioPostagens from '@/pages/social/Calendario'
-import MetricasSocialMedia from '@/pages/social/Metricas'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -56,8 +55,11 @@ export default function App() {
             <Route path="/social" element={<AgendaSocialMedia />} />
             <Route path="/social/agenda" element={<AgendaSocialMedia />} />
             <Route path="/social/clientes" element={<SocialClientes />} />
+            <Route path="/social/clientes/:id" element={<ClienteDetalhe />} />
             <Route path="/social/calendario" element={<CalendarioPostagens />} />
-            <Route path="/social/metricas" element={<MetricasSocialMedia />} />
+            {/* Métricas saíram do Operacional Social Media e viraram tab no Admin.
+                Mantém redirect pra qualquer link antigo. */}
+            <Route path="/social/metricas" element={<Navigate to="/admin" replace />} />
             <Route
               path="/templates"
               element={<Navigate to="/admin" replace />}

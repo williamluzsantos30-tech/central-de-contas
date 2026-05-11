@@ -29,6 +29,7 @@ import { differenceInDays, format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
+import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
 import {
   cn,
   statusCriativoWebdesignLabel,
@@ -339,11 +340,13 @@ function CriativoAccordion({
   }, [criativo.titulo])
 
   useEffect(() => {
+    // Só designers podem ser responsáveis por criativos de webdesign.
     supabase
       .from('profiles')
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
+      .eq('cargo', 'designer')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])
@@ -487,7 +490,10 @@ function CriativoAccordion({
 
           <div className="flex items-center gap-1.5">
             <IconBadge
-              on={!!criativo.identidade_visual_url && !isDeadBlobUrl(criativo.identidade_visual_url)}
+              on={
+                ((criativo.identidade_visual_urls ?? []).filter((u) => !isDeadBlobUrl(u)).length > 0) ||
+                (!!criativo.identidade_visual_url && !isDeadBlobUrl(criativo.identidade_visual_url))
+              }
               icon={Palette}
               title="Identidade visual"
             />
@@ -622,17 +628,22 @@ function CriativoEditor({
 }) {
   // Ao carregar, blob: URLs viram string vazia — assim o user reupload o arquivo
   // e o save substitui o lixo do banco.
-  const initialForm = useMemo(
-    () => ({
+  const initialForm = useMemo(() => {
+    // Identidade visual: lê do array novo. Se vazio, usa o campo legado
+    // single (compat retroativo) como item único do array.
+    const idsArr = stripBlobUrls(criativo.identidade_visual_urls ?? [])
+    const idsLegacySingle = stripBlobUrl(criativo.identidade_visual_url)
+    const identidadeVisualUrls =
+      idsArr.length > 0 ? idsArr : idsLegacySingle ? [idsLegacySingle] : []
+    return {
       status: criativo.status,
       url_criativo: stripBlobUrl(criativo.url_criativo),
-      identidade_visual_url: stripBlobUrl(criativo.identidade_visual_url),
+      identidade_visual_urls: identidadeVisualUrls,
       fotos: stripBlobUrls(criativo.fotos),
       copy_arquivo_url: stripBlobUrl(criativo.copy_arquivo_url),
       observacoes: criativo.observacoes ?? '',
-    }),
-    [criativo],
-  )
+    }
+  }, [criativo])
   const [form, setForm] = useState(initialForm)
   // Ref que guarda o "estado de origem" (último valor sincronizado com o banco).
   // O save só envia campos que diferem desse ref, evitando sobrescrever
@@ -650,12 +661,28 @@ function CriativoEditor({
     if (url) setForm((f) => ({ ...f, copy_arquivo_url: url }))
     setUploadingKind(null)
   }
-  async function handleUploadIdentidade(file: File | null) {
-    if (!file) return
+  async function handleUploadIdentidade(files: FileList | null) {
+    if (!files || files.length === 0) return
     setUploadingKind('identidade')
-    const url = await uploadArquivo(file, 'criativos/identidade')
-    if (url) setForm((f) => ({ ...f, identidade_visual_url: url }))
+    const urls: string[] = []
+    for (const file of Array.from(files)) {
+      const u = await uploadArquivo(file, 'criativos/identidade')
+      if (u) urls.push(u)
+    }
+    if (urls.length > 0)
+      setForm((f) => ({ ...f, identidade_visual_urls: [...f.identidade_visual_urls, ...urls] }))
     setUploadingKind(null)
+  }
+  function addIdentidadeUrl(url: string) {
+    const u = url.trim()
+    if (!u) return
+    setForm((f) => ({ ...f, identidade_visual_urls: [...f.identidade_visual_urls, u] }))
+  }
+  function removeIdentidadeUrl(i: number) {
+    setForm((f) => ({
+      ...f,
+      identidade_visual_urls: f.identidade_visual_urls.filter((_, idx) => idx !== i),
+    }))
   }
   async function handleUploadFotos(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -694,8 +721,14 @@ function CriativoEditor({
     if (form.status !== base.status) payload.status = form.status
     if (form.url_criativo !== base.url_criativo)
       payload.url_criativo = form.url_criativo || null
-    if (form.identidade_visual_url !== base.identidade_visual_url)
-      payload.identidade_visual_url = form.identidade_visual_url || null
+    if (
+      JSON.stringify(form.identidade_visual_urls) !==
+      JSON.stringify(base.identidade_visual_urls)
+    ) {
+      payload.identidade_visual_urls = form.identidade_visual_urls
+      // Limpa o campo single legado pra evitar confusão com a fonte de verdade
+      payload.identidade_visual_url = null
+    }
     if (JSON.stringify(form.fotos) !== JSON.stringify(base.fotos))
       payload.fotos = form.fotos
     if (form.copy_arquivo_url !== base.copy_arquivo_url)
@@ -769,43 +802,16 @@ function CriativoEditor({
 
       <Section
         title="Identidade visual"
-        subtitle="Upload de imagem/PDF ou link para o Drive"
+        subtitle="Logo, paleta, manual de marca — pode anexar vários arquivos"
         icon={Palette}
       >
-        <Field label="Identidade visual">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={form.identidade_visual_url}
-              onChange={(e) => setForm({ ...form, identidade_visual_url: e.target.value })}
-              placeholder="Cole um link OU clique em Upload ao lado"
-              className="flex-1 min-w-[200px]"
-            />
-            <FileUploadButton
-              accept="image/*,application/pdf"
-              onFile={handleUploadIdentidade}
-              busy={uploadingKind === 'identidade'}
-              label="Upload"
-            />
-            {form.identidade_visual_url && (
-              <a
-                href={form.identidade_visual_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs text-zinc-200 hover:bg-bg-elev"
-              >
-                <ExternalLink size={12} />
-                Abrir
-              </a>
-            )}
-          </div>
-        </Field>
-        {form.identidade_visual_url && isImageUrl(form.identidade_visual_url) && (
-          <img
-            src={form.identidade_visual_url}
-            alt="identidade visual"
-            className="mt-3 max-h-48 rounded-lg border border-border object-contain bg-bg-soft"
-          />
-        )}
+        <IdentidadeVisualEditor
+          urls={form.identidade_visual_urls}
+          onAdd={addIdentidadeUrl}
+          onRemove={removeIdentidadeUrl}
+          onUpload={handleUploadIdentidade}
+          busy={uploadingKind === 'identidade'}
+        />
       </Section>
 
       <Section

@@ -433,6 +433,7 @@ function PlanejamentoCard({
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
+      .eq('cargo', 'designer')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])
@@ -699,7 +700,10 @@ function PlanejamentoCard({
           {/* Briefing do planejamento */}
           <BriefingPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Fotos / Identidade Visual do planejamento (compartilhadas entre todas as artes) */}
+          {/* Identidade Visual do planejamento (logo, paleta, manual de marca) */}
+          <IdentidadeVisualPanel planejamento={planejamento} onChanged={onChanged} />
+
+          {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
           {/* Lista de items */}
@@ -887,7 +891,7 @@ function ReferenciasPanel({
     <div className="border-b border-border bg-bg-soft/20 px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
         <ImageIcon size={14} className="text-brand-300" />
-        <h4 className="text-sm font-semibold">Fotos / Identidade Visual</h4>
+        <h4 className="text-sm font-semibold">Fotos / Referências</h4>
         <span className="text-[11px] text-muted">— compartilhadas em todas as artes</span>
         <span
           className={cn(
@@ -956,6 +960,147 @@ function ReferenciasPanel({
 }
 
 /* =========================================================
+   Painel de Identidade Visual do planejamento (compartilhada)
+   ========================================================= */
+
+function IdentidadeVisualPanel({
+  planejamento,
+  onChanged,
+}: {
+  planejamento: PlanejamentoSocialMedia
+  onChanged: () => void
+}) {
+  const [urls, setUrls] = useState<string[]>([...(planejamento.identidade_visual_urls ?? [])])
+  const [novaUrl, setNovaUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const firstRenderRef = useRef(true)
+
+  useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false
+      return
+    }
+    const timer = setTimeout(async () => {
+      setSaveState('saving')
+      await supabase
+        .from('producoes_social_media')
+        .update({ identidade_visual_urls: urls })
+        .eq('id', planejamento.id)
+      setSaveState('saved')
+      onChanged()
+      setTimeout(() => setSaveState('idle'), 1500)
+    }, 600)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urls])
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    const novos: string[] = []
+    for (const file of Array.from(files)) {
+      const u = await uploadArquivo(file, 'social/identidade')
+      if (u) novos.push(u)
+    }
+    if (novos.length > 0) setUrls((u) => [...u, ...novos])
+    setUploading(false)
+  }
+  function addUrl() {
+    const u = novaUrl.trim()
+    if (!u) return
+    setUrls((arr) => [...arr, u])
+    setNovaUrl('')
+  }
+  function removeUrl(i: number) {
+    setUrls((arr) => arr.filter((_, idx) => idx !== i))
+  }
+
+  return (
+    <div className="border-b border-border bg-bg-soft/20 px-4 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <ImageIcon size={14} className="text-brand-300" />
+        <h4 className="text-sm font-semibold">Identidade visual</h4>
+        <span className="text-[11px] text-muted">
+          — logo, paleta, manual de marca
+        </span>
+        <span
+          className={cn(
+            'ml-auto text-[11px] transition-opacity',
+            saveState === 'saving' && 'text-muted opacity-100',
+            saveState === 'saved' && 'text-emerald-400 opacity-100',
+            saveState === 'idle' && 'opacity-0',
+          )}
+        >
+          {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? '✓ Salvo' : ''}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={novaUrl}
+          onChange={(e) => setNovaUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addUrl()
+            }
+          }}
+          placeholder="Cole um URL e Enter, OU use Upload ao lado"
+          className="flex-1 min-w-[200px]"
+        />
+        <Button size="sm" variant="outline" onClick={addUrl} disabled={!novaUrl.trim()}>
+          <Plus size={12} /> URL
+        </Button>
+        <FileUploadButton
+          accept="image/*,application/pdf"
+          multiple
+          onFiles={handleUpload}
+          busy={uploading}
+          label="Upload"
+        />
+      </div>
+      {urls.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
+          {urls.map((url, i) => (
+            <div
+              key={`${url}-${i}`}
+              className="group relative overflow-hidden rounded-lg border border-border bg-bg-soft"
+            >
+              {isImageUrl(url) ? (
+                <img
+                  src={url}
+                  alt={`identidade ${i + 1}`}
+                  className="h-20 w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-20 items-center justify-center px-2 text-center text-[10px] text-muted">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all underline hover:text-zinc-200"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {url.length > 30 ? `${url.slice(0, 25)}...` : url}
+                  </a>
+                </div>
+              )}
+              <button
+                onClick={() => removeUrl(i)}
+                className="absolute top-1 right-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                title="Remover"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* =========================================================
    Editor de dados do planejamento
    ========================================================= */
 
@@ -986,6 +1131,7 @@ function PlanejamentoEditor({
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
+      .eq('cargo', 'designer')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])
@@ -1123,6 +1269,7 @@ function ItemRow({
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
+      .eq('cargo', 'designer')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])

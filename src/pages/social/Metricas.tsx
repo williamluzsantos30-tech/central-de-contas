@@ -59,7 +59,11 @@ const formatoLabel: Record<FormatoSocialMedia, string> = {
   outro: 'Outro',
 }
 
-export default function MetricasSocialMedia() {
+/**
+ * Quando renderizado dentro do Admin como tab, recebe `embedded=true`
+ * pra não duplicar o PageHeader.
+ */
+export default function MetricasSocialMedia({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth()
   const [items, setItems] = useState<ItemSocialMedia[]>([])
   const [planejamentos, setPlanejamentos] = useState<PlanejamentoSocialMedia[]>([])
@@ -235,10 +239,12 @@ export default function MetricasSocialMedia() {
 
   return (
     <div>
-      <PageHeader
-        title="Métricas Social Media"
-        description={`${range.label.toLowerCase()} · ${teamKpis.totalArtes} artes · ${stats.length} clientes ativos`}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Métricas Social Media"
+          description={`${range.label.toLowerCase()} · ${teamKpis.totalArtes} artes · ${stats.length} clientes ativos`}
+        />
+      )}
 
       {/* Filtro de período */}
       <div className="mb-4 flex items-center justify-end">

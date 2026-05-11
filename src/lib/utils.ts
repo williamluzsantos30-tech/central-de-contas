@@ -19,6 +19,7 @@ import type {
   TipoOtimizacao,
   TipoProjetoWebdesign,
   JornadaCliente,
+  JornadaSocial,
   SemaforoCliente,
   FormatoCriativo,
   FormatoSocialMedia,
@@ -126,6 +127,16 @@ export const JORNADAS_CLIENTE: JornadaCliente[] = [
   'expansao',
   'retencao',
 ]
+
+// Jornadas específicas do operacional Social Media (playbook):
+// onboarding = perfil sendo otimizado / 1º planejamento
+// postando = operação em ritmo, postagens regulares
+export const jornadaSocialLabel: Record<JornadaSocial, string> = {
+  onboarding: 'Onboarding',
+  postando: 'Postando',
+}
+
+export const JORNADAS_SOCIAL: JornadaSocial[] = ['onboarding', 'postando']
 
 export const semaforoClienteColor: Record<SemaforoCliente, string> = {
   verde: 'bg-emerald-500',

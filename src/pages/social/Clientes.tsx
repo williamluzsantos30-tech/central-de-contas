@@ -23,8 +23,8 @@ import { supabase } from '@/lib/supabase'
 import {
   cn,
   formatDate,
-  JORNADAS_CLIENTE,
-  jornadaClienteLabel,
+  JORNADAS_SOCIAL,
+  jornadaSocialLabel,
   statusClienteLabel,
   tipoClienteLabel,
 } from '@/lib/utils'
@@ -42,6 +42,8 @@ interface ClienteSocialStats {
   postagensMes: number
   concluidasMes: number
   atrasadas: number
+  /** Dias do mês com post programado, ex.: [{ dia: 5, status: 'conclusao' }, ...] */
+  diasDoMes: Array<{ dia: number; status: ItemSocialMedia['status']; titulo: string; formato: ItemSocialMedia['formato'] }>
 }
 
 export default function SocialClientes() {
@@ -61,24 +63,44 @@ export default function SocialClientes() {
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
+  // Lista paralela de clientes do módulo SM SEM responsável atribuído —
+  // mostra banner pro admin saber que precisa resolver.
+  const [orfaos, setOrfaos] = useState<Cliente[]>([])
   const { nomes: squadsAtivos } = useSquads()
 
   async function load() {
     setLoading(true)
-    const [cRes, pRes, iRes, profRes] = await Promise.all([
+    const [cRes, oRes, pRes, iRes, profRes] = await Promise.all([
       supabase
         .from('clientes')
         .select(
           '*, account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
         )
-        // Mostra só clientes do módulo social_media (separado de tráfego)
+        // Só clientes do módulo social_media...
         .contains('modulos', ['social_media'])
+        // ...e que têm uma Social Media responsável atribuída.
+        // Quem está em SM precisa ter alguém da equipe responsável.
+        .not('social_media_id', 'is', null)
         .order('nome'),
+      // Órfãos: estão em SM mas sem responsável — pra alertar o admin
+      supabase
+        .from('clientes')
+        .select('id, nome, modulos, social_media_id')
+        .contains('modulos', ['social_media'])
+        .is('social_media_id', null),
       supabase.from('producoes_social_media').select('*'),
       supabase.from('producoes_social_media_items').select('*'),
-      supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true).order('nome'),
+      // Filtro de "Todos social media" só lista quem é cargo social_media
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .eq('cargo', 'social_media')
+        .order('nome'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
+    setOrfaos((oRes.data as Cliente[]) ?? [])
     setPlanejamentos((pRes.data as PlanejamentoSocialMedia[]) ?? [])
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
     setResponsaveis((profRes.data as Profile[]) ?? [])
@@ -89,7 +111,8 @@ export default function SocialClientes() {
     load()
   }, [])
 
-  // Stats por cliente: artes do mês corrente, concluídas e atrasadas
+  // Stats por cliente: artes do mês corrente, concluídas, atrasadas
+  // e a lista de dias com post programado (pra render visual da coluna).
   const statsByCliente = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -98,7 +121,14 @@ export default function SocialClientes() {
     const monthEnd = endOfMonth(today)
     const planById = new Map(planejamentos.map((p) => [p.id, p]))
     const map = new Map<string, ClienteSocialStats>()
-    for (const c of clientes) map.set(c.id, { cliente: c, postagensMes: 0, concluidasMes: 0, atrasadas: 0 })
+    for (const c of clientes)
+      map.set(c.id, {
+        cliente: c,
+        postagensMes: 0,
+        concluidasMes: 0,
+        atrasadas: 0,
+        diasDoMes: [],
+      })
 
     for (const it of items) {
       const plan = planById.get(it.producao_id)
@@ -111,12 +141,22 @@ export default function SocialClientes() {
         if (d >= monthStart && d <= monthEnd) {
           stat.postagensMes++
           if (it.status === 'conclusao') stat.concluidasMes++
+          stat.diasDoMes.push({
+            dia: d.getDate(),
+            status: it.status,
+            titulo: it.titulo,
+            formato: it.formato,
+          })
         }
       }
       // Atrasada (independente do mês)
       if (it.status !== 'conclusao' && it.prazo && it.prazo.slice(0, 10) < todayStr) {
         stat.atrasadas++
       }
+    }
+    // Ordena os dias por número
+    for (const stat of map.values()) {
+      stat.diasDoMes.sort((a, b) => a.dia - b.dia)
     }
     return map
   }, [clientes, planejamentos, items])
@@ -127,7 +167,8 @@ export default function SocialClientes() {
       if (fSquad && c.squad !== fSquad) return false
       if (fSocial && c.social_media_id !== fSocial) return false
       if (fStatus && c.status !== fStatus) return false
-      if (fJornada && c.jornada !== fJornada) return false
+      // Filtro usa a jornada específica de Social Media
+      if (fJornada && c.jornada_social !== fJornada) return false
       if (escopo === 'meus' && profile && c.social_media_id !== profile.id) return false
       return true
     })
@@ -149,6 +190,38 @@ export default function SocialClientes() {
           </Button>
         }
       />
+
+      {/* Banner de órfãos: clientes em SM sem responsável atribuído */}
+      {orfaos.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+          <div className="flex items-start gap-2 text-xs text-amber-200">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold">
+                {orfaos.length} cliente{orfaos.length > 1 ? 's' : ''} em Social Media sem responsável atribuído
+              </p>
+              <p className="mt-0.5 opacity-90">
+                Pra aparecer{orfaos.length > 1 ? 'em' : ''} na lista, atribua um Social Media responsável:
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {orfaos.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => {
+                      setEditing(o)
+                      setFormOpen(true)
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25"
+                  >
+                    <Pencil size={9} />
+                    {o.nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
@@ -212,9 +285,9 @@ export default function SocialClientes() {
           </Select>
           <Select value={fJornada} onChange={(e) => setFJornada(e.target.value)} className="w-36">
             <option value="">Todas jornadas</option>
-            {JORNADAS_CLIENTE.map((j) => (
+            {JORNADAS_SOCIAL.map((j) => (
               <option key={j} value={j}>
-                {jornadaClienteLabel[j]}
+                {jornadaSocialLabel[j]}
               </option>
             ))}
           </Select>
@@ -242,7 +315,7 @@ export default function SocialClientes() {
                   <th className="px-3 py-2.5">Squad</th>
                   <th className="px-3 py-2.5">Account Manager</th>
                   <th className="px-3 py-2.5">Social Media</th>
-                  <th className="px-3 py-2.5">Postagens do mês</th>
+                  <th className="px-3 py-2.5">Dias do mês</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
                   <th className="px-3 py-2.5">Última atualização</th>
@@ -270,7 +343,7 @@ export default function SocialClientes() {
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <Link
-                              to={`/clientes/${c.id}`}
+                              to={`/social/clientes/${c.id}`}
                               className="text-sm font-medium text-zinc-100 hover:text-pink-300"
                             >
                               {c.nome}
@@ -304,7 +377,15 @@ export default function SocialClientes() {
                           <Badge tone={statusTone(c.status)}>{statusClienteLabel[c.status]}</Badge>
                         </td>
                         <td className="px-3 py-3 text-sm whitespace-nowrap">
-                          {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}
+                          {c.jornada_social ? (
+                            <Badge
+                              tone={c.jornada_social === 'postando' ? 'success' : 'brand'}
+                            >
+                              {jornadaSocialLabel[c.jornada_social]}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-muted whitespace-nowrap">
                           {formatDate(c.updated_at)}
@@ -322,7 +403,7 @@ export default function SocialClientes() {
                               <Pencil size={14} />
                             </button>
                             <Link
-                              to={`/clientes/${c.id}`}
+                              to={`/social/clientes/${c.id}`}
                               className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-pink-300"
                               title="Abrir detalhes"
                             >
@@ -352,34 +433,58 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
       </span>
     )
   }
-  const pct = Math.round((stats.concluidasMes / stats.postagensMes) * 100)
-  const corPct =
-    pct >= 80
-      ? 'text-emerald-300'
-      : pct >= 50
-      ? 'text-amber-300'
-      : 'text-zinc-200'
+
+  const today = new Date()
+  const hojeNum = today.getDate()
+
+  // Dia → cor por status
+  const dayColor = (status: ItemSocialMedia['status'], dia: number) => {
+    if (status === 'conclusao') return 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
+    // Se já passou e não foi concluído, é atraso
+    if (dia < hojeNum) return 'border-red-500/50 bg-red-500/15 text-red-200'
+    if (dia === hojeNum) return 'border-amber-400/60 bg-amber-400/15 text-amber-200'
+    return 'border-pink-500/40 bg-pink-500/10 text-pink-200'
+  }
+
+  // Mostra até 8 dias inline; se tiver mais, indica "+N"
+  const visiveis = stats.diasDoMes.slice(0, 8)
+  const restantes = stats.diasDoMes.length - visiveis.length
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <div className="flex items-center gap-1">
-        <ImageIcon size={11} className="text-pink-300/70" />
-        <span className="font-semibold text-zinc-100 tabular-nums">{stats.postagensMes}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        {visiveis.map((d, i) => (
+          <span
+            key={`${d.dia}-${i}`}
+            title={`Dia ${d.dia} · ${d.formato} · ${d.titulo} (${d.status})`}
+            className={cn(
+              'inline-grid h-5 min-w-[1.25rem] place-items-center rounded border px-1 text-[10px] font-semibold tabular-nums',
+              dayColor(d.status, d.dia),
+            )}
+          >
+            {d.dia}
+          </span>
+        ))}
+        {restantes > 0 && (
+          <span className="text-[10px] text-muted tabular-nums">+{restantes}</span>
+        )}
       </div>
-      <span className="text-muted">·</span>
-      <span className={cn('inline-flex items-center gap-0.5 tabular-nums', corPct)}>
-        <CheckCircle2 size={10} />
-        {pct}%
-      </span>
-      {stats.atrasadas > 0 && (
-        <>
-          <span className="text-muted">·</span>
-          <span className="inline-flex items-center gap-0.5 tabular-nums text-red-300">
-            <AlertCircle size={10} />
+      <div className="flex items-center gap-2 text-[10px] text-muted">
+        <span className="inline-flex items-center gap-0.5">
+          <ImageIcon size={9} />
+          {stats.postagensMes}
+        </span>
+        <span className="inline-flex items-center gap-0.5 text-emerald-300/80">
+          <CheckCircle2 size={9} />
+          {stats.concluidasMes}
+        </span>
+        {stats.atrasadas > 0 && (
+          <span className="inline-flex items-center gap-0.5 text-red-300">
+            <AlertCircle size={9} />
             {stats.atrasadas}
           </span>
-        </>
-      )}
+        )}
+      </div>
     </div>
   )
 }
