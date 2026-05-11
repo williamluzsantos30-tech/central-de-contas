@@ -156,7 +156,9 @@ export default function SocialMedia() {
         .order('created_at', { ascending: false }),
       supabase
         .from('producoes_social_media_items')
-        .select('*, responsavel:profiles(*)')
+        // Explicita FK porque a tabela tem 2 relações com profiles
+        // (responsavel_id + publicado_por). Sem isso, Supabase devolve PGRST201.
+        .select('*, responsavel:profiles!responsavel_id(*)')
         .order('ordem', { ascending: true }),
       supabase.from('clientes').select('*').order('nome'),
     ])
