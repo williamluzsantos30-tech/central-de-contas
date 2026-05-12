@@ -1745,24 +1745,35 @@ function PrazoInlineItem({
     )
   }
 
+  // Na PRODUÇÃO, o que importa é o deadline da arte (prazo_producao).
+  // A data de postagem é editada no Planejamento Mensal, não aqui.
+  // Fallback raríssimo: se ainda não calculou (planejamento recém-criado
+  // antes do trigger rodar), cai no prazo (editável) pra não deixar vazio.
+  if (item.prazo_producao) {
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap',
+          overdue
+            ? 'border-red-500/40 bg-red-500/10 text-red-300'
+            : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+        )}
+        title={
+          `Entrega da arte — ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}` +
+          (item.prazo
+            ? `\nData de postagem: ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}`
+            : '')
+        }
+      >
+        <Clock size={10} />
+        {formatDateBR(item.prazo_producao)}
+      </span>
+    )
+  }
+
   return (
     <div className="inline-flex items-center gap-1">
-      {/* Prazo de produção — auto-calculado, readonly. Só aparece se planejamento foi aprovado. */}
-      {item.prazo_producao && (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap',
-            overdue
-              ? 'border-red-500/40 bg-red-500/10 text-red-300'
-              : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
-          )}
-          title={`Entrega da arte (deadline da produção) — ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}`}
-        >
-          <Clock size={10} />
-          {formatDateBR(item.prazo_producao)}
-        </span>
-      )}
-      {/* Data de postagem — editável. */}
+      {/* Fallback: sem prazo_producao calculado → deixa editar manualmente. */}
       <button
         onClick={(e) => {
           e.stopPropagation()
