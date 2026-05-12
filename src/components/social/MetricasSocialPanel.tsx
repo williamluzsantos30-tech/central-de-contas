@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import type {
   Cliente,
   ItemSocialMedia,
@@ -80,7 +81,7 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
     setMesISO(`${novaData.getFullYear()}-${String(novaData.getMonth() + 1).padStart(2, '0')}-01`)
   }
 
-  const mesLabel = new Date(mesISO).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const mesLabel = formatDateBR(mesISO, { month: 'long', year: 'numeric' })
 
   return (
     <div className="space-y-4">

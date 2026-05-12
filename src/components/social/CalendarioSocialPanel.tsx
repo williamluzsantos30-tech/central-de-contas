@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
 import type {
   Cliente,
@@ -93,10 +94,7 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
     setMesISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`)
   }
 
-  const mesLabel = new Date(mesISO).toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const mesLabel = formatDateBR(mesISO, { month: 'long', year: 'numeric' })
   const totais = {
     total: itemsDoMes.length,
     publicados: itemsDoMes.filter((i) => i.status === 'conclusao').length,

@@ -27,6 +27,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
 // PDF lib é pesada (~1.5MB), carrega só quando o user clica em "Baixar PDF"
@@ -97,7 +98,7 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
     setMesISO(`${novaData.getFullYear()}-${String(novaData.getMonth() + 1).padStart(2, '0')}-01`)
   }
 
-  const mesLabel = new Date(mesISO).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const mesLabel = formatDateBR(mesISO, { month: 'long', year: 'numeric' })
 
   return (
     <div className="space-y-4">
@@ -689,7 +690,7 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
             {item.prazo && (
               <span className="inline-flex items-center gap-1">
                 <Calendar size={10} />
-                {new Date(item.prazo).toLocaleDateString('pt-BR', {
+                {formatDateBR(item.prazo, {
                   weekday: 'short',
                   day: '2-digit',
                   month: '2-digit',

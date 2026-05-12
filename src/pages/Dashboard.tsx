@@ -20,6 +20,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { AtivoHealth } from '@/components/clientes/AtivoHealth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, isOverdue, relativeDueLabel } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   Ativo,
@@ -772,12 +773,7 @@ function DashboardDesigner({ profile }: { profile: Profile | null }) {
                         {t.tipo}
                       </p>
                       <p className="mt-1 text-sm font-semibold tabular-nums">
-                        {t.prazo
-                          ? new Date(t.prazo).toLocaleDateString('pt-BR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                            })
-                          : '—'}
+                        {formatDateBR(t.prazo)}
                       </p>
                       <p className="mt-1 line-clamp-2 text-[10px] text-muted">{t.titulo}</p>
                     </div>

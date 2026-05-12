@@ -11,6 +11,7 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import type {
   Cliente,
   ClientePerfilSetup,
@@ -227,12 +228,7 @@ export function PainelSocial({ cliente, setup, items, planejamentos }: Props) {
                       <p className="truncate font-medium">{p.titulo}</p>
                     </div>
                     <span className="text-[10px] text-red-300">
-                      {p.prazo
-                        ? new Date(p.prazo).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                          })
-                        : '—'}
+                      {formatDateBR(p.prazo)}
                     </span>
                   </li>
                 ))}
@@ -254,7 +250,8 @@ function DiaCircle({ prazo, hojeStr }: { prazo: string | null; hojeStr: string }
   if (!prazo) return null
   const data = prazo.slice(0, 10)
   const ehHoje = data === hojeStr
-  const dia = new Date(prazo).getDate()
+  // dia direto da string (data.slice(8, 10)) — evita off-by-one de fuso
+  const dia = parseInt(data.slice(8, 10), 10)
   return (
     <div
       className={cn(

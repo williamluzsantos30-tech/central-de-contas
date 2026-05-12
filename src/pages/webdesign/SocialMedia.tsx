@@ -15,6 +15,7 @@ import {
   Trash2,
   FolderOpen,
   Pencil,
+  Clock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -27,6 +28,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
+import { formatDateBR, isDateOverdue } from '@/lib/dates'
 import { differenceInDays, format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -1720,8 +1722,10 @@ function PrazoInlineItem({
     onUpdated()
   }
 
-  const overdue =
-    item.prazo && new Date(item.prazo) < new Date() && item.status !== 'conclusao'
+  // O que conta como "atrasado" pra produção é o prazo_producao (deadline do
+  // designer). Se ainda não foi aprovado, cai no prazo de postagem como fallback.
+  const dataAlvo = item.prazo_producao ?? item.prazo
+  const overdue = isDateOverdue(dataAlvo) && item.status !== 'conclusao'
 
   if (editing) {
     return (
@@ -1742,24 +1746,44 @@ function PrazoInlineItem({
   }
 
   return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation()
-        setEditing(true)
-      }}
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap transition-colors',
-        item.prazo
-          ? overdue
-            ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-            : 'border-border bg-bg-soft text-zinc-200 hover:border-brand-500/40'
-          : 'border-dashed border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
+    <div className="inline-flex items-center gap-1">
+      {/* Prazo de produção — auto-calculado, readonly. Só aparece se planejamento foi aprovado. */}
+      {item.prazo_producao && (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap',
+            overdue
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+          )}
+          title={`Entrega da arte (deadline da produção) — ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}`}
+        >
+          <Clock size={10} />
+          {formatDateBR(item.prazo_producao)}
+        </span>
       )}
-      title={item.prazo ? 'Clique para editar prazo' : 'Clique para definir prazo'}
-    >
-      <Calendar size={10} />
-      {item.prazo ? prazoLabel(item.prazo, !!overdue) : 'Prazo'}
-    </button>
+      {/* Data de postagem — editável. */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setEditing(true)
+        }}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap transition-colors',
+          item.prazo
+            ? 'border-border bg-bg-soft text-zinc-200 hover:border-brand-500/40'
+            : 'border-dashed border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
+        )}
+        title={
+          item.prazo
+            ? `Data de postagem — ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}. Clique para editar.`
+            : 'Definir data de postagem'
+        }
+      >
+        <Calendar size={10} />
+        {item.prazo ? formatDateBR(item.prazo) : 'Postagem'}
+      </button>
+    </div>
   )
 }
 
@@ -1789,8 +1813,7 @@ function PrazoInlinePlanejamento({
     onUpdated()
   }
 
-  const overdue =
-    planejamento.prazo && new Date(planejamento.prazo) < new Date()
+  const overdue = isDateOverdue(planejamento.prazo)
 
   if (editing) {
     return (

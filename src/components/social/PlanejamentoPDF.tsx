@@ -7,6 +7,7 @@
  */
 import { Document, Image, Page, Text, View, StyleSheet, pdf, Font } from '@react-pdf/renderer'
 import type { Cliente, ItemSocialMedia, PlanejamentoSocialMedia } from '@/types/database'
+import { parseLocalDate, formatDateBR } from '@/lib/dates'
 
 // URL absoluta da logo (precisa ser absoluta porque o react-pdf gera o
 // PDF num contexto à parte e não resolve paths relativos sozinho).
@@ -307,10 +308,7 @@ interface Props {
 
 function CapaPDF({ cliente, plano }: { cliente: Cliente; plano: PlanejamentoSocialMedia }) {
   const mes = plano.mes_referencia
-    ? new Date(plano.mes_referencia).toLocaleDateString('pt-BR', {
-        month: 'long',
-        year: 'numeric',
-      })
+    ? formatDateBR(plano.mes_referencia, { month: 'long', year: 'numeric' })
     : ''
   return (
     <Page size="A4" orientation="portrait" style={styles.capaPage}>
@@ -406,7 +404,7 @@ function PaginaTabela({
                 <Text style={styles.ideiaTextoHeadline}>{it.titulo}</Text>
                 {it.prazo && (
                   <Text style={styles.ideiaDataPostagem}>
-                    {new Date(it.prazo).toLocaleDateString('pt-BR', {
+                    {formatDateBR(it.prazo, {
                       weekday: 'short',
                       day: '2-digit',
                       month: '2-digit',
@@ -511,9 +509,9 @@ export async function downloadPlanejamentoPDF({
   const a = document.createElement('a')
   a.href = url
   const mes = plano.mes_referencia
-    ? new Date(plano.mes_referencia)
-        .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
-        .replace('.', '')
+    ? (parseLocalDate(plano.mes_referencia)
+        ?.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+        .replace('.', '') ?? 'mes')
     : 'mes'
   a.download = `Planejamento - ${cliente.nome} - ${mes}.pdf`
   document.body.appendChild(a)

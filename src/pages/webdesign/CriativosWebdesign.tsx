@@ -29,6 +29,7 @@ import { differenceInDays, format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
+import { isDateOverdue } from '@/lib/dates'
 import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
 import {
   cn,
@@ -1027,10 +1028,7 @@ function PrazoInline({
     onUpdated()
   }
 
-  const overdue =
-    criativo.prazo &&
-    new Date(criativo.prazo) < new Date() &&
-    criativo.status !== 'conclusao'
+  const overdue = isDateOverdue(criativo.prazo) && criativo.status !== 'conclusao'
 
   if (editing) {
     return (

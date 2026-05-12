@@ -20,6 +20,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
+import { parseLocalDate } from '@/lib/dates'
 import {
   cn,
   formatDate,
@@ -137,8 +138,8 @@ export default function SocialClientes() {
       if (!stat) continue
       // Vencimento dentro do mês corrente
       if (it.prazo) {
-        const d = new Date(it.prazo)
-        if (d >= monthStart && d <= monthEnd) {
+        const d = parseLocalDate(it.prazo)
+        if (d && d >= monthStart && d <= monthEnd) {
           stat.postagensMes++
           if (it.status === 'conclusao') stat.concluidasMes++
           stat.diasDoMes.push({

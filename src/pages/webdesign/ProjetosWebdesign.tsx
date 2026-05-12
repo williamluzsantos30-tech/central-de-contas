@@ -28,6 +28,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
+import { isDateOverdue } from '@/lib/dates'
 import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
 import {
   cn,
@@ -1071,8 +1072,7 @@ function PrazoInline({
   }
 
   const overdue =
-    projeto.prazo &&
-    new Date(projeto.prazo) < new Date() &&
+    isDateOverdue(projeto.prazo) &&
     projeto.status !== 'conclusao' &&
     projeto.status !== 'pausado'
 

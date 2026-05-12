@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { cn, JORNADAS_SOCIAL, jornadaSocialLabel, statusClienteLabel } from '@/lib/utils'
+import { formatDateBR } from '@/lib/dates'
 import type { Cliente, ClientePerfilSetup, ItemSocialMedia, JornadaSocial } from '@/types/database'
 
 interface Props {
@@ -85,14 +86,7 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
             />
             <KpiBox
               label="Próximo post"
-              value={
-                proximoPost?.prazo
-                  ? new Date(proximoPost.prazo).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                    })
-                  : '—'
-              }
+              value={formatDateBR(proximoPost?.prazo)}
               sub={proximoPost?.formato ?? 'sem agenda'}
               tone="brand"
             />

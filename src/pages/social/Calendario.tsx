@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { isDateOverdue } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   Cliente,
@@ -155,10 +156,7 @@ export default function CalendarioPostagens() {
       total: noMes.length,
       concluidos: noMes.filter((it) => it.status === 'conclusao').length,
       atrasados: noMes.filter(
-        (it) =>
-          it.status !== 'conclusao' &&
-          it.prazo &&
-          new Date(it.prazo) < new Date(new Date().toISOString().slice(0, 10)),
+        (it) => it.status !== 'conclusao' && isDateOverdue(it.prazo),
       ).length,
       clientes: new Set(noMes.map((it) => it.cliente?.id).filter(Boolean)).size,
     }
@@ -397,10 +395,7 @@ export default function CalendarioPostagens() {
               {selectedDate &&
                 itemsDoDiaSelecionado.map((it) => {
                   const FormatoIcon = formatoIcon[it.formato]
-                  const overdue =
-                    it.status !== 'conclusao' &&
-                    it.prazo &&
-                    new Date(it.prazo) < new Date(new Date().toISOString().slice(0, 10))
+                  const overdue = it.status !== 'conclusao' && isDateOverdue(it.prazo)
                   return (
                     <Link
                       key={it.id}

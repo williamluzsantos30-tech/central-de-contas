@@ -252,7 +252,14 @@ export interface ItemSocialMedia {
   ideia_conteudo: string | null
   status: StatusSocialMedia
   responsavel_id: string | null
+  /** Data de POSTAGEM (quando a arte vai pro Instagram). Definida no planejamento. */
   prazo: string | null
+  /**
+   * Prazo de PRODUÇÃO (deadline do designer pra entregar a arte).
+   * Auto-calculado pelo trigger a partir de `producoes_social_media.aprovado_em`,
+   * em lotes de 3 posts × 3 dias úteis. Difere de `prazo` (data de postagem).
+   */
+  prazo_producao: string | null
   copy_texto: string | null
   copy_arquivo_url: string | null
   artes_prontas: string[]
