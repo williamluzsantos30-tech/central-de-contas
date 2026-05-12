@@ -590,12 +590,14 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
   const [editing, setEditing] = useState(item.titulo === 'Nova ideia')
   const [headline, setHeadline] = useState(item.titulo)
   const [ideia, setIdeia] = useState(item.ideia_conteudo ?? '')
+  const [copy, setCopy] = useState(item.copy_texto ?? '')
   const [prazo, setPrazo] = useState(item.prazo?.slice(0, 10) ?? '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setHeadline(item.titulo)
     setIdeia(item.ideia_conteudo ?? '')
+    setCopy(item.copy_texto ?? '')
     setPrazo(item.prazo?.slice(0, 10) ?? '')
   }, [item])
 
@@ -606,6 +608,7 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
       .update({
         titulo: headline.trim() || 'Sem título',
         ideia_conteudo: ideia.trim() || null,
+        copy_texto: copy.trim() || null,
         prazo: prazo || null,
       })
       .eq('id', item.id)
@@ -647,6 +650,20 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
             placeholder="Ex: 'Se apresentar, gerar autoridade e conexão contando sua trajetória. Este carrossel ficará fixado no perfil.'"
             className="min-h-[70px] text-sm"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted">
+            Copy do post — texto slide a slide / legenda
+          </label>
+          <Textarea
+            value={copy}
+            onChange={(e) => setCopy(e.target.value)}
+            placeholder={'Slide 1:\n...\n\nSlide 2:\n...\n\nLegenda final:\n...'}
+            className="min-h-[120px] text-sm font-mono"
+          />
+          <p className="mt-1 text-[10px] text-muted">
+            Aparece em "Texto da copy" na esteira de produção.
+          </p>
         </div>
         <div>
           <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted">
@@ -695,6 +712,15 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
                   day: '2-digit',
                   month: '2-digit',
                 })}
+              </span>
+            )}
+            {item.copy_texto && (
+              <span
+                className="inline-flex items-center gap-1 text-pink-300"
+                title="Copy do post preenchida"
+              >
+                <Sparkles size={10} />
+                copy
               </span>
             )}
             <span className="capitalize">· {item.status.replace(/_/g, ' ')}</span>
