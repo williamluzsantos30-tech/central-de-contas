@@ -247,6 +247,25 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
     letterSpacing: 0.5,
   },
+  ideiaCopyWrap: {
+    paddingTop: 14,
+    paddingHorizontal: 0,
+  },
+  ideiaCopyLabel: {
+    fontSize: 8,
+    color: COR_LARANJA_ESCURO,
+    fontFamily: 'Helvetica-Bold',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  ideiaCopyTexto: {
+    fontSize: 10,
+    color: COR_PRETO,
+    lineHeight: 1.55,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: COR_LARANJA,
+  },
 
   // ============ PÁGINA FINAL ============
   finalPage: {
@@ -399,7 +418,7 @@ function PaginaTabela({
 
         {ideias.map((it, idx) => (
           <View key={it.id}>
-            <View style={styles.ideiaRow}>
+            <View style={styles.ideiaRow} wrap={false}>
               <View style={styles.ideiaHeadline}>
                 <Text style={styles.ideiaTextoHeadline}>{it.titulo}</Text>
                 {it.prazo && (
@@ -416,6 +435,13 @@ function PaginaTabela({
                 <Text style={styles.ideiaTextoIdeia}>{it.ideia_conteudo || '—'}</Text>
               </View>
             </View>
+            {/* Copy do post — full width abaixo da linha, só renderiza se preenchida */}
+            {it.copy_texto && it.copy_texto.trim() && (
+              <View style={styles.ideiaCopyWrap}>
+                <Text style={styles.ideiaCopyLabel}>COPY DO POST</Text>
+                <Text style={styles.ideiaCopyTexto}>{it.copy_texto}</Text>
+              </View>
+            )}
             {idx < ideias.length - 1 && <View style={styles.ideiaSeparadorRow} />}
           </View>
         ))}
