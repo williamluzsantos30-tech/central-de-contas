@@ -342,7 +342,7 @@ function ProjetoAccordion({
       .select('*')
       .eq('ativo', true)
       .eq('aprovado', true)
-      .eq('cargo', 'designer')
+      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
       .order('nome')
       .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
   }, [])

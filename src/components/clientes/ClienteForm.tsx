@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
+import { temCargo } from '@/lib/cargos'
 import {
   TIPOS_CLIENTE,
   tipoClienteLabel,
@@ -67,15 +68,15 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
   // Profiles agrupados por cargo — cada dropdown só lista quem é
   // diretamente vinculado àquela função.
   const accountManagers = useMemo(
-    () => profilesAll.filter((p) => p.cargo === 'account_manager'),
+    () => profilesAll.filter((p) => temCargo(p, 'account_manager')),
     [profilesAll],
   )
   const gestoresTrafego = useMemo(
-    () => profilesAll.filter((p) => p.cargo === 'gestor_trafego'),
+    () => profilesAll.filter((p) => temCargo(p, 'gestor_trafego')),
     [profilesAll],
   )
   const socialMedias = useMemo(
-    () => profilesAll.filter((p) => p.cargo === 'social_media'),
+    () => profilesAll.filter((p) => temCargo(p, 'social_media')),
     [profilesAll],
   )
 

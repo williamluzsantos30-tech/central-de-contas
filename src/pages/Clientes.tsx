@@ -9,6 +9,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
+import { temAlgumCargo } from '@/lib/cargos'
 import {
   cn,
   formatCurrency,
@@ -37,8 +38,7 @@ export default function Clientes() {
   const [editing, setEditing] = useState<Cliente | null>(null)
 
   // Cargos operacionais começam vendo só "os meus". Diretoria/head/admin veem todos.
-  const cargoOperacional =
-    profile?.cargo === 'gestor_trafego' || profile?.cargo === 'account_manager'
+  const cargoOperacional = temAlgumCargo(profile, ['gestor_trafego', 'account_manager'])
   const isAdmin = profile?.role === 'admin'
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
     !isAdmin && cargoOperacional ? 'meus' : 'todos',

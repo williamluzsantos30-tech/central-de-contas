@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
+import { temCargo } from '@/lib/cargos'
 import {
   cn,
   formatDate,
@@ -59,7 +60,7 @@ export default function SocialClientes() {
   const [fStatus, setFStatus] = useState('')
   const [fJornada, setFJornada] = useState('')
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
-    profile?.cargo === 'social_media' ? 'meus' : 'todos',
+    temCargo(profile, 'social_media') ? 'meus' : 'todos',
   )
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)

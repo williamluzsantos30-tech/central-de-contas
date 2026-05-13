@@ -32,6 +32,7 @@ import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { isDateOverdue } from '@/lib/dates'
+import { temCargo } from '@/lib/cargos'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   Cliente,
@@ -81,7 +82,7 @@ export default function CalendarioPostagens() {
   const [filtroStatus, setFiltroStatus] = useState<'' | StatusSocialMedia>('')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
-    profile?.cargo === 'social_media' ? 'meus' : 'todos',
+    temCargo(profile, 'social_media') ? 'meus' : 'todos',
   )
 
   async function load() {

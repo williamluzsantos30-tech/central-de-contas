@@ -74,6 +74,13 @@ export interface Profile {
   email: string
   role: UserRole
   cargo: Cargo | null
+  /**
+   * Cargos adicionais (além do principal). Ex: Paloma é `cargo=social_media`
+   * + `cargos_extras=['designer']` → aparece tanto nos dropdowns de SM quanto
+   * nos de design. Sempre use `temCargo(profile, X)` ao invés de comparar
+   * `cargo === X` direto, pra incluir os extras.
+   */
+  cargos_extras: Cargo[]
   squad_id: string | null
   avatar_url: string | null
   ativo: boolean

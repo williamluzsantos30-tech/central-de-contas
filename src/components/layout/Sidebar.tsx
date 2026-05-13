@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
-import { loadCargoPermissoes, type Modulo } from '@/lib/cargos'
+import { loadCargoPermissoes, cargosDoProfile, type Modulo } from '@/lib/cargos'
 
 type Item = {
   to: string
@@ -98,9 +98,13 @@ export function Sidebar() {
       return
     }
     const perms = loadCargoPermissoes()
-    const cargo = profile.cargo
-    const list = cargo ? perms[cargo] ?? [] : []
-    setAllowedModulos(new Set(list))
+    // Soma os módulos do cargo principal + cargos_extras
+    const cargos = cargosDoProfile(profile)
+    const list = new Set<Modulo>()
+    for (const c of cargos) {
+      for (const m of perms[c] ?? []) list.add(m)
+    }
+    setAllowedModulos(list)
   }, [profile, isAdmin])
 
   function canAccessModulo(m: Modulo) {

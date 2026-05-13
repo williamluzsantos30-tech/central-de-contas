@@ -1,3 +1,5 @@
+import type { Profile } from '@/types/database'
+
 export type Cargo =
   | 'gestor_trafego'
   | 'account_manager'
@@ -5,6 +7,32 @@ export type Cargo =
   | 'social_media'
   | 'diretoria'
   | 'head'
+
+/**
+ * True se o profile tem esse cargo, considerando tanto o cargo principal
+ * quanto os cargos_extras. Use sempre isso ao invés de `profile.cargo === X`,
+ * senão pessoas com cargo duplo (ex.: designer + social_media) ficam invisíveis
+ * pros dropdowns da segunda função.
+ */
+export function temCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined, cargo: Cargo): boolean {
+  if (!profile) return false
+  if (profile.cargo === cargo) return true
+  return Array.isArray(profile.cargos_extras) && profile.cargos_extras.includes(cargo)
+}
+
+/** True se tem QUALQUER um dos cargos passados (designer OU social_media etc). */
+export function temAlgumCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined, cargos: Cargo[]): boolean {
+  return cargos.some((c) => temCargo(profile, c))
+}
+
+/** Lista todos os cargos do profile (principal + extras), deduplicado. */
+export function cargosDoProfile(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined): Cargo[] {
+  if (!profile) return []
+  const set = new Set<Cargo>()
+  if (profile.cargo) set.add(profile.cargo)
+  for (const c of profile.cargos_extras ?? []) set.add(c)
+  return Array.from(set)
+}
 
 export const CARGOS: Cargo[] = [
   'gestor_trafego',

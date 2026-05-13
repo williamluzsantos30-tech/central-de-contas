@@ -1721,7 +1721,20 @@ function AcessosTab({
     onChange()
   }
   async function alterarCargo(p: Profile, cargo: Cargo) {
-    await supabase.from('profiles').update({ cargo }).eq('id', p.id)
+    // Se o novo cargo principal estiver em cargos_extras, remove dali pra não duplicar
+    const extras = (p.cargos_extras ?? []).filter((c) => c !== cargo)
+    await supabase
+      .from('profiles')
+      .update({ cargo, cargos_extras: extras })
+      .eq('id', p.id)
+    onChange()
+  }
+  async function toggleCargoExtra(p: Profile, cargo: Cargo) {
+    const atual = p.cargos_extras ?? []
+    const next = atual.includes(cargo)
+      ? atual.filter((c) => c !== cargo)
+      : [...atual, cargo]
+    await supabase.from('profiles').update({ cargos_extras: next }).eq('id', p.id)
     onChange()
   }
 
@@ -1899,6 +1912,33 @@ function AcessosTab({
                       {u.ativo ? 'Desativar' : 'Ativar'}
                     </Button>
                   </div>
+                  {/* Linha 2: cargos adicionais (chips). Sempre visível pra ficar óbvio que existe. */}
+                  <div className="basis-full flex items-center gap-2 pt-1 pl-12">
+                    <span className="text-[10px] uppercase tracking-wider text-muted">
+                      Também atua como:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {CARGOS.filter((c) => c !== u.cargo).map((c) => {
+                        const ativo = (u.cargos_extras ?? []).includes(c)
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => toggleCargoExtra(u, c)}
+                            className={cn(
+                              'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                              ativo
+                                ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
+                                : 'border-border text-muted hover:border-brand-500/40 hover:text-zinc-300',
+                            )}
+                            title={ativo ? `Remover cargo adicional` : `Adicionar cargo adicional`}
+                          >
+                            {cargoLabel[c]}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1952,6 +1992,7 @@ function CriarUsuarioModal({
     senha: '',
     role: 'gestor' as Profile['role'],
     cargo: 'gestor_trafego' as Cargo,
+    cargosExtras: [] as Cargo[],
     aprovadoImediato: true,
   })
   const [showPwd, setShowPwd] = useState(false)
@@ -1966,6 +2007,7 @@ function CriarUsuarioModal({
         senha: '',
         role: 'gestor',
         cargo: 'gestor_trafego',
+        cargosExtras: [],
         aprovadoImediato: true,
       })
       setShowPwd(false)
@@ -2009,6 +2051,7 @@ function CriarUsuarioModal({
           nome: form.nome.trim(),
           role: form.role,
           cargo: form.cargo,
+          cargos_extras: form.cargosExtras.filter((c) => c !== form.cargo),
           ativo: true,
           aprovado: form.aprovadoImediato,
         })
@@ -2031,6 +2074,7 @@ function CriarUsuarioModal({
       email,
       role: form.role,
       cargo: form.cargo,
+      cargos_extras: form.cargosExtras.filter((c) => c !== form.cargo),
       avatar_url: null,
       ativo: true,
       aprovado: form.aprovadoImediato,
@@ -2171,6 +2215,38 @@ function CriarUsuarioModal({
             </Select>
           </Field>
         </div>
+        <Field label="Cargos adicionais (opcional)">
+          <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-bg-soft px-2 py-2">
+            {CARGOS.filter((c) => c !== form.cargo).map((c) => {
+              const ativo = form.cargosExtras.includes(c)
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      cargosExtras: ativo
+                        ? form.cargosExtras.filter((x) => x !== c)
+                        : [...form.cargosExtras, c],
+                    })
+                  }
+                  className={cn(
+                    'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                    ativo
+                      ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
+                      : 'border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
+                  )}
+                >
+                  {cargoLabel[c]}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-muted">
+            Quando alguém trabalha em mais de uma frente (ex.: design + social). Aparece nos dropdowns das duas áreas.
+          </p>
+        </Field>
         <label className="flex items-center gap-2 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-200">
           <input
             type="checkbox"
