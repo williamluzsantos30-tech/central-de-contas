@@ -162,6 +162,31 @@ export interface CriacaoAnexo {
   url: string
 }
 
+/**
+ * Estrutura usada quando `Criacao.tipo === 'planejamento'`. Cada bloco vira
+ * uma seção/card no PDF. Renderização tolera campos vazios — só não mostra.
+ */
+export interface PlanejamentoEstrutura {
+  diagnostico: {
+    pontos_fortes: string[]
+    oportunidades: string[]
+    desafios: string[]
+  }
+  campanhas: Array<{
+    titulo: string
+    subtitulo?: string | null
+    objetivo: string
+    publico: string
+    criativos: string[]
+    formatos: string[]
+  }>
+  estrategias: Array<{
+    titulo: string
+    descricao: string
+    bullets: string[]
+  }>
+}
+
 export interface Criacao {
   id: string
   cliente_id: string
@@ -171,6 +196,8 @@ export interface Criacao {
   prompt: string | null
   anexos: CriacaoAnexo[] | null
   conteudo: string | null
+  /** Schema estruturado pro PDF do Planejamento. Null para outros tipos. */
+  planejamento_estrutura: PlanejamentoEstrutura | null
   status: StatusCriacao
   responsavel_id: string | null
   /**

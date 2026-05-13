@@ -22,6 +22,9 @@ import { uploadToStorageSafe } from '@/lib/storage'
 import { generateWithAI } from '@/lib/ai'
 import { promptDefault, promptDefaultDescricao } from '@/lib/ai-prompts'
 import { downloadCriacaoPDF } from './CriacaoPDF'
+import { downloadPlanejamentoTrafegoPDF } from './PlanejamentoTrafegoPDF'
+import { PlanejamentoEstruturaForm, planejamentoEstruturaVazia } from './PlanejamentoEstruturaForm'
+import type { PlanejamentoEstrutura } from '@/types/database'
 import {
   cn,
   formatDateTime,
@@ -215,6 +218,7 @@ function CriacaoModal({
     conteudo: '',
     status: 'rascunho' as StatusCriacao,
     responsavel_id: profile?.id ?? '',
+    planejamento_estrutura: planejamentoEstruturaVazia() as PlanejamentoEstrutura,
   })
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
@@ -242,6 +246,8 @@ function CriacaoModal({
         conteudo: criacao.conteudo ?? '',
         status: criacao.status,
         responsavel_id: criacao.responsavel_id ?? profile?.id ?? '',
+        planejamento_estrutura:
+          criacao.planejamento_estrutura ?? planejamentoEstruturaVazia(),
       })
       // Sempre mostra o prompt expandido pra editar antes de gerar
       setPromptOpen(true)
@@ -255,6 +261,7 @@ function CriacaoModal({
         conteudo: '',
         status: 'rascunho',
         responsavel_id: profile?.id ?? '',
+        planejamento_estrutura: planejamentoEstruturaVazia(),
       })
       setPromptOpen(true)
     }
@@ -285,6 +292,9 @@ function CriacaoModal({
       prompt: form.prompt || null,
       anexos: form.anexos.length > 0 ? form.anexos : null,
       conteudo: form.conteudo || null,
+      // Estrutura só faz sentido pro tipo planejamento — salva null pros outros
+      planejamento_estrutura:
+        tipoEfetivo === 'planejamento' ? form.planejamento_estrutura : null,
       status: form.status,
       responsavel_id: form.responsavel_id || null,
     }
@@ -368,7 +378,11 @@ function CriacaoModal({
   async function baixarPDF() {
     if (!criacao) return
     try {
-      await downloadCriacaoPDF({ cliente, criacao })
+      if (criacao.tipo === 'planejamento') {
+        await downloadPlanejamentoTrafegoPDF({ cliente, criacao })
+      } else {
+        await downloadCriacaoPDF({ cliente, criacao })
+      }
     } catch (e) {
       console.error('Falha ao gerar PDF:', e)
       alert('Não consegui gerar o PDF. Tenta de novo.')
@@ -624,15 +638,24 @@ function CriacaoModal({
           )}
         </div>
 
-        <div>
-          <Label>Conteúdo gerado</Label>
-          <Textarea
-            value={form.conteudo}
-            onChange={(e) => setForm({ ...form, conteudo: e.target.value })}
-            placeholder="Aqui aparecerá o rascunho gerado. Edite livremente até ficar do seu jeito."
-            className="min-h-[260px] font-mono text-[13px] leading-relaxed"
+        {tipoEfetivo === 'planejamento' ? (
+          <PlanejamentoEstruturaForm
+            value={form.planejamento_estrutura}
+            onChange={(estrutura) =>
+              setForm({ ...form, planejamento_estrutura: estrutura })
+            }
           />
-        </div>
+        ) : (
+          <div>
+            <Label>Conteúdo gerado</Label>
+            <Textarea
+              value={form.conteudo}
+              onChange={(e) => setForm({ ...form, conteudo: e.target.value })}
+              placeholder="Aqui aparecerá o rascunho gerado. Edite livremente até ficar do seu jeito."
+              className="min-h-[260px] font-mono text-[13px] leading-relaxed"
+            />
+          </div>
+        )}
       </div>
     </Modal>
   )

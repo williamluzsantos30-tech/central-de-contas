@@ -134,12 +134,21 @@ const styles = StyleSheet.create({
   },
 
   // ============ PÁGINA DE CONTEÚDO ============
+  // Page reserva 48px no topo (header fixo) e 36px no rodapé (footer fixo)
+  // pra conteúdo não passar por baixo deles em paginas com overflow.
   page: {
     fontFamily: 'Helvetica',
     backgroundColor: COR_BRANCO,
+    paddingTop: 48,
+    paddingBottom: 36,
   },
-  // Header laranja superior com logo + nome do cliente
+  // Header preto superior com logo + nome do cliente (absolute pra ficar
+  // fixo no topo de toda página sem reservar espaço duplo).
   pageHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     height: 48,
     backgroundColor: COR_PRETO,
     flexDirection: 'row',
@@ -159,10 +168,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
   },
   pageBody: {
-    flex: 1,
     paddingHorizontal: 60,
-    paddingTop: 40,
-    paddingBottom: 40,
+    paddingTop: 30,
+    paddingBottom: 14,
   },
   // Intro/explicação do tipo
   introBox: {
@@ -223,8 +231,12 @@ const styles = StyleSheet.create({
     color: COR_TEXTO,
     lineHeight: 1.5,
   },
-  // Footer da página de conteúdo
+  // Footer da página de conteúdo — absolute pra não conflitar com o body
   pageFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     height: 36,
     backgroundColor: COR_PRETO,
     flexDirection: 'row',
