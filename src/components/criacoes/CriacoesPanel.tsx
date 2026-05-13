@@ -492,11 +492,18 @@ export function CriacaoModal({
               <option value="aprovado">Aprovado</option>
               <option value="publicado">Publicado</option>
             </Select>
-            {(tipoEfetivo === 'copy_lp' || tipoEfetivo === 'copy_criativos') &&
+            {tipoEfetivo === 'copy_lp' && !criacao?.enviado_para_producao_em && (
+              <p className="mt-1 text-[10px] text-amber-300">
+                Ao marcar como <strong>Aprovado</strong>, vira uma{' '}
+                <strong>Landing page</strong> em <em>Webdesign · Landing page</em>{' '}
+                (estágio Copy).
+              </p>
+            )}
+            {tipoEfetivo === 'copy_criativos' &&
               !criacao?.enviado_para_producao_em && (
                 <p className="mt-1 text-[10px] text-amber-300">
-                  Ao marcar como <strong>Aprovado</strong>, esse item vai
-                  automaticamente pra produção no Webdesign.
+                  Ao marcar como <strong>Aprovado</strong>, vira um item em{' '}
+                  <strong>Webdesign · Criativos</strong> (estágio Pendente).
                 </p>
               )}
             {criacao?.enviado_para_producao_em && (
