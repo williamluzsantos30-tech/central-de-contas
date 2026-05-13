@@ -354,6 +354,88 @@ function CapaPDF({ cliente, criacao }: Props) {
 }
 
 // =========================================================
+// Página: Introdução do planejamento (texto livre + pilares)
+// =========================================================
+
+function PaginaIntroducao({
+  cliente,
+  estrutura,
+}: {
+  cliente: Cliente
+  estrutura: PlanejamentoEstrutura
+}) {
+  const temIntroducao = estrutura.introducao && estrutura.introducao.trim().length > 0
+  const temPilares = (estrutura.pilares ?? []).length > 0
+  if (!temIntroducao && !temPilares) return null
+
+  return (
+    <Page size="A4" orientation="portrait" style={s.page}>
+      <View style={s.pageHeader} fixed>
+        <View style={s.pageHeaderBolha}>
+          <Text style={s.pageHeaderBolhaTexto}>00</Text>
+        </View>
+        <View style={s.pageHeaderTextos}>
+          <Text style={s.pageHeaderTitulo}>Introdução</Text>
+          <Text style={s.pageHeaderSubtitulo}>
+            Como vamos atuar · {cliente.nome}
+          </Text>
+        </View>
+      </View>
+
+      <View style={s.pageBody}>
+        {temIntroducao && (
+          <View style={s.cardDestaque}>
+            <Text style={s.cardDestaqueTitulo}>VISÃO DO PLANEJAMENTO</Text>
+            <Text style={s.cardItemTextoNeutro}>{estrutura.introducao}</Text>
+          </View>
+        )}
+
+        {temPilares && (
+          <View style={[s.card, { marginTop: 14 }]}>
+            <Text style={s.cardTitulo}>Pilares estratégicos</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
+              {(estrutura.pilares ?? []).map((p, i) => (
+                <View
+                  key={i}
+                  style={{
+                    backgroundColor: COR_LARANJA_BG,
+                    borderWidth: 1,
+                    borderColor: COR_LARANJA_CLARO,
+                    borderRadius: 12,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    marginRight: 6,
+                    marginBottom: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color: COR_LARANJA_ESCURO,
+                      fontFamily: 'Helvetica-Bold',
+                    }}
+                  >
+                    {p}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+
+      <View style={s.pageFooter} fixed>
+        <Text style={s.pageFooterTexto}>MOVMED · PLANEJAMENTO DE TRÁFEGO</Text>
+        <Text
+          style={s.pageFooterTexto}
+          render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+        />
+      </View>
+    </Page>
+  )
+}
+
+// =========================================================
 // Página: Diagnóstico Estratégico
 // =========================================================
 
@@ -565,6 +647,8 @@ function PaginaEstrategias({
 
 export function PlanejamentoTrafegoPDFDoc({ cliente, criacao }: Props) {
   const estrutura: PlanejamentoEstrutura = criacao.planejamento_estrutura ?? {
+    introducao: '',
+    pilares: [],
     diagnostico: { pontos_fortes: [], oportunidades: [], desafios: [] },
     campanhas: [],
     estrategias: [],
@@ -573,6 +657,7 @@ export function PlanejamentoTrafegoPDFDoc({ cliente, criacao }: Props) {
   return (
     <Document title={`Planejamento de Tráfego — ${criacao.titulo}`}>
       <CapaPDF cliente={cliente} criacao={criacao} />
+      <PaginaIntroducao cliente={cliente} estrutura={estrutura} />
       <PaginaDiagnostico cliente={cliente} diagnostico={estrutura.diagnostico} />
       {estrutura.campanhas.map((c, i) => (
         <PaginaCampanha key={i} cliente={cliente} campanha={c} index={i} />

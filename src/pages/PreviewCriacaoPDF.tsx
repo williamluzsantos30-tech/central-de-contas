@@ -133,6 +133,9 @@ export default function PreviewCriacaoPDF() {
 
   const estruturaPlanejamentoFake = useMemo<PlanejamentoEstrutura>(
     () => ({
+      introducao:
+        'Trabalharemos com um funil de tráfego dividido em 3 estágios — Captação de Seguidores, Engajamento e Conversão WhatsApp. O foco do mês é validar criativos humanizados com a vendedora protagonizando os vídeos, aproveitando o ponto forte do conteúdo orgânico da marca.',
+      pilares: ['conexão', 'autoridade', 'prova social', 'oferta', 'urgência'],
       diagnostico: {
         pontos_fortes: [
           'Conteúdo orgânico forte',

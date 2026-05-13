@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   FileText,
@@ -8,6 +8,9 @@ import {
   Trash2,
   Upload,
   X,
+  Target,
+  Film,
+  Megaphone,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -16,7 +19,7 @@ import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Select } from '@/components/ui/Select'
 import { Avatar } from '@/components/ui/Avatar'
-import { EmptyState } from '@/components/ui/EmptyState'
+import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe } from '@/lib/storage'
 import { generateWithAI } from '@/lib/ai'
@@ -47,12 +50,21 @@ interface Props {
   cliente: Cliente
 }
 
+// Ícone por tipo — usado nos headers de cada Card de seção
+const tipoIcone: Record<TipoCriacao, React.ComponentType<{ size?: number; className?: string }>> = {
+  copy_lp: FileText,
+  planejamento: Target,
+  roteiro: Film,
+  copy_criativos: Megaphone,
+}
+
 export function CriacoesPanel({ cliente }: Props) {
-  const [ativo, setAtivo] = useState<TipoCriacao>('copy_lp')
   const [criacoes, setCriacoes] = useState<Criacao[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Criacao | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  // Tipo escolhido ao clicar em "+ Adicionar" de cada seção — passado pro modal
+  const [tipoCriando, setTipoCriando] = useState<TipoCriacao>('copy_lp')
 
   async function load() {
     setLoading(true)
@@ -69,114 +81,98 @@ export function CriacoesPanel({ cliente }: Props) {
     load()
   }, [cliente.id])
 
-  const porTipo = useMemo(() => criacoes.filter((c) => c.tipo === ativo), [criacoes, ativo])
+  function abrirNovo(tipo: TipoCriacao) {
+    setTipoCriando(tipo)
+    setEditing(null)
+    setModalOpen(true)
+  }
+
+  function abrirEdicao(c: Criacao) {
+    setTipoCriando(c.tipo)
+    setEditing(c)
+    setModalOpen(true)
+  }
 
   return (
-    <div>
-      <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-        {TIPOS_CRIACAO.map((t) => {
-          const count = criacoes.filter((c) => c.tipo === t).length
-          return (
-            <button
-              key={t}
-              onClick={() => setAtivo(t)}
-              className={cn(
-                'rounded-xl border px-4 py-3 text-left transition-colors',
-                ativo === t
-                  ? 'border-brand-500/60 bg-brand-500/10'
-                  : 'border-border bg-bg-card hover:bg-bg-elev',
+    <div className="space-y-4">
+      {/* Uma seção (Card) por tipo, todas visíveis ao mesmo tempo —
+          mesmo padrão visual do Planejamento Mensal de Social Media. */}
+      {TIPOS_CRIACAO.map((tipo) => {
+        const itens = criacoes.filter((c) => c.tipo === tipo)
+        const Icone = tipoIcone[tipo]
+        return (
+          <Card key={tipo}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Icone size={14} className="text-brand-300" />
+                {tipoCriacaoLabel[tipo]} ({itens.length})
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="hidden text-[10px] text-muted md:inline">
+                  {tipoCriacaoDescricao[tipo]}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => abrirNovo(tipo)}>
+                  <Plus size={12} /> Adicionar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardBody>
+              {loading ? (
+                <p className="text-xs text-muted">Carregando...</p>
+              ) : itens.length === 0 ? (
+                <p className="text-xs text-muted">
+                  Nenhum{tipo === 'copy_lp' || tipo === 'copy_criativos' ? 'a' : ''}{' '}
+                  {tipoCriacaoLabel[tipo].toLowerCase()} ainda. Crie um briefing e gere um rascunho com IA.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {itens.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => abrirEdicao(c)}
+                      className="flex w-full items-start gap-3 rounded-lg border border-border bg-bg-soft p-3 text-left transition-colors hover:bg-bg-elev hover:border-brand-500/40"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm truncate">{c.titulo}</p>
+                          <StatusBadge status={c.status} />
+                          {c.enviado_para_producao_em &&
+                            (c.tipo === 'copy_lp' || c.tipo === 'copy_criativos') && (
+                              <Badge tone="info" className="text-[10px]">
+                                enviado p/ webdesign
+                              </Badge>
+                            )}
+                        </div>
+                        {c.conteudo ? (
+                          <p className="mt-1 line-clamp-2 text-xs text-muted whitespace-pre-wrap">
+                            {c.conteudo}
+                          </p>
+                        ) : c.briefing ? (
+                          <p className="mt-1 line-clamp-2 text-xs text-muted italic">
+                            Briefing: {c.briefing}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted italic">Sem conteúdo ainda.</p>
+                        )}
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+                          <span>Atualizado em {formatDateTime(c.updated_at)}</span>
+                        </div>
+                      </div>
+                      {c.responsavel && <Avatar name={c.responsavel.nome} size="sm" />}
+                    </button>
+                  ))}
+                </div>
               )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">{tipoCriacaoLabel[t]}</span>
-                <Badge tone={ativo === t ? 'brand' : 'neutral'}>{count}</Badge>
-              </div>
-              <p className="mt-1 text-[11px] text-muted line-clamp-1">
-                {tipoCriacaoDescricao[t]}
-              </p>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">{tipoCriacaoLabel[ativo]}</h3>
-          <p className="text-xs text-muted">{tipoCriacaoDescricao[ativo]}</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null)
-            setModalOpen(true)
-          }}
-        >
-          <Plus size={14} /> Nova {tipoCriacaoLabel[ativo].toLowerCase()}
-        </Button>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-muted">Carregando...</p>
-      ) : porTipo.length === 0 ? (
-        <EmptyState
-          icon={<Sparkles size={24} />}
-          title={`Nenhuma ${tipoCriacaoLabel[ativo].toLowerCase()} ainda`}
-          description="Crie um briefing e gere um rascunho inicial com IA."
-          action={
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setModalOpen(true)
-              }}
-            >
-              <Sparkles size={14} /> Nova com IA
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-2">
-          {porTipo.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => {
-                setEditing(c)
-                setModalOpen(true)
-              }}
-              className="flex w-full items-start gap-3 rounded-xl border border-border bg-bg-soft p-4 text-left transition-colors hover:bg-bg-elev"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium text-sm truncate">{c.titulo}</p>
-                  <StatusBadge status={c.status} />
-                  {c.enviado_para_producao_em && (c.tipo === 'copy_lp' || c.tipo === 'copy_criativos') && (
-                    <Badge tone="info" className="text-[10px]">
-                      enviado p/ webdesign
-                    </Badge>
-                  )}
-                </div>
-                {c.conteudo ? (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted whitespace-pre-wrap">{c.conteudo}</p>
-                ) : c.briefing ? (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted italic">
-                    Briefing: {c.briefing}
-                  </p>
-                ) : (
-                  <p className="mt-1 text-xs text-muted italic">Sem conteúdo ainda.</p>
-                )}
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
-                  <span>Atualizado em {formatDateTime(c.updated_at)}</span>
-                </div>
-              </div>
-              {c.responsavel && <Avatar name={c.responsavel.nome} size="sm" />}
-            </button>
-          ))}
-        </div>
-      )}
+            </CardBody>
+          </Card>
+        )
+      })}
 
       <CriacaoModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         cliente={cliente}
-        tipo={ativo}
+        tipo={tipoCriando}
         criacao={editing}
         onSaved={load}
       />

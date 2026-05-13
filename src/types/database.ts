@@ -167,6 +167,10 @@ export interface CriacaoAnexo {
  * uma seção/card no PDF. Renderização tolera campos vazios — só não mostra.
  */
 export interface PlanejamentoEstrutura {
+  /** Texto livre de abertura — aparece na página de intro do PDF. */
+  introducao?: string
+  /** Ângulos/pilares estratégicos da campanha (chips). */
+  pilares?: string[]
   diagnostico: {
     pontos_fortes: string[]
     oportunidades: string[]
