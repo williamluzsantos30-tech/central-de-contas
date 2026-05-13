@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe } from '@/lib/storage'
 import { generateWithAI } from '@/lib/ai'
 import { promptDefault, promptDefaultDescricao } from '@/lib/ai-prompts'
+import { downloadCriacaoPDF } from './CriacaoPDF'
 import {
   cn,
   formatDateTime,
@@ -140,9 +141,14 @@ export function CriacoesPanel({ cliente }: Props) {
               className="flex w-full items-start gap-3 rounded-xl border border-border bg-bg-soft p-4 text-left transition-colors hover:bg-bg-elev"
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium text-sm truncate">{c.titulo}</p>
                   <StatusBadge status={c.status} />
+                  {c.enviado_para_producao_em && (c.tipo === 'copy_lp' || c.tipo === 'copy_criativos') && (
+                    <Badge tone="info" className="text-[10px]">
+                      enviado p/ webdesign
+                    </Badge>
+                  )}
                 </div>
                 {c.conteudo ? (
                   <p className="mt-1 line-clamp-2 text-xs text-muted whitespace-pre-wrap">{c.conteudo}</p>
@@ -282,14 +288,91 @@ function CriacaoModal({
       status: form.status,
       responsavel_id: form.responsavel_id || null,
     }
+
+    // Detecta promoção pra "aprovado" (statusAntes != aprovado e statusNovo = aprovado)
+    const statusAntes = criacao?.status ?? null
+    const promovendoParaAprovado =
+      form.status === 'aprovado' && statusAntes !== 'aprovado'
+    const jaFoiEnviado = !!criacao?.enviado_para_producao_em
+
+    let criacaoId = criacao?.id ?? null
+
     if (criacao) {
       await supabase.from('criacoes').update(payload).eq('id', criacao.id)
     } else {
-      await supabase.from('criacoes').insert(payload)
+      const { data } = await supabase
+        .from('criacoes')
+        .insert(payload)
+        .select('id')
+        .single()
+      criacaoId = (data as { id: string } | null)?.id ?? null
     }
+
+    // Auto-flow: copy_lp aprovada → cria ProjetoWebdesign (landing page)
+    //           copy_criativos aprovada → cria CriativoWebdesign
+    // Só dispara uma vez por criação (controle via enviado_para_producao_em)
+    if (
+      criacaoId &&
+      promovendoParaAprovado &&
+      !jaFoiEnviado &&
+      (tipoEfetivo === 'copy_lp' || tipoEfetivo === 'copy_criativos')
+    ) {
+      try {
+        if (tipoEfetivo === 'copy_lp') {
+          // Copy já aprovada → pula a etapa de aprovação da copy, vai direto pra design
+          await supabase.from('projetos_webdesign').insert({
+            cliente_id: cliente.id,
+            titulo: form.titulo.trim(),
+            tipo: 'landing_page',
+            status: 'design',
+            briefing: form.briefing || null,
+            copy_texto: form.conteudo || null,
+            criacao_origem_id: criacaoId,
+            identidade_visual_urls: [],
+            fotos: [],
+          })
+        } else {
+          // copy_criativos → cria criativo aguardando design (status pendente)
+          await supabase.from('criativos_webdesign').insert({
+            cliente_id: cliente.id,
+            titulo: form.titulo.trim(),
+            formato: 'feed_estatico',
+            status: 'pendente',
+            copy_texto: form.conteudo || null,
+            criacao_origem_id: criacaoId,
+            identidade_visual_urls: [],
+            fotos: [],
+          })
+        }
+        // Marca a criação como já enviada pra produção (evita duplicar)
+        await supabase
+          .from('criacoes')
+          .update({ enviado_para_producao_em: new Date().toISOString() })
+          .eq('id', criacaoId)
+        alert(
+          tipoEfetivo === 'copy_lp'
+            ? '✓ Copy aprovada! Landing page criada no operacional de Webdesign.'
+            : '✓ Copy aprovada! Criativo criado no operacional de Webdesign.',
+        )
+      } catch (e) {
+        console.error('Falha ao promover criacao pra producao:', e)
+        alert('A copy foi salva, mas não consegui criar o item no Webdesign. Verifique o operacional.')
+      }
+    }
+
     setSaving(false)
     onSaved()
     onClose()
+  }
+
+  async function baixarPDF() {
+    if (!criacao) return
+    try {
+      await downloadCriacaoPDF({ cliente, criacao })
+    } catch (e) {
+      console.error('Falha ao gerar PDF:', e)
+      alert('Não consegui gerar o PDF. Tenta de novo.')
+    }
   }
 
   async function onFilesSelected(files: FileList | null) {
@@ -341,6 +424,11 @@ function CriacaoModal({
             <div />
           )}
           <div className="flex gap-2">
+            {criacao && (
+              <Button variant="secondary" onClick={baixarPDF} disabled={saving}>
+                <FileText size={14} /> Baixar PDF
+              </Button>
+            )}
             <Button variant="secondary" onClick={onClose} disabled={saving}>
               Cancelar
             </Button>
@@ -372,6 +460,19 @@ function CriacaoModal({
               <option value="aprovado">Aprovado</option>
               <option value="publicado">Publicado</option>
             </Select>
+            {(tipoEfetivo === 'copy_lp' || tipoEfetivo === 'copy_criativos') &&
+              !criacao?.enviado_para_producao_em && (
+                <p className="mt-1 text-[10px] text-amber-300">
+                  Ao marcar como <strong>Aprovado</strong>, esse item vai
+                  automaticamente pra produção no Webdesign.
+                </p>
+              )}
+            {criacao?.enviado_para_producao_em && (
+              <p className="mt-1 text-[10px] text-emerald-300">
+                ✓ Já foi enviado pra produção em{' '}
+                {formatDateTime(criacao.enviado_para_producao_em)}.
+              </p>
+            )}
           </div>
         </div>
 

@@ -173,6 +173,12 @@ export interface Criacao {
   conteudo: string | null
   status: StatusCriacao
   responsavel_id: string | null
+  /**
+   * Quando essa criação foi promovida pra produção (gerou um projeto webdesign
+   * ou criativo). Null = ainda não foi. Usado pra evitar duplicar caso o status
+   * oscile aprovado→rascunho→aprovado.
+   */
+  enviado_para_producao_em: string | null
   created_at: string
   updated_at: string
   responsavel?: Profile | null
@@ -194,6 +200,10 @@ export interface ProjetoWebdesign {
   identidade_visual_urls: string[]
   fotos: string[]
   copy_arquivo_url: string | null
+  /** Texto da copy quando o projeto veio de uma Criação tipo copy_lp aprovada. */
+  copy_texto: string | null
+  /** Criação (copy_lp) que gerou esse projeto. Null se foi criado manual. */
+  criacao_origem_id: string | null
   observacoes: string | null
   created_at: string
   updated_at: string
@@ -216,6 +226,8 @@ export interface CriativoWebdesign {
   fotos: string[]
   copy_texto: string | null
   copy_arquivo_url: string | null
+  /** Criação (copy_criativos) que gerou esse criativo. Null se foi criado manual. */
+  criacao_origem_id: string | null
   observacoes: string | null
   created_at: string
   updated_at: string
