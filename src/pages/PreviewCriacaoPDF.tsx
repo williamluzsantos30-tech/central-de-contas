@@ -238,6 +238,7 @@ export default function PreviewCriacaoPDF() {
         status: 'aprovado',
         responsavel_id: null,
         enviado_para_producao_em: null,
+        introducao_pdf: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as Criacao),

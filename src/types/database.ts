@@ -210,9 +210,25 @@ export interface Criacao {
    * oscile aprovado→rascunho→aprovado.
    */
   enviado_para_producao_em: string | null
+  /**
+   * Override do texto "Sobre essa entrega" que aparece no PDF. Quando null,
+   * o PDF usa o template global em `config_criacoes_intros`.
+   */
+  introducao_pdf: string | null
   created_at: string
   updated_at: string
   responsavel?: Profile | null
+}
+
+/**
+ * Template global do bloco "Sobre essa entrega" que aparece no PDF.
+ * Uma linha por TipoCriacao. Editável em Admin > Configurações de Criações.
+ */
+export interface ConfigCriacaoIntro {
+  tipo: TipoCriacao
+  titulo: string
+  paragrafos: string[]
+  updated_at: string
 }
 
 export interface ProjetoWebdesign {

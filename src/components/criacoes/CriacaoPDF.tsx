@@ -6,6 +6,7 @@
  */
 import { Document, Image, Page, Text, View, StyleSheet, pdf, Font } from '@react-pdf/renderer'
 import type { Cliente, Criacao, TipoCriacao } from '@/types/database'
+import { introsHardcoded, loadIntros, resolverIntro } from '@/lib/criacoes-config'
 
 const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
 
@@ -31,38 +32,8 @@ const tipoTitulo: Record<TipoCriacao, string> = {
   roteiro: 'ROTEIRO',
 }
 
-const tipoIntro: Record<TipoCriacao, { titulo: string; paragrafos: string[] }> = {
-  copy_lp: {
-    titulo: 'Sobre essa copy',
-    paragrafos: [
-      'O objetivo dessa copy é conectar com o público-alvo do cliente, atacar suas principais dores e gerar autoridade, levando o visitante a tomar a ação desejada na landing page.',
-      'A copy foi estruturada em blocos (headline, subhead, prova social, oferta, CTA) pensada pra ser conversiva — ou seja, transformar visita em lead/contato.',
-      'Após aprovação, a copy segue automaticamente pra produção da landing page com a equipe de design.',
-    ],
-  },
-  copy_criativos: {
-    titulo: 'Sobre essas copies de criativo',
-    paragrafos: [
-      'São variações de copy para os anúncios (Meta Ads / Google Ads). Cada variação testa um ângulo diferente: dor, desejo, prova social, urgência.',
-      'O objetivo é abrir leque de testes pra identificar qual mensagem gera mais CTR e CPL no público do cliente.',
-      'Após aprovação, as copies seguem automaticamente pra produção do criativo com a equipe de design.',
-    ],
-  },
-  planejamento: {
-    titulo: 'Sobre esse planejamento',
-    paragrafos: [
-      'Documento estratégico que organiza as campanhas do cliente: objetivos, público, plataformas, orçamento, criativos previstos e KPIs alvo.',
-      'Serve como guia pra equipe de tráfego executar a operação com foco e pra alinhar expectativas com o cliente sobre o que está sendo entregue no mês.',
-    ],
-  },
-  roteiro: {
-    titulo: 'Sobre esse roteiro',
-    paragrafos: [
-      'Roteiro estruturado para vídeo (reel/anúncio) ou carrossel. Define gancho inicial, desenvolvimento, prova/argumento e CTA.',
-      'Pensado pra prender atenção nos primeiros segundos, manter retenção e conduzir até a ação desejada.',
-    ],
-  },
-}
+// tipoIntro removido — agora vem de @/lib/criacoes-config (resolver com cascata
+// criacao.introducao_pdf > template global > hardcoded).
 
 const styles = StyleSheet.create({
   // ============ CAPA ============
@@ -255,6 +226,8 @@ const styles = StyleSheet.create({
 interface Props {
   cliente: Cliente
   criacao: Criacao
+  /** Templates globais — quando ausente, usa hardcoded. */
+  intros?: Record<TipoCriacao, { titulo: string; paragrafos: string[] }>
 }
 
 function CapaPDF({ cliente, criacao }: Props) {
@@ -275,8 +248,12 @@ function CapaPDF({ cliente, criacao }: Props) {
   )
 }
 
-function PaginaConteudo({ cliente, criacao }: Props) {
-  const intro = tipoIntro[criacao.tipo]
+function PaginaConteudo({ cliente, criacao, intros }: Props) {
+  const intro = resolverIntro({
+    tipo: criacao.tipo,
+    introducaoPdf: criacao.introducao_pdf,
+    intros: intros ?? introsHardcoded,
+  })
   return (
     <Page size="A4" orientation="portrait" style={styles.page}>
       <View style={styles.pageHeader} fixed>
@@ -325,18 +302,19 @@ function PaginaConteudo({ cliente, criacao }: Props) {
   )
 }
 
-export function CriacaoPDFDoc({ cliente, criacao }: Props) {
+export function CriacaoPDFDoc({ cliente, criacao, intros }: Props) {
   return (
     <Document title={`${tipoTitulo[criacao.tipo]} — ${criacao.titulo}`}>
       <CapaPDF cliente={cliente} criacao={criacao} />
-      <PaginaConteudo cliente={cliente} criacao={criacao} />
+      <PaginaConteudo cliente={cliente} criacao={criacao} intros={intros} />
     </Document>
   )
 }
 
-/** Gera o PDF e dispara download no browser. */
+/** Gera o PDF e dispara download no browser. Carrega templates globais antes de renderizar. */
 export async function downloadCriacaoPDF({ cliente, criacao }: Props): Promise<void> {
-  const blob = await pdf(<CriacaoPDFDoc cliente={cliente} criacao={criacao} />).toBlob()
+  const intros = await loadIntros()
+  const blob = await pdf(<CriacaoPDFDoc cliente={cliente} criacao={criacao} intros={intros} />).toBlob()
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

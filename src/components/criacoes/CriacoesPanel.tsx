@@ -21,6 +21,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe } from '@/lib/storage'
 import { downloadCriacaoPDF } from './CriacaoPDF'
+import { loadIntros, introsHardcoded } from '@/lib/criacoes-config'
 import { downloadPlanejamentoTrafegoPDF } from './PlanejamentoTrafegoPDF'
 import { PlanejamentoEstruturaForm, planejamentoEstruturaVazia } from './PlanejamentoEstruturaForm'
 import type { PlanejamentoEstrutura } from '@/types/database'
@@ -211,12 +212,18 @@ export function CriacaoModal({
   const [form, setForm] = useState({
     titulo: '',
     briefing: '',
+    introducao_pdf: '',
     anexos: [] as CriacaoAnexo[],
     conteudo: '',
     status: 'rascunho' as StatusCriacao,
     responsavel_id: profile?.id ?? '',
     planejamento_estrutura: planejamentoEstruturaVazia() as PlanejamentoEstrutura,
   })
+  // Template global da introdução por tipo — carregado na abertura
+  const [introsConfig, setIntrosConfig] = useState<Record<
+    TipoCriacao,
+    { titulo: string; paragrafos: string[] }
+  > | null>(null)
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -238,6 +245,7 @@ export function CriacaoModal({
       setForm({
         titulo: criacao.titulo,
         briefing: criacao.briefing ?? '',
+        introducao_pdf: criacao.introducao_pdf ?? '',
         anexos: criacao.anexos ?? [],
         conteudo: criacao.conteudo ?? '',
         status: criacao.status,
@@ -249,12 +257,19 @@ export function CriacaoModal({
       setForm({
         titulo: '',
         briefing: '',
+        introducao_pdf: '',
         anexos: [],
         conteudo: '',
         status: 'rascunho',
         responsavel_id: profile?.id ?? '',
         planejamento_estrutura: planejamentoEstruturaVazia(),
       })
+    }
+    // Carrega templates globais (cai pros hardcoded em preview/erro)
+    if (previewMode) {
+      setIntrosConfig(introsHardcoded)
+    } else {
+      loadIntros().then(setIntrosConfig).catch(() => setIntrosConfig(introsHardcoded))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, criacao, profile?.id, tipoEfetivo])
@@ -274,6 +289,8 @@ export function CriacaoModal({
       titulo: form.titulo.trim(),
       briefing: form.briefing || null,
       prompt: null, // legado — IA removida do form
+      // Override do "Sobre essa entrega" no PDF — null = usa template global
+      introducao_pdf: form.introducao_pdf.trim() || null,
       anexos: form.anexos.length > 0 ? form.anexos : null,
       conteudo: form.conteudo || null,
       // Estrutura só faz sentido pro tipo planejamento — salva null pros outros
@@ -313,12 +330,14 @@ export function CriacaoModal({
     ) {
       try {
         if (tipoEfetivo === 'copy_lp') {
-          // Copy já aprovada → pula a etapa de aprovação da copy, vai direto pra design
+          // Entra na esteira do Webdesign no estágio "Copy" — assim a equipe
+          // vê a tarefa nova na aba Copy e segue a esteira normal.
+          // O copy_texto já vem preenchido pra equipe usar de input.
           await supabase.from('projetos_webdesign').insert({
             cliente_id: cliente.id,
             titulo: form.titulo.trim(),
             tipo: 'landing_page',
-            status: 'design',
+            status: 'copy',
             briefing: form.briefing || null,
             copy_texto: form.conteudo || null,
             criacao_origem_id: criacaoId,
@@ -565,6 +584,18 @@ export function CriacaoModal({
           )}
         </div>
 
+        {/* "Sobre essa entrega" — texto que aparece no PDF. Vazio = usa o
+            template global (em Admin > Configurações de Criações). Não usado
+            pro tipo planejamento (que tem o form estruturado próprio). */}
+        {tipoEfetivo !== 'planejamento' && (
+          <SobreEssaEntregaField
+            tipo={tipoEfetivo}
+            value={form.introducao_pdf}
+            onChange={(v) => setForm({ ...form, introducao_pdf: v })}
+            introsConfig={introsConfig}
+          />
+        )}
+
         {tipoEfetivo === 'planejamento' ? (
           <PlanejamentoEstruturaForm
             value={form.planejamento_estrutura}
@@ -601,4 +632,77 @@ function formatBytes(bytes: number) {
   const units = ['B', 'KB', 'MB', 'GB']
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+/**
+ * Campo "Sobre essa entrega" — texto que aparece no PDF.
+ * - Quando vazio: mostra o template global e marca "usando padrão".
+ * - Quando preenchido: substitui o template apenas pra essa criação.
+ * Padrão editável globalmente em Admin > Configurações de Criações.
+ */
+function SobreEssaEntregaField({
+  tipo,
+  value,
+  onChange,
+  introsConfig,
+}: {
+  tipo: TipoCriacao
+  value: string
+  onChange: (v: string) => void
+  introsConfig: Record<TipoCriacao, { titulo: string; paragrafos: string[] }> | null
+}) {
+  const usandoPadrao = !value.trim()
+  const template = introsConfig?.[tipo]
+  const padraoTexto = (template?.paragrafos ?? []).join('\n\n')
+
+  function personalizar() {
+    onChange(padraoTexto)
+  }
+
+  function voltarPadrao() {
+    onChange('')
+  }
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <Label>Sobre essa entrega (aparece no PDF)</Label>
+        {usandoPadrao ? (
+          <button
+            type="button"
+            onClick={personalizar}
+            className="text-[10px] text-brand-300 hover:text-brand-200 underline-offset-2 hover:underline"
+            disabled={!template}
+          >
+            Personalizar texto
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={voltarPadrao}
+            className="text-[10px] text-muted hover:text-zinc-100 underline-offset-2 hover:underline"
+          >
+            ↻ Voltar ao padrão
+          </button>
+        )}
+      </div>
+      {usandoPadrao ? (
+        <div className="rounded-md border border-dashed border-border bg-bg-soft/40 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap">
+          {padraoTexto || (
+            <span className="italic">Carregando template padrão...</span>
+          )}
+          <p className="mt-2 text-[10px] not-italic text-zinc-500">
+            Texto padrão (edita em <strong>Admin → Configurações de Criações</strong>).
+          </p>
+        </div>
+      ) : (
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Texto que aparece no bloco 'Sobre essa entrega' do PDF. Separe parágrafos com linha em branco."
+          className="min-h-[110px] text-sm leading-relaxed"
+        />
+      )}
+    </div>
+  )
 }
