@@ -120,25 +120,22 @@ const criacoesFake: Criacao[] = [
     anexos: null,
     conteudo: null,
     planejamento_estrutura: {
-      introducao:
-        'Trabalharemos com um funil dividido em 3 estágios: Captação, Engajamento e Conversão.',
-      pilares: ['conexão', 'autoridade', 'prova social'],
-      diagnostico: {
-        pontos_fortes: ['Conteúdo orgânico forte', 'Loja com boa variedade'],
-        oportunidades: ['Escalar com tráfego pago', 'Melhorar conversão WhatsApp'],
-        desafios: ['Atendimento manual demorado'],
+      visao_geral: {
+        mes: 'Maio 2026',
+        objetivo: 'Gerar 80 leads qualificados',
+        orcamento_total: 'R$ 4.500',
       },
-      campanhas: [
-        {
-          titulo: 'Campanha 1: Captação',
-          subtitulo: 'Reconhecimento de marca',
-          objetivo: 'Aumentar seguidores qualificados',
-          publico: 'Mulheres 25-40 anos',
-          criativos: ['Provador', '1 peça 3 looks'],
-          formatos: ['Reels', 'Stories'],
-        },
-      ],
-      estrategias: [],
+      meta_ads: {
+        objetivo: 'Geração de leads via Direct + remarketing',
+        publico: 'Mulheres 25-40 anos, interesse em moda',
+        criativos_previstos: ['Provador', '1 peça 3 looks'],
+        budget: 'R$ 3.150',
+      },
+      organico: {
+        pilares: ['conexão', 'autoridade', 'prova social'],
+        frequencia: '3 posts/semana',
+      },
+      kpis: { cpl: 'R$ 35', ctr: '> 2,5%', cpc: 'R$ 1,20', conversoes: '80 leads' },
     },
     status: 'em_revisao',
     responsavel_id: 'p1',
