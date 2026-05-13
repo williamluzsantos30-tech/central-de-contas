@@ -23,6 +23,8 @@ import type {
   SemaforoCliente,
   FormatoCriativo,
   FormatoSocialMedia,
+  StatusEdicaoVideo,
+  TipoReferenciaVideo,
   UserRole,
 } from '@/types/database'
 
@@ -327,6 +329,30 @@ export const ESTEIRA_CRIATIVOS: StatusCriativoWebdesign[] = [
 ]
 
 export const STATUS_CRIATIVO_WEBDESIGN: StatusCriativoWebdesign[] = [...ESTEIRA_CRIATIVOS]
+
+// ============ Edição de Vídeo ============
+export const statusEdicaoVideoLabel: Record<StatusEdicaoVideo, string> = {
+  pendente: 'Pendente',
+  em_edicao: 'Em edição',
+  em_aprovacao: 'Em aprovação',
+  em_alteracao: 'Em alteração',
+  conclusao: 'Concluído',
+}
+
+export const ESTEIRA_EDICAO_VIDEO: StatusEdicaoVideo[] = [
+  'pendente',
+  'em_edicao',
+  'em_aprovacao',
+  'em_alteracao',
+  'conclusao',
+]
+
+export const tipoReferenciaVideoLabel: Record<TipoReferenciaVideo, string> = {
+  drive: 'Google Drive',
+  youtube: 'YouTube',
+  vimeo: 'Vimeo',
+  link: 'Link',
+}
 
 export const formatoSocialMediaLabel: Record<FormatoSocialMedia, string> = {
   carrossel: 'Carrossel',

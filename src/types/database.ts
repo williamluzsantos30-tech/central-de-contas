@@ -58,6 +58,50 @@ export type StatusSocialMedia =
   | 'em_aprovacao'
   | 'conclusao'
 
+export type StatusEdicaoVideo =
+  | 'pendente'
+  | 'em_edicao'
+  | 'em_aprovacao'
+  | 'em_alteracao'
+  | 'conclusao'
+
+/** Tipo de referência (origem do material/inspiração). */
+export type TipoReferenciaVideo = 'drive' | 'youtube' | 'vimeo' | 'link'
+
+export interface EdicaoReferencia {
+  tipo: TipoReferenciaVideo
+  url: string
+  descricao?: string | null
+}
+
+export interface EdicaoArquivo {
+  nome: string
+  tamanho: number
+  tipo: string
+  url: string
+}
+
+export interface EdicaoVideo {
+  id: string
+  cliente_id: string
+  titulo: string | null
+  status: StatusEdicaoVideo
+  responsavel_id: string | null
+  ordem: number
+  /** Auto-calculado pelo trigger: lote=2 vídeos × 3 dias úteis a partir de aprovado_em (ou created_at). */
+  prazo: string | null
+  aprovado_em: string | null
+  briefing: string | null
+  referencias: EdicaoReferencia[]
+  arquivos: EdicaoArquivo[]
+  video_final_url: string | null
+  observacoes: string | null
+  created_at: string
+  updated_at: string
+  cliente?: Cliente | null
+  responsavel?: Profile | null
+}
+
 export type PerfilItemStatus = 'pendente' | 'em_revisao' | 'ok'
 
 export type Cargo =

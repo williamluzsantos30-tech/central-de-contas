@@ -12,6 +12,7 @@ import {
   Sparkles,
   Share2,
   CalendarDays,
+  Film,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -60,6 +61,7 @@ const nav: Group[] = [
     items: [
       { to: '/webdesign/projetos', label: 'Landing page', icon: LayoutGrid },
       { to: '/webdesign/criativos', label: 'Criativos', icon: Sparkles },
+      { to: '/webdesign/edicao-video', label: 'Edição de vídeo', icon: Film },
       { to: '/webdesign/social-media', label: 'Produção social media', icon: Share2 },
     ],
   },
