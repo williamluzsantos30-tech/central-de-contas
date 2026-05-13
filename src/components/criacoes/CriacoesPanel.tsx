@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ChevronDown,
   FileText,
   Paperclip,
   Plus,
-  Sparkles,
   Trash2,
   Upload,
   X,
@@ -22,14 +20,11 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe } from '@/lib/storage'
-import { generateWithAI } from '@/lib/ai'
-import { promptDefault, promptDefaultDescricao } from '@/lib/ai-prompts'
 import { downloadCriacaoPDF } from './CriacaoPDF'
 import { downloadPlanejamentoTrafegoPDF } from './PlanejamentoTrafegoPDF'
 import { PlanejamentoEstruturaForm, planejamentoEstruturaVazia } from './PlanejamentoEstruturaForm'
 import type { PlanejamentoEstrutura } from '@/types/database'
 import {
-  cn,
   formatDateTime,
   statusCriacaoLabel,
   tipoCriacaoDescricao,
@@ -190,13 +185,15 @@ function StatusBadge({ status }: { status: StatusCriacao }) {
   return <Badge tone={toneMap[status]}>{statusCriacaoLabel[status]}</Badge>
 }
 
-function CriacaoModal({
+/** Exportado pra ser usado na rota /preview/criacoes-panel (com previewMode). */
+export function CriacaoModal({
   open,
   onClose,
   cliente,
   tipo,
   criacao,
   onSaved,
+  previewMode = false,
 }: {
   open: boolean
   onClose: () => void
@@ -204,12 +201,16 @@ function CriacaoModal({
   tipo: TipoCriacao
   criacao: Criacao | null
   onSaved: () => void
+  /**
+   * Quando true, pula chamadas ao Supabase (save / delete / list profiles)
+   * e usa stubs locais. Pra preview público sem auth.
+   */
+  previewMode?: boolean
 }) {
   const { profile } = useAuth()
   const [form, setForm] = useState({
     titulo: '',
     briefing: '',
-    prompt: '',
     anexos: [] as CriacaoAnexo[],
     conteudo: '',
     status: 'rascunho' as StatusCriacao,
@@ -218,13 +219,14 @@ function CriacaoModal({
   })
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [promptOpen, setPromptOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const tipoEfetivo = criacao?.tipo ?? tipo
 
   useEffect(() => {
     if (!open) return
+    if (previewMode) {
+      setResponsaveis([])
+    } else
     supabase
       .from('profiles')
       .select('*')
@@ -236,8 +238,6 @@ function CriacaoModal({
       setForm({
         titulo: criacao.titulo,
         briefing: criacao.briefing ?? '',
-        // Se a criação salva não tem prompt customizado, sugere o default do tipo
-        prompt: criacao.prompt ?? promptDefault[criacao.tipo] ?? '',
         anexos: criacao.anexos ?? [],
         conteudo: criacao.conteudo ?? '',
         status: criacao.status,
@@ -245,47 +245,35 @@ function CriacaoModal({
         planejamento_estrutura:
           criacao.planejamento_estrutura ?? planejamentoEstruturaVazia(),
       })
-      // Sempre mostra o prompt expandido pra editar antes de gerar
-      setPromptOpen(true)
     } else {
       setForm({
         titulo: '',
         briefing: '',
-        // Pré-preenche o prompt com o default do tipo selecionado
-        prompt: promptDefault[tipoEfetivo] ?? '',
         anexos: [],
         conteudo: '',
         status: 'rascunho',
         responsavel_id: profile?.id ?? '',
         planejamento_estrutura: planejamentoEstruturaVazia(),
       })
-      setPromptOpen(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, criacao, profile?.id, tipoEfetivo])
 
-  async function gerar() {
-    setGenerating(true)
-    const conteudo = await generateWithAI({
-      tipo: tipoEfetivo,
-      briefing: form.briefing,
-      prompt: form.prompt,
-      anexos: form.anexos,
-      cliente: { nome: cliente.nome, nicho: cliente.nicho, plataformas: cliente.plataformas },
-    })
-    setForm((f) => ({ ...f, conteudo }))
-    setGenerating(false)
-  }
-
   async function save() {
     if (!form.titulo.trim()) return
+    if (previewMode) {
+      // Preview — não persiste, só fecha
+      alert('Preview: salvamento desabilitado.')
+      onClose()
+      return
+    }
     setSaving(true)
     const payload = {
       cliente_id: cliente.id,
       tipo: tipoEfetivo,
       titulo: form.titulo.trim(),
       briefing: form.briefing || null,
-      prompt: form.prompt || null,
+      prompt: null, // legado — IA removida do form
       anexos: form.anexos.length > 0 ? form.anexos : null,
       conteudo: form.conteudo || null,
       // Estrutura só faz sentido pro tipo planejamento — salva null pros outros
@@ -409,6 +397,11 @@ function CriacaoModal({
   async function excluir() {
     if (!criacao) return
     if (!confirm('Excluir esta criação?')) return
+    if (previewMode) {
+      alert('Preview: exclusão desabilitada.')
+      onClose()
+      return
+    }
     await supabase.from('criacoes').delete().eq('id', criacao.id)
     onSaved()
     onClose()
@@ -502,75 +495,13 @@ function CriacaoModal({
         </div>
 
         <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label>Briefing / Input para a IA</Label>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={gerar}
-              disabled={generating || (!form.briefing.trim() && !form.prompt.trim())}
-            >
-              <Sparkles size={14} className={generating ? 'animate-pulse' : ''} />
-              {generating ? 'Gerando...' : 'Gerar com IA'}
-            </Button>
-          </div>
+          <Label>Briefing / Contexto</Label>
           <Textarea
             value={form.briefing}
             onChange={(e) => setForm({ ...form, briefing: e.target.value })}
-            placeholder="Descreva público-alvo, dor, diferenciais, tom, objetivos — tudo que a IA precisa saber para gerar."
+            placeholder="Descreva público-alvo, dor, diferenciais, tom, objetivos — contexto do que você quer entregar."
             className="min-h-[110px]"
           />
-        </div>
-
-        {/* Prompt da IA (colapsável, vem pré-preenchido) */}
-        <div className="rounded-lg border border-border bg-bg-soft">
-          <button
-            type="button"
-            onClick={() => setPromptOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-3 py-2 text-left"
-          >
-            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              <Sparkles size={12} className="text-brand-300" />
-              Instruções para a IA (prompt)
-              <Badge tone="brand" className="text-[10px] normal-case">
-                pré-pronto
-              </Badge>
-            </span>
-            <ChevronDown
-              size={14}
-              className={cn('text-muted transition-transform', promptOpen && 'rotate-180')}
-            />
-          </button>
-          {promptOpen && (
-            <div className="border-t border-border p-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] text-muted">
-                  Já vem com um prompt otimizado para{' '}
-                  <span className="text-zinc-300">{tipoCriacaoLabel[tipoEfetivo].toLowerCase()}</span>
-                  : {promptDefaultDescricao[tipoEfetivo]}. Edite à vontade.
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm((f) => ({ ...f, prompt: promptDefault[tipoEfetivo] ?? '' }))
-                  }
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:border-border/60 hover:text-zinc-100"
-                  title="Restaurar prompt padrão"
-                >
-                  ↻ Restaurar padrão
-                </button>
-              </div>
-              <Textarea
-                value={form.prompt}
-                onChange={(e) => setForm({ ...form, prompt: e.target.value })}
-                placeholder="Diga para a IA COMO você quer que ela trabalhe."
-                className="min-h-[200px] font-mono text-[12.5px] leading-relaxed"
-              />
-              <p className="mt-1 text-[11px] text-muted">
-                A IA vai usar este prompt + briefing + arquivos anexados para gerar o conteúdo.
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Upload de arquivos de referência */}
@@ -643,11 +574,11 @@ function CriacaoModal({
           />
         ) : (
           <div>
-            <Label>Conteúdo gerado</Label>
+            <Label>Conteúdo</Label>
             <Textarea
               value={form.conteudo}
               onChange={(e) => setForm({ ...form, conteudo: e.target.value })}
-              placeholder="Aqui aparecerá o rascunho gerado. Edite livremente até ficar do seu jeito."
+              placeholder="Cole aqui o conteúdo (copy / roteiro / etc.)."
               className="min-h-[260px] font-mono text-[13px] leading-relaxed"
             />
           </div>

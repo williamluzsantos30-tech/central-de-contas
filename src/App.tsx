@@ -14,6 +14,7 @@ import AgendaSocialMedia from '@/pages/social/Agenda'
 import SocialClientes from '@/pages/social/Clientes'
 import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
+import PreviewCriacoesPanel from '@/pages/PreviewCriacoesPanel'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -40,6 +41,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/preview/criacao-pdf" element={<PreviewCriacaoPDF />} />
+          <Route path="/preview/criacoes-panel" element={<PreviewCriacoesPanel />} />
           <Route
             element={
               <Protected>
