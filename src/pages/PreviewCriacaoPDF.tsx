@@ -7,7 +7,14 @@ import { useMemo, useState } from 'react'
 import { PDFViewer } from '@react-pdf/renderer'
 import { CriacaoPDFDoc } from '@/components/criacoes/CriacaoPDF'
 import { PlanejamentoTrafegoPDFDoc } from '@/components/criacoes/PlanejamentoTrafegoPDF'
-import type { Cliente, Criacao, PlanejamentoEstrutura, TipoCriacao } from '@/types/database'
+import { RoteiroPDFDoc } from '@/components/criacoes/RoteiroPDF'
+import type {
+  Cliente,
+  Criacao,
+  PlanejamentoEstrutura,
+  RoteiroEstrutura,
+  TipoCriacao,
+} from '@/types/database'
 
 const TIPOS: TipoCriacao[] = ['copy_lp', 'copy_criativos', 'planejamento', 'roteiro']
 
@@ -133,84 +140,66 @@ export default function PreviewCriacaoPDF() {
 
   const estruturaPlanejamentoFake = useMemo<PlanejamentoEstrutura>(
     () => ({
-      introducao:
-        'Trabalharemos com um funil de tráfego dividido em 3 estágios — Captação de Seguidores, Engajamento e Conversão WhatsApp. O foco do mês é validar criativos humanizados com a vendedora protagonizando os vídeos, aproveitando o ponto forte do conteúdo orgânico da marca.',
-      pilares: ['conexão', 'autoridade', 'prova social', 'oferta', 'urgência'],
-      diagnostico: {
-        pontos_fortes: [
-          'Conteúdo orgânico forte',
-          'Loja com boa variedade de produtos',
-          'Produção de vídeos consistente',
-          'Equipe participativa',
-          'Boa demanda física',
-          'Grupo VIP ativo',
-          'Entrega rápida na cidade',
-        ],
-        oportunidades: [
-          'Escalar vendas através do tráfego pago',
-          'Atrair novas clientes além da base atual',
-          'Melhorar conversão do WhatsApp',
-          'Explorar mais eventos e sazonalidades',
-          'Fortalecer campanhas com vídeos humanizados',
-        ],
-        desafios: [
-          'Pouca consistência em campanhas pagas',
-          'Atendimento WhatsApp manual e demorado',
-          'Concorrência local agressiva em moda',
-        ],
+      visao_geral: {
+        mes: 'Maio 2026',
+        objetivo:
+          'Gerar 80 leads qualificados para avaliação ortodôntica gratuita, com CPL alvo de R$ 35 e foco em mulheres da Zona Sul de SP.',
+        orcamento_total: 'R$ 4.500',
       },
-      campanhas: [
-        {
-          titulo: 'Campanha 1: Captação de Seguidores',
-          subtitulo: 'Reconhecimento de marca',
-          objetivo:
-            'Aumentar seguidores qualificados no Instagram e fortalecer o reconhecimento da marca na cidade.',
-          publico:
-            'Mulheres 25-40 anos, interesse em moda feminina, tendências, looks para shows e eventos. Geolocalização: cidade da loja + raio 30km.',
-          criativos: [
-            'Provador',
-            '"1 peça, 3 looks"',
-            'Bastidores da loja',
-            'Vídeos casuais nos stories',
-            'Looks para eventos e shows',
-            'Trends e modinhas',
-          ],
-          formatos: ['Reels (70%)', 'Stories (20%)', 'Carrossel (10%)'],
-        },
-        {
-          titulo: 'Campanha 2: Conversão WhatsApp',
-          subtitulo: 'Geração de vendas qualificadas',
-          objetivo: 'Gerar conversas qualificadas e aumentar vendas no WhatsApp.',
-          publico:
-            'Mulheres 25-40 anos que já interagiram com o perfil ou visitaram a loja. Foco em remarketing.',
-          criativos: [
-            '"Me chama no WhatsApp e garanta seu look"',
-            'Looks para show e eventos',
-            'Novidades da semana',
-            'Combos promocionais',
-            'Vestidos (produto forte da loja)',
-            'Peças tendência',
-          ],
-          formatos: ['Click-to-WhatsApp', 'Anúncio com botão de mensagem', 'Carrossel de produtos'],
-        },
-      ],
-      estrategias: [
-        {
-          titulo: 'Explorar Eventos da Cidade',
-          descricao: 'Shows e eventos locais aumentam muito as vendas',
-          bullets: ['Looks para evento', 'Produção completa', 'Urgência de compra'],
-        },
-        {
-          titulo: 'Aproveitar Sazonalidades',
-          descricao: 'Datas comemorativas e estações geram picos de demanda',
-          bullets: ['Dia das Mães', 'Festa Junina', 'Black Friday', 'Natal'],
-        },
-        {
-          titulo: 'Conteúdo Humanizado',
-          descricao: 'Vídeos com a vendedora geram conexão e confiança',
-          bullets: ['Apresentação de looks', 'Dicas de combinação', 'Depoimentos'],
-        },
-      ],
+      meta_ads: {
+        objetivo:
+          'Geração de leads via conversa no Direct + remarketing de visitantes do site.',
+        publico:
+          'Mulheres 28-45 anos, classe A/B, geolocalização São Paulo capital (raio 15km do consultório). Interesses: estética, autocuidado, fitness.',
+        criativos_previstos: [
+          'Reel depoimento Camila (antes/depois)',
+          'Carrossel educativo sobre alinhadores',
+          'Story de oferta da semana',
+          'Reel apresentação da Dra. Maria',
+        ],
+        budget: 'R$ 3.150 (70% do total)',
+      },
+      google_ads: {
+        objetivo: 'Capturar intenção de busca direta de quem procura tratamento.',
+        segmentacao:
+          '"ortodontia invisalign zona sul", "avaliação ortodôntica gratuita", "alinhadores transparentes preço"',
+        budget: 'R$ 1.350 (30% do total)',
+      },
+      organico: {
+        pilares: ['autoridade', 'prova social', 'educacional', 'transformação'],
+        frequencia: '3 posts/semana — Seg, Qua e Sex às 19h',
+      },
+      kpis: {
+        cpl: 'R$ 35',
+        ctr: '> 2,5%',
+        cpc: 'R$ 1,20',
+        conversoes: '80 leads',
+      },
+    }),
+    [],
+  )
+
+  const estruturaRoteiroFake = useMemo<RoteiroEstrutura>(
+    () => ({
+      formato: 'reel',
+      duracao: '60s',
+      gancho: {
+        texto: '"Eu evitava sorrir há 8 ANOS."',
+        direcao:
+          'Close no rosto da Camila, ela cobre a boca rindo. Texto em tela: "Eu evitava sorrir há 8 anos"',
+      },
+      desenvolvimento: {
+        texto:
+          '"Toda foto eu tava de boca fechada — casamento, viagem, aniversário. Sempre escondendo. Achava que não tinha jeito porque tinha medo de aparelho. Aí descobri os alinhadores invisíveis. Em 7 dias eu tinha o plano completo. E em 9 meses... olha o resultado."',
+        acoes:
+          'Camila narra em voz over. Cortes pra consultório, Dra. Maria mostra os alinhadores. Sequência de antes/depois com fotos reais. Texto em tela: "9 MESES · ZERO APARELHO · MUITA CONFIANÇA"',
+      },
+      fechamento: {
+        texto:
+          '"Tenho 15 anos de ortodontia digital e mais de 1.200 sorrisos transformados. Vagas pra avaliação gratuita essa semana."',
+        cta: 'Link na bio · Marca sua avaliação',
+      },
+      trilha: '"Sweet Disposition" — emocional, crescendo gradativamente',
     }),
     [],
   )
@@ -235,6 +224,7 @@ export default function PreviewCriacaoPDF() {
         anexos: null,
         conteudo: conteudoExemplo[tipo],
         planejamento_estrutura: tipo === 'planejamento' ? estruturaPlanejamentoFake : null,
+        roteiro_estrutura: tipo === 'roteiro' ? estruturaRoteiroFake : null,
         status: 'aprovado',
         responsavel_id: null,
         enviado_para_producao_em: null,
@@ -242,7 +232,7 @@ export default function PreviewCriacaoPDF() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as Criacao),
-    [tipo, estruturaPlanejamentoFake],
+    [tipo, estruturaPlanejamentoFake, estruturaRoteiroFake],
   )
 
   return (
@@ -283,6 +273,8 @@ export default function PreviewCriacaoPDF() {
         <PDFViewer width="100%" height="100%" style={{ border: 0 }}>
           {tipo === 'planejamento' ? (
             <PlanejamentoTrafegoPDFDoc cliente={cliente} criacao={criacao} />
+          ) : tipo === 'roteiro' ? (
+            <RoteiroPDFDoc cliente={cliente} criacao={criacao} />
           ) : (
             <CriacaoPDFDoc cliente={cliente} criacao={criacao} />
           )}

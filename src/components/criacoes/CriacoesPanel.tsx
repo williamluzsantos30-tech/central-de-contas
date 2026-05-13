@@ -23,8 +23,10 @@ import { uploadToStorageSafe } from '@/lib/storage'
 import { downloadCriacaoPDF } from './CriacaoPDF'
 import { loadIntros, introsHardcoded } from '@/lib/criacoes-config'
 import { downloadPlanejamentoTrafegoPDF } from './PlanejamentoTrafegoPDF'
+import { downloadRoteiroPDF } from './RoteiroPDF'
 import { PlanejamentoEstruturaForm, planejamentoEstruturaVazia } from './PlanejamentoEstruturaForm'
-import type { PlanejamentoEstrutura } from '@/types/database'
+import { RoteiroEstruturaForm, roteiroEstruturaVazia } from './RoteiroEstruturaForm'
+import type { PlanejamentoEstrutura, RoteiroEstrutura } from '@/types/database'
 import {
   formatDateTime,
   statusCriacaoLabel,
@@ -218,6 +220,7 @@ export function CriacaoModal({
     status: 'rascunho' as StatusCriacao,
     responsavel_id: profile?.id ?? '',
     planejamento_estrutura: planejamentoEstruturaVazia() as PlanejamentoEstrutura,
+    roteiro_estrutura: roteiroEstruturaVazia() as RoteiroEstrutura,
   })
   // Template global da introdução por tipo — carregado na abertura
   const [introsConfig, setIntrosConfig] = useState<Record<
@@ -252,6 +255,7 @@ export function CriacaoModal({
         responsavel_id: criacao.responsavel_id ?? profile?.id ?? '',
         planejamento_estrutura:
           criacao.planejamento_estrutura ?? planejamentoEstruturaVazia(),
+        roteiro_estrutura: criacao.roteiro_estrutura ?? roteiroEstruturaVazia(),
       })
     } else {
       setForm({
@@ -263,6 +267,7 @@ export function CriacaoModal({
         status: 'rascunho',
         responsavel_id: profile?.id ?? '',
         planejamento_estrutura: planejamentoEstruturaVazia(),
+        roteiro_estrutura: roteiroEstruturaVazia(),
       })
     }
     // Carrega templates globais (cai pros hardcoded em preview/erro)
@@ -296,6 +301,9 @@ export function CriacaoModal({
       // Estrutura só faz sentido pro tipo planejamento — salva null pros outros
       planejamento_estrutura:
         tipoEfetivo === 'planejamento' ? form.planejamento_estrutura : null,
+      // Estrutura só faz sentido pro tipo roteiro
+      roteiro_estrutura:
+        tipoEfetivo === 'roteiro' ? form.roteiro_estrutura : null,
       status: form.status,
       responsavel_id: form.responsavel_id || null,
     }
@@ -383,6 +391,8 @@ export function CriacaoModal({
     try {
       if (criacao.tipo === 'planejamento') {
         await downloadPlanejamentoTrafegoPDF({ cliente, criacao })
+      } else if (criacao.tipo === 'roteiro') {
+        await downloadRoteiroPDF({ cliente, criacao })
       } else {
         await downloadCriacaoPDF({ cliente, criacao })
       }
@@ -513,81 +523,87 @@ export function CriacaoModal({
           </Select>
         </div>
 
-        <div>
-          <Label>Briefing / Contexto</Label>
-          <Textarea
-            value={form.briefing}
-            onChange={(e) => setForm({ ...form, briefing: e.target.value })}
-            placeholder="Descreva público-alvo, dor, diferenciais, tom, objetivos — contexto do que você quer entregar."
-            className="min-h-[110px]"
-          />
-        </div>
-
-        {/* Upload de arquivos de referência */}
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label>Arquivos de referência</Label>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={13} /> Adicionar arquivos
-            </Button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => onFilesSelected(e.target.files)}
-          />
-          {form.anexos.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border bg-bg-soft px-3 py-5 text-center text-xs text-muted">
-              <Paperclip size={14} className="mx-auto mb-1 opacity-60" />
-              Nenhum anexo. Envie PDFs, imagens, prints, briefings prontos — o que for útil para a
-              IA entender o contexto.
+        {/* Briefing/Contexto + Arquivos de referência: usados por Copy Criativos
+            e Planejamento. Copy LP e Roteiro têm estrutura própria — não
+            mostram esses campos pra ficar mais enxuto. */}
+        {(tipoEfetivo === 'copy_criativos' || tipoEfetivo === 'planejamento') && (
+          <>
+            <div>
+              <Label>Briefing / Contexto</Label>
+              <Textarea
+                value={form.briefing}
+                onChange={(e) => setForm({ ...form, briefing: e.target.value })}
+                placeholder="Descreva público-alvo, dor, diferenciais, tom, objetivos — contexto do que você quer entregar."
+                className="min-h-[110px]"
+              />
             </div>
-          ) : (
-            <ul className="space-y-1.5">
-              {form.anexos.map((a, i) => (
-                <li
-                  key={i}
-                  className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
+
+            {/* Upload de arquivos de referência */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <Label>Arquivos de referência</Label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileText size={14} className="shrink-0 text-brand-300" />
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate text-xs text-zinc-200 hover:text-brand-300 hover:underline"
-                      title={a.nome}
+                  <Upload size={13} /> Adicionar arquivos
+                </Button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => onFilesSelected(e.target.files)}
+              />
+              {form.anexos.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border bg-bg-soft px-3 py-5 text-center text-xs text-muted">
+                  <Paperclip size={14} className="mx-auto mb-1 opacity-60" />
+                  Nenhum anexo. Envie PDFs, imagens, prints, briefings prontos.
+                </div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {form.anexos.map((a, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
                     >
-                      {a.nome}
-                    </a>
-                    <span className="shrink-0 text-[11px] text-muted">
-                      {formatBytes(a.tamanho)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAnexo(i)}
-                    className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
-                    title="Remover anexo"
-                  >
-                    <X size={13} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileText size={14} className="shrink-0 text-brand-300" />
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate text-xs text-zinc-200 hover:text-brand-300 hover:underline"
+                          title={a.nome}
+                        >
+                          {a.nome}
+                        </a>
+                        <span className="shrink-0 text-[11px] text-muted">
+                          {formatBytes(a.tamanho)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAnexo(i)}
+                        className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
+                        title="Remover anexo"
+                      >
+                        <X size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
 
         {/* "Sobre essa entrega" — texto que aparece no PDF. Vazio = usa o
-            template global (em Admin > Configurações de Criações). Não usado
-            pro tipo planejamento (que tem o form estruturado próprio). */}
-        {tipoEfetivo !== 'planejamento' && (
+            template global (em Admin > Textos do PDF). Não aparece pro
+            planejamento e roteiro (têm forms estruturados próprios). */}
+        {tipoEfetivo !== 'planejamento' && tipoEfetivo !== 'roteiro' && (
           <SobreEssaEntregaField
             tipo={tipoEfetivo}
             value={form.introducao_pdf}
@@ -596,6 +612,7 @@ export function CriacaoModal({
           />
         )}
 
+        {/* Conteúdo / estrutura específica por tipo */}
         {tipoEfetivo === 'planejamento' ? (
           <PlanejamentoEstruturaForm
             value={form.planejamento_estrutura}
@@ -603,13 +620,22 @@ export function CriacaoModal({
               setForm({ ...form, planejamento_estrutura: estrutura })
             }
           />
+        ) : tipoEfetivo === 'roteiro' ? (
+          <RoteiroEstruturaForm
+            value={form.roteiro_estrutura}
+            onChange={(estrutura) => setForm({ ...form, roteiro_estrutura: estrutura })}
+          />
         ) : (
           <div>
             <Label>Conteúdo</Label>
             <Textarea
               value={form.conteudo}
               onChange={(e) => setForm({ ...form, conteudo: e.target.value })}
-              placeholder="Cole aqui o conteúdo (copy / roteiro / etc.)."
+              placeholder={
+                tipoEfetivo === 'copy_lp'
+                  ? 'Cole aqui a copy completa da landing page (headline, subhead, benefícios, prova social, CTA, etc.).'
+                  : 'Cole aqui o conteúdo.'
+              }
               className="min-h-[260px] font-mono text-[13px] leading-relaxed"
             />
           </div>

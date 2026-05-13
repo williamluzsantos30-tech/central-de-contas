@@ -163,32 +163,60 @@ export interface CriacaoAnexo {
 }
 
 /**
- * Estrutura usada quando `Criacao.tipo === 'planejamento'`. Cada bloco vira
- * uma seção/card no PDF. Renderização tolera campos vazios — só não mostra.
+ * Estrutura usada quando `Criacao.tipo === 'planejamento'`.
+ * Modelo "Por canal/plataforma" — uma seção por canal (Meta, Google,
+ * Orgânico) + visão geral + KPIs alvo.
+ * Todos os campos são opcionais — o PDF/UI tolera campos vazios.
  */
 export interface PlanejamentoEstrutura {
-  /** Texto livre de abertura — aparece na página de intro do PDF. */
-  introducao?: string
-  /** Ângulos/pilares estratégicos da campanha (chips). */
-  pilares?: string[]
-  diagnostico: {
-    pontos_fortes: string[]
-    oportunidades: string[]
-    desafios: string[]
+  visao_geral?: {
+    mes?: string
+    objetivo?: string
+    orcamento_total?: string
   }
-  campanhas: Array<{
-    titulo: string
-    subtitulo?: string | null
-    objetivo: string
-    publico: string
-    criativos: string[]
-    formatos: string[]
-  }>
-  estrategias: Array<{
-    titulo: string
-    descricao: string
-    bullets: string[]
-  }>
+  meta_ads?: {
+    objetivo?: string
+    publico?: string
+    criativos_previstos?: string[]
+    budget?: string
+  }
+  google_ads?: {
+    objetivo?: string
+    segmentacao?: string
+    budget?: string
+  }
+  organico?: {
+    pilares?: string[]
+    frequencia?: string
+  }
+  kpis?: {
+    cpl?: string
+    ctr?: string
+    cpc?: string
+    conversoes?: string
+  }
+}
+
+/**
+ * Estrutura usada quando `Criacao.tipo === 'roteiro'`.
+ * Modelo "3 atos" — Gancho → Desenvolvimento → Fechamento.
+ */
+export interface RoteiroEstrutura {
+  formato?: 'reel' | 'carrossel' | 'tiktok' | 'story' | 'outro'
+  duracao?: string
+  gancho?: {
+    texto?: string
+    direcao?: string
+  }
+  desenvolvimento?: {
+    texto?: string
+    acoes?: string
+  }
+  fechamento?: {
+    texto?: string
+    cta?: string
+  }
+  trilha?: string
 }
 
 export interface Criacao {
@@ -202,6 +230,8 @@ export interface Criacao {
   conteudo: string | null
   /** Schema estruturado pro PDF do Planejamento. Null para outros tipos. */
   planejamento_estrutura: PlanejamentoEstrutura | null
+  /** Schema estruturado pro PDF do Roteiro. Null para outros tipos. */
+  roteiro_estrutura: RoteiroEstrutura | null
   status: StatusCriacao
   responsavel_id: string | null
   /**

@@ -1,20 +1,18 @@
 /**
- * Formulário estruturado para Planejamento de Tráfego.
- * Visual inspirado no PlanejamentoMensalPanel do Social Media:
- * Cards escuros com ícones brand, hints "aparece na página X do PDF",
- * chips de sugestões, listas expansíveis com "+ Adicionar".
+ * Formulário estruturado para Planejamento de Tráfego — Modelo A
+ * "Por canal/plataforma". Cards: Visão geral, Meta Ads, Google Ads,
+ * Orgânico, KPIs alvo.
  */
 import { useState } from 'react'
 import {
   Plus,
-  Trash2,
   X,
   Sparkles,
   Target,
   Megaphone,
   TrendingUp,
-  ChevronDown,
-  ChevronRight,
+  Globe,
+  Calendar,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -22,6 +20,305 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import type { PlanejamentoEstrutura } from '@/types/database'
+
+export function planejamentoEstruturaVazia(): PlanejamentoEstrutura {
+  return {
+    visao_geral: { mes: '', objetivo: '', orcamento_total: '' },
+    meta_ads: { objetivo: '', publico: '', criativos_previstos: [], budget: '' },
+    google_ads: { objetivo: '', segmentacao: '', budget: '' },
+    organico: { pilares: [], frequencia: '' },
+    kpis: { cpl: '', ctr: '', cpc: '', conversoes: '' },
+  }
+}
+
+interface Props {
+  value: PlanejamentoEstrutura
+  onChange: (next: PlanejamentoEstrutura) => void
+}
+
+export function PlanejamentoEstruturaForm({ value, onChange }: Props) {
+  const v: PlanejamentoEstrutura = { ...planejamentoEstruturaVazia(), ...value }
+
+  return (
+    <div className="space-y-4">
+      <VisaoGeralCard
+        value={v.visao_geral ?? {}}
+        onChange={(visao_geral) => onChange({ ...v, visao_geral })}
+      />
+      <MetaAdsCard
+        value={v.meta_ads ?? {}}
+        onChange={(meta_ads) => onChange({ ...v, meta_ads })}
+      />
+      <GoogleAdsCard
+        value={v.google_ads ?? {}}
+        onChange={(google_ads) => onChange({ ...v, google_ads })}
+      />
+      <OrganicoCard
+        value={v.organico ?? {}}
+        onChange={(organico) => onChange({ ...v, organico })}
+      />
+      <KPIsCard
+        value={v.kpis ?? {}}
+        onChange={(kpis) => onChange({ ...v, kpis })}
+      />
+    </div>
+  )
+}
+
+/* =========================================================
+   Visão Geral
+========================================================= */
+
+function VisaoGeralCard({
+  value,
+  onChange,
+}: {
+  value: NonNullable<PlanejamentoEstrutura['visao_geral']>
+  onChange: (v: NonNullable<PlanejamentoEstrutura['visao_geral']>) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Calendar size={14} className="text-brand-300" />
+          Visão geral
+        </CardTitle>
+        <span className="text-[10px] text-muted">aparece na capa e abertura do PDF</span>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Mês de referência">
+            <Input
+              value={value.mes ?? ''}
+              onChange={(e) => onChange({ ...value, mes: e.target.value })}
+              placeholder="Ex.: Maio 2026"
+            />
+          </Field>
+          <Field label="Orçamento total">
+            <Input
+              value={value.orcamento_total ?? ''}
+              onChange={(e) => onChange({ ...value, orcamento_total: e.target.value })}
+              placeholder="Ex.: R$ 4.500"
+            />
+          </Field>
+        </div>
+        <Field label="Objetivo do mês">
+          <Textarea
+            value={value.objetivo ?? ''}
+            onChange={(e) => onChange({ ...value, objetivo: e.target.value })}
+            placeholder="Ex.: Gerar 80 leads qualificados pra avaliação ortodôntica (CPL alvo R$ 35)"
+            className="min-h-[70px]"
+          />
+        </Field>
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Meta Ads
+========================================================= */
+
+function MetaAdsCard({
+  value,
+  onChange,
+}: {
+  value: NonNullable<PlanejamentoEstrutura['meta_ads']>
+  onChange: (v: NonNullable<PlanejamentoEstrutura['meta_ads']>) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Megaphone size={14} className="text-brand-300" />
+          Meta Ads (Instagram + Facebook)
+        </CardTitle>
+        <span className="text-[10px] text-muted">aparece como página própria no PDF</span>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Objetivo">
+            <Textarea
+              value={value.objetivo ?? ''}
+              onChange={(e) => onChange({ ...value, objetivo: e.target.value })}
+              placeholder="Ex.: Geração de leads via conversa no Direct"
+              className="min-h-[60px]"
+            />
+          </Field>
+          <Field label="Budget">
+            <Input
+              value={value.budget ?? ''}
+              onChange={(e) => onChange({ ...value, budget: e.target.value })}
+              placeholder="Ex.: R$ 3.150 (70% do total)"
+            />
+          </Field>
+        </div>
+        <Field label="Público estratégico">
+          <Textarea
+            value={value.publico ?? ''}
+            onChange={(e) => onChange({ ...value, publico: e.target.value })}
+            placeholder="Ex.: Mulheres 25-40 anos, classe A/B, interesse em estética..."
+            className="min-h-[60px]"
+          />
+        </Field>
+        <ChipList
+          label="Criativos previstos"
+          values={value.criativos_previstos ?? []}
+          onChange={(criativos_previstos) => onChange({ ...value, criativos_previstos })}
+          placeholder="Ex.: Reel depoimento, Carrossel educativo, Story oferta"
+        />
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Google Ads
+========================================================= */
+
+function GoogleAdsCard({
+  value,
+  onChange,
+}: {
+  value: NonNullable<PlanejamentoEstrutura['google_ads']>
+  onChange: (v: NonNullable<PlanejamentoEstrutura['google_ads']>) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Target size={14} className="text-brand-300" />
+          Google Ads
+        </CardTitle>
+        <span className="text-[10px] text-muted">opcional — só preenche se rodar Google</span>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Objetivo">
+            <Textarea
+              value={value.objetivo ?? ''}
+              onChange={(e) => onChange({ ...value, objetivo: e.target.value })}
+              placeholder="Ex.: Capturar intenção de busca direta"
+              className="min-h-[60px]"
+            />
+          </Field>
+          <Field label="Budget">
+            <Input
+              value={value.budget ?? ''}
+              onChange={(e) => onChange({ ...value, budget: e.target.value })}
+              placeholder="Ex.: R$ 1.350 (30% do total)"
+            />
+          </Field>
+        </div>
+        <Field label="Palavras-chave / Segmentação">
+          <Textarea
+            value={value.segmentacao ?? ''}
+            onChange={(e) => onChange({ ...value, segmentacao: e.target.value })}
+            placeholder='Ex.: "ortodontia invisalign zona sul", "avaliação ortodôntica gratuita"...'
+            className="min-h-[60px]"
+          />
+        </Field>
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Orgânico / Conteúdo
+========================================================= */
+
+function OrganicoCard({
+  value,
+  onChange,
+}: {
+  value: NonNullable<PlanejamentoEstrutura['organico']>
+  onChange: (v: NonNullable<PlanejamentoEstrutura['organico']>) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles size={14} className="text-brand-300" />
+          Orgânico / Conteúdo
+        </CardTitle>
+        <span className="text-[10px] text-muted">pilares e cadência de postagem</span>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <PilaresChips
+          values={value.pilares ?? []}
+          onChange={(pilares) => onChange({ ...value, pilares })}
+        />
+        <Field label="Frequência de postagens">
+          <Input
+            value={value.frequencia ?? ''}
+            onChange={(e) => onChange({ ...value, frequencia: e.target.value })}
+            placeholder="Ex.: 3 posts/semana — Seg, Qua e Sex"
+          />
+        </Field>
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   KPIs alvo
+========================================================= */
+
+function KPIsCard({
+  value,
+  onChange,
+}: {
+  value: NonNullable<PlanejamentoEstrutura['kpis']>
+  onChange: (v: NonNullable<PlanejamentoEstrutura['kpis']>) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <TrendingUp size={14} className="text-brand-300" />
+          KPIs alvo
+        </CardTitle>
+        <span className="text-[10px] text-muted">metas mensuráveis do mês</span>
+      </CardHeader>
+      <CardBody>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Field label="CPL alvo">
+            <Input
+              value={value.cpl ?? ''}
+              onChange={(e) => onChange({ ...value, cpl: e.target.value })}
+              placeholder="Ex.: R$ 35"
+            />
+          </Field>
+          <Field label="CTR alvo">
+            <Input
+              value={value.ctr ?? ''}
+              onChange={(e) => onChange({ ...value, ctr: e.target.value })}
+              placeholder="Ex.: > 2.5%"
+            />
+          </Field>
+          <Field label="CPC alvo">
+            <Input
+              value={value.cpc ?? ''}
+              onChange={(e) => onChange({ ...value, cpc: e.target.value })}
+              placeholder="Ex.: R$ 1,20"
+            />
+          </Field>
+          <Field label="Conversões esperadas">
+            <Input
+              value={value.conversoes ?? ''}
+              onChange={(e) => onChange({ ...value, conversoes: e.target.value })}
+              placeholder="Ex.: 80 leads"
+            />
+          </Field>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Pilares como chips com sugestões (reutiliza padrão SM)
+========================================================= */
 
 const PILARES_SUGERIDOS = [
   'conexão',
@@ -34,491 +331,99 @@ const PILARES_SUGERIDOS = [
   'educacional',
 ]
 
-export function planejamentoEstruturaVazia(): PlanejamentoEstrutura {
-  return {
-    introducao: '',
-    pilares: [],
-    diagnostico: { pontos_fortes: [], oportunidades: [], desafios: [] },
-    campanhas: [],
-    estrategias: [],
-  }
-}
-
-interface Props {
-  value: PlanejamentoEstrutura
-  onChange: (next: PlanejamentoEstrutura) => void
-}
-
-export function PlanejamentoEstruturaForm({ value, onChange }: Props) {
-  const v: PlanejamentoEstrutura = {
-    ...planejamentoEstruturaVazia(),
-    ...value,
-  }
-
-  return (
-    <div className="space-y-4">
-      <IntroducaoCard
-        value={v.introducao ?? ''}
-        onChange={(introducao) => onChange({ ...v, introducao })}
-      />
-      <DiagnosticoCard
-        value={v.diagnostico}
-        onChange={(diagnostico) => onChange({ ...v, diagnostico })}
-      />
-      <PilaresCard
-        value={v.pilares ?? []}
-        onChange={(pilares) => onChange({ ...v, pilares })}
-      />
-      <CampanhasCard
-        value={v.campanhas}
-        onChange={(campanhas) => onChange({ ...v, campanhas })}
-      />
-      <EstrategiasCard
-        value={v.estrategias}
-        onChange={(estrategias) => onChange({ ...v, estrategias })}
-      />
-    </div>
-  )
-}
-
-/* =========================================================
-   Introdução do planejamento
-========================================================= */
-
-function IntroducaoCard({
-  value,
+function PilaresChips({
+  values,
   onChange,
 }: {
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles size={14} className="text-brand-300" />
-          Introdução do planejamento
-        </CardTitle>
-        <span className="text-[10px] text-muted">aparece na página 2 do PDF</span>
-      </CardHeader>
-      <CardBody>
-        <Textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Ex.: 'Trabalharemos com um funil de tráfego dividido em 3 estágios — Captação de Seguidores, Engajamento e Conversão WhatsApp. O foco do mês é validar criativos humanizados...'"
-          className="min-h-[120px] text-sm leading-relaxed"
-        />
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
-   Diagnóstico Estratégico (3 chip-lists)
-========================================================= */
-
-function DiagnosticoCard({
-  value,
-  onChange,
-}: {
-  value: PlanejamentoEstrutura['diagnostico']
-  onChange: (v: PlanejamentoEstrutura['diagnostico']) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Target size={14} className="text-brand-300" />
-          Diagnóstico Estratégico
-        </CardTitle>
-        <span className="text-[10px] text-muted">aparece na página 3 do PDF</span>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        <ChipList
-          label="Pontos Fortes"
-          accent="emerald"
-          values={value.pontos_fortes}
-          onChange={(pontos_fortes) => onChange({ ...value, pontos_fortes })}
-          placeholder="Ex.: Conteúdo orgânico forte"
-        />
-        <ChipList
-          label="Oportunidades"
-          accent="brand"
-          values={value.oportunidades}
-          onChange={(oportunidades) => onChange({ ...value, oportunidades })}
-          placeholder="Ex.: Escalar com tráfego pago"
-        />
-        <ChipList
-          label="Desafios"
-          accent="red"
-          values={value.desafios}
-          onChange={(desafios) => onChange({ ...value, desafios })}
-          placeholder="Ex.: Baixa conversão no WhatsApp"
-        />
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
-   Pilares estratégicos (chips com sugestões)
-========================================================= */
-
-function PilaresCard({
-  value,
-  onChange,
-}: {
-  value: string[]
-  onChange: (v: string[]) => void
+  values: string[]
+  onChange: (next: string[]) => void
 }) {
   const [novo, setNovo] = useState('')
 
   function toggle(p: string) {
-    onChange(value.includes(p) ? value.filter((x) => x !== p) : [...value, p])
+    onChange(values.includes(p) ? values.filter((x) => x !== p) : [...values, p])
   }
-
   function addCustom() {
     const t = novo.trim().toLowerCase()
-    if (!t || value.includes(t)) return
-    onChange([...value, t])
+    if (!t || values.includes(t)) return
+    onChange([...values, t])
     setNovo('')
   }
-
   function remove(p: string) {
-    onChange(value.filter((x) => x !== p))
+    onChange(values.filter((x) => x !== p))
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles size={14} className="text-brand-300" />
-          Pilares estratégicos
-        </CardTitle>
-        <span className="text-[10px] text-muted">ângulos que vão guiar os criativos</span>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        {value.length === 0 ? (
-          <p className="text-xs text-muted">Nenhum pilar selecionado.</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {value.map((p) => (
-              <span
-                key={p}
-                className="inline-flex items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/15 px-2 py-1 text-xs text-brand-200"
-              >
-                {p}
-                <button
-                  onClick={() => remove(p)}
-                  className="rounded p-0.5 hover:bg-brand-500/20"
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <div>
-          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">Sugestões</p>
-          <div className="flex flex-wrap gap-1.5">
-            {PILARES_SUGERIDOS.filter((p) => !value.includes(p)).map((p) => (
+    <div>
+      <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted">
+        Pilares de conteúdo
+      </label>
+      {values.length === 0 ? (
+        <p className="mb-2 text-xs text-muted">Nenhum pilar selecionado.</p>
+      ) : (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {values.map((p) => (
+            <span
+              key={p}
+              className="inline-flex items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/15 px-2 py-1 text-xs text-brand-200"
+            >
+              {p}
               <button
-                key={p}
-                onClick={() => toggle(p)}
-                className="rounded-md border border-border bg-bg-soft px-2 py-1 text-xs text-zinc-300 hover:border-brand-500/40 hover:text-brand-300"
+                onClick={() => remove(p)}
+                className="rounded p-0.5 hover:bg-brand-500/20"
               >
-                + {p}
+                <X size={10} />
               </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            value={novo}
-            onChange={(e) => setNovo(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustom())}
-            placeholder="Adicionar pilar customizado"
-            className="text-xs"
-          />
-          <Button size="sm" variant="outline" onClick={addCustom} disabled={!novo.trim()}>
-            <Plus size={11} />
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
-   Campanhas (lista expansível com "+ Adicionar")
-========================================================= */
-
-function CampanhasCard({
-  value,
-  onChange,
-}: {
-  value: PlanejamentoEstrutura['campanhas']
-  onChange: (v: PlanejamentoEstrutura['campanhas']) => void
-}) {
-  function add() {
-    onChange([
-      ...value,
-      { titulo: '', subtitulo: '', objetivo: '', publico: '', criativos: [], formatos: [] },
-    ])
-  }
-  function remove(idx: number) {
-    onChange(value.filter((_, i) => i !== idx))
-  }
-  function update(idx: number, patch: Partial<PlanejamentoEstrutura['campanhas'][number]>) {
-    onChange(value.map((c, i) => (i === idx ? { ...c, ...patch } : c)))
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Megaphone size={14} className="text-brand-300" />
-          Campanhas ({value.length})
-        </CardTitle>
-        <Button size="sm" variant="outline" onClick={add}>
-          <Plus size={12} /> Adicionar
-        </Button>
-      </CardHeader>
-      <CardBody>
-        {value.length === 0 ? (
-          <p className="text-xs text-muted">Nenhuma campanha planejada ainda.</p>
-        ) : (
-          <div className="space-y-3">
-            {value.map((c, i) => (
-              <CampanhaItem
-                key={i}
-                index={i}
-                campanha={c}
-                onChange={(patch) => update(i, patch)}
-                onRemove={() => remove(i)}
-              />
-            ))}
-          </div>
-        )}
-      </CardBody>
-    </Card>
-  )
-}
-
-function CampanhaItem({
-  index,
-  campanha,
-  onChange,
-  onRemove,
-}: {
-  index: number
-  campanha: PlanejamentoEstrutura['campanhas'][number]
-  onChange: (patch: Partial<PlanejamentoEstrutura['campanhas'][number]>) => void
-  onRemove: () => void
-}) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="rounded-lg border border-brand-500/30 bg-brand-500/5">
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="flex flex-1 items-center gap-2 text-left"
-        >
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className="text-[11px] uppercase tracking-wider text-brand-300">
-            Campanha {index + 1}
-          </span>
-          {campanha.titulo && (
-            <span className="truncate text-sm text-zinc-100">— {campanha.titulo}</span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
-          title="Remover campanha"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-      {open && (
-        <div className="border-t border-brand-500/20 p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="Título — ex.: Campanha 1: Captação de Seguidores"
-              value={campanha.titulo}
-              onChange={(e) => onChange({ titulo: e.target.value })}
-            />
-            <Input
-              placeholder="Subtítulo — ex.: Reconhecimento de marca"
-              value={campanha.subtitulo ?? ''}
-              onChange={(e) => onChange({ subtitulo: e.target.value })}
-            />
-          </div>
-          <Textarea
-            placeholder="Objetivo — ex.: Aumentar seguidores qualificados no Instagram"
-            value={campanha.objetivo}
-            onChange={(e) => onChange({ objetivo: e.target.value })}
-            className="min-h-[60px]"
-          />
-          <Textarea
-            placeholder="Público estratégico — ex.: Mulheres 25-40 anos, interesse em moda..."
-            value={campanha.publico}
-            onChange={(e) => onChange({ publico: e.target.value })}
-            className="min-h-[60px]"
-          />
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            <ChipList
-              label="Criativos Indicados"
-              accent="brand"
-              values={campanha.criativos}
-              onChange={(criativos) => onChange({ criativos })}
-              placeholder="Ex.: Provador, '1 peça 3 looks'"
-            />
-            <ChipList
-              label="Formatos Ideais"
-              accent="brand"
-              values={campanha.formatos}
-              onChange={(formatos) => onChange({ formatos })}
-              placeholder="Ex.: Reels, Stories, Carrossel"
-            />
-          </div>
+            </span>
+          ))}
         </div>
       )}
+      <div>
+        <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">Sugestões</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PILARES_SUGERIDOS.filter((p) => !values.includes(p)).map((p) => (
+            <button
+              key={p}
+              onClick={() => toggle(p)}
+              className="rounded-md border border-border bg-bg-soft px-2 py-1 text-xs text-zinc-300 hover:border-brand-500/40 hover:text-brand-300"
+            >
+              + {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Input
+          value={novo}
+          onChange={(e) => setNovo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addCustom()
+            }
+          }}
+          placeholder="Adicionar pilar customizado"
+          className="text-xs"
+        />
+        <Button size="sm" variant="outline" onClick={addCustom} disabled={!novo.trim()}>
+          <Plus size={11} />
+        </Button>
+      </div>
     </div>
   )
 }
 
 /* =========================================================
-   Estratégias (lista expansível)
-========================================================= */
-
-function EstrategiasCard({
-  value,
-  onChange,
-}: {
-  value: PlanejamentoEstrutura['estrategias']
-  onChange: (v: PlanejamentoEstrutura['estrategias']) => void
-}) {
-  function add() {
-    onChange([...value, { titulo: '', descricao: '', bullets: [] }])
-  }
-  function remove(idx: number) {
-    onChange(value.filter((_, i) => i !== idx))
-  }
-  function update(idx: number, patch: Partial<PlanejamentoEstrutura['estrategias'][number]>) {
-    onChange(value.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp size={14} className="text-brand-300" />
-          Estratégias adicionais ({value.length})
-        </CardTitle>
-        <Button size="sm" variant="outline" onClick={add}>
-          <Plus size={12} /> Adicionar
-        </Button>
-      </CardHeader>
-      <CardBody>
-        {value.length === 0 ? (
-          <p className="text-xs text-muted">Nenhuma estratégia adicional planejada.</p>
-        ) : (
-          <div className="space-y-3">
-            {value.map((e, i) => (
-              <EstrategiaItem
-                key={i}
-                index={i}
-                estrategia={e}
-                onChange={(patch) => update(i, patch)}
-                onRemove={() => remove(i)}
-              />
-            ))}
-          </div>
-        )}
-      </CardBody>
-    </Card>
-  )
-}
-
-function EstrategiaItem({
-  index,
-  estrategia,
-  onChange,
-  onRemove,
-}: {
-  index: number
-  estrategia: PlanejamentoEstrutura['estrategias'][number]
-  onChange: (patch: Partial<PlanejamentoEstrutura['estrategias'][number]>) => void
-  onRemove: () => void
-}) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="rounded-lg border border-border bg-bg-soft">
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="flex flex-1 items-center gap-2 text-left"
-        >
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className="text-[11px] uppercase tracking-wider text-muted">
-            Estratégia {index + 1}
-          </span>
-          {estrategia.titulo && (
-            <span className="truncate text-sm text-zinc-100">— {estrategia.titulo}</span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
-          title="Remover estratégia"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-      {open && (
-        <div className="border-t border-border p-3 space-y-2">
-          <Input
-            placeholder="Título — ex.: Explorar eventos da cidade"
-            value={estrategia.titulo}
-            onChange={(e) => onChange({ titulo: e.target.value })}
-          />
-          <Textarea
-            placeholder="Descrição — ex.: Shows e eventos locais aumentam muito as vendas"
-            value={estrategia.descricao}
-            onChange={(e) => onChange({ descricao: e.target.value })}
-            className="min-h-[50px]"
-          />
-          <ChipList
-            label="Bullets"
-            accent="brand"
-            values={estrategia.bullets}
-            onChange={(bullets) => onChange({ bullets })}
-            placeholder="Ex.: Looks para evento"
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* =========================================================
-   Helper: ChipList — lista de bullets como chips
+   Helper: ChipList (lista de bullets)
 ========================================================= */
 
 function ChipList({
   label,
-  accent,
   values,
   onChange,
   placeholder,
 }: {
   label: string
-  accent: 'brand' | 'emerald' | 'red'
   values: string[]
   onChange: (next: string[]) => void
   placeholder: string
@@ -535,31 +440,9 @@ function ChipList({
     onChange(values.filter((_, i) => i !== idx))
   }
 
-  const accentMap: Record<
-    typeof accent,
-    { chip: string; remove: string; label: string }
-  > = {
-    brand: {
-      chip: 'border-brand-500/40 bg-brand-500/15 text-brand-200',
-      remove: 'hover:bg-brand-500/20',
-      label: 'text-brand-300',
-    },
-    emerald: {
-      chip: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
-      remove: 'hover:bg-emerald-500/20',
-      label: 'text-emerald-300',
-    },
-    red: {
-      chip: 'border-red-500/40 bg-red-500/15 text-red-200',
-      remove: 'hover:bg-red-500/20',
-      label: 'text-red-300',
-    },
-  }
-  const a = accentMap[accent]
-
   return (
     <div>
-      <label className={cn('mb-1.5 block text-[10px] uppercase tracking-wider', a.label)}>
+      <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted">
         {label}
       </label>
       {values.length > 0 && (
@@ -569,14 +452,14 @@ function ChipList({
               key={i}
               className={cn(
                 'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs',
-                a.chip,
+                'border-brand-500/40 bg-brand-500/15 text-brand-200',
               )}
             >
               {v}
               <button
                 type="button"
                 onClick={() => remove(i)}
-                className={cn('rounded p-0.5', a.remove)}
+                className="rounded p-0.5 hover:bg-brand-500/20"
               >
                 <X size={10} />
               </button>
@@ -604,3 +487,21 @@ function ChipList({
     </div>
   )
 }
+
+/* =========================================================
+   Helper: Field (label + child)
+========================================================= */
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+// Ícone Globe não usado, mas reservado caso adicione mais canais
+void Globe
