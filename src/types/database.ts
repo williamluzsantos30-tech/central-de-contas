@@ -24,7 +24,7 @@ export type TipoOtimizacao =
   | 'ajuste_orcamento'
   | 'teste_ab'
   | 'outro'
-export type OrigemLead = 'kommo' | 'manual' | 'importacao'
+export type OrigemLead = 'kommo' | 'manual' | 'importacao' | 'google_sheets'
 export type TipoCriacao = 'copy_lp' | 'planejamento' | 'roteiro' | 'copy_criativos'
 export type StatusCriacao = 'rascunho' | 'em_revisao' | 'aprovado' | 'publicado'
 export type TipoProjetoWebdesign = 'site_institucional' | 'landing_page' | 'ecommerce' | 'blog' | 'outro'
@@ -168,6 +168,10 @@ export interface Cliente {
   verba_meta: number | null
   fonte_crm: FonteCrm
   kommo_account_id: string | null
+  /** Token secreto usado pelo Apps Script da planilha pra postar leads na RPC. Gerado automaticamente. */
+  crm_sheets_token: string
+  /** URL da planilha do Google Sheets — só pra referência (não é usado pelo Apps Script). */
+  crm_sheets_url: string | null
   link_grupo: string | null
   observacoes: string | null
   // Campos de Social Media
