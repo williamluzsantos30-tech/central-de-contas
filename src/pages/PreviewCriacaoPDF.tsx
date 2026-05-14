@@ -229,6 +229,7 @@ export default function PreviewCriacaoPDF() {
         responsavel_id: null,
         enviado_para_producao_em: null,
         introducao_pdf: null,
+        copy_criativos_estrutura: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as Criacao),

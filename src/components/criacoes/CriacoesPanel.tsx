@@ -26,7 +26,16 @@ import { downloadPlanejamentoTrafegoPDF } from './PlanejamentoTrafegoPDF'
 import { downloadRoteiroPDF } from './RoteiroPDF'
 import { PlanejamentoEstruturaForm, planejamentoEstruturaVazia } from './PlanejamentoEstruturaForm'
 import { RoteiroEstruturaForm, roteiroEstruturaVazia } from './RoteiroEstruturaForm'
-import type { PlanejamentoEstrutura, RoteiroEstrutura } from '@/types/database'
+import {
+  CopyCriativosEstruturaForm,
+  copyCriativosEstruturaVazia,
+  flattenCopyCriativos,
+} from './CopyCriativosEstruturaForm'
+import type {
+  PlanejamentoEstrutura,
+  RoteiroEstrutura,
+  CopyCriativosEstrutura,
+} from '@/types/database'
 import {
   formatDateTime,
   statusCriacaoLabel,
@@ -221,6 +230,7 @@ export function CriacaoModal({
     responsavel_id: profile?.id ?? '',
     planejamento_estrutura: planejamentoEstruturaVazia() as PlanejamentoEstrutura,
     roteiro_estrutura: roteiroEstruturaVazia() as RoteiroEstrutura,
+    copy_criativos_estrutura: copyCriativosEstruturaVazia() as CopyCriativosEstrutura,
   })
   // Template global da introdução por tipo — carregado na abertura
   const [introsConfig, setIntrosConfig] = useState<Record<
@@ -256,6 +266,8 @@ export function CriacaoModal({
         planejamento_estrutura:
           criacao.planejamento_estrutura ?? planejamentoEstruturaVazia(),
         roteiro_estrutura: criacao.roteiro_estrutura ?? roteiroEstruturaVazia(),
+        copy_criativos_estrutura:
+          criacao.copy_criativos_estrutura ?? copyCriativosEstruturaVazia(),
       })
     } else {
       setForm({
@@ -268,6 +280,7 @@ export function CriacaoModal({
         responsavel_id: profile?.id ?? '',
         planejamento_estrutura: planejamentoEstruturaVazia(),
         roteiro_estrutura: roteiroEstruturaVazia(),
+        copy_criativos_estrutura: copyCriativosEstruturaVazia(),
       })
     }
     // Carrega templates globais (cai pros hardcoded em preview/erro)
@@ -288,6 +301,13 @@ export function CriacaoModal({
       return
     }
     setSaving(true)
+    // Pra copy_criativos, achata a estrutura num texto plano e salva em `conteudo`
+    // — o auto-flow envia esse texto pro Webdesign Criativos como copy_texto.
+    const conteudoFinal =
+      tipoEfetivo === 'copy_criativos'
+        ? flattenCopyCriativos(form.copy_criativos_estrutura)
+        : form.conteudo
+
     const payload = {
       cliente_id: cliente.id,
       tipo: tipoEfetivo,
@@ -297,13 +317,13 @@ export function CriacaoModal({
       // Override do "Sobre essa entrega" no PDF — null = usa template global
       introducao_pdf: form.introducao_pdf.trim() || null,
       anexos: form.anexos.length > 0 ? form.anexos : null,
-      conteudo: form.conteudo || null,
-      // Estrutura só faz sentido pro tipo planejamento — salva null pros outros
+      conteudo: conteudoFinal || null,
+      // Schemas estruturados — só faz sentido pro respectivo tipo
       planejamento_estrutura:
         tipoEfetivo === 'planejamento' ? form.planejamento_estrutura : null,
-      // Estrutura só faz sentido pro tipo roteiro
-      roteiro_estrutura:
-        tipoEfetivo === 'roteiro' ? form.roteiro_estrutura : null,
+      roteiro_estrutura: tipoEfetivo === 'roteiro' ? form.roteiro_estrutura : null,
+      copy_criativos_estrutura:
+        tipoEfetivo === 'copy_criativos' ? form.copy_criativos_estrutura : null,
       status: form.status,
       responsavel_id: form.responsavel_id || null,
     }
@@ -353,13 +373,18 @@ export function CriacaoModal({
             fotos: [],
           })
         } else {
-          // copy_criativos → cria criativo aguardando design (status pendente)
+          // copy_criativos → cria criativo aguardando design (status pendente).
+          // Mapeia o formato escolhido na estrutura pro formato do criativo webdesign
+          // (carrossel/feed_estatico/story — outros caem em feed_estatico).
+          const fmt = form.copy_criativos_estrutura.formato
+          const formatoCriativo: 'feed_estatico' | 'story' | 'carrossel' | 'outro' =
+            fmt === 'story' ? 'story' : fmt === 'carrossel' ? 'carrossel' : 'feed_estatico'
           await supabase.from('criativos_webdesign').insert({
             cliente_id: cliente.id,
             titulo: form.titulo.trim(),
-            formato: 'feed_estatico',
+            formato: formatoCriativo,
             status: 'pendente',
-            copy_texto: form.conteudo || null,
+            copy_texto: conteudoFinal || null,
             criacao_origem_id: criacaoId,
             identidade_visual_urls: [],
             fotos: [],
@@ -530,10 +555,10 @@ export function CriacaoModal({
           </Select>
         </div>
 
-        {/* Briefing/Contexto + Arquivos de referência: usados por Copy Criativos
-            e Planejamento. Copy LP e Roteiro têm estrutura própria — não
+        {/* Briefing/Contexto + Arquivos de referência: só pro Planejamento agora.
+            Copy LP, Copy Criativos e Roteiro têm estrutura própria — não
             mostram esses campos pra ficar mais enxuto. */}
-        {(tipoEfetivo === 'copy_criativos' || tipoEfetivo === 'planejamento') && (
+        {tipoEfetivo === 'planejamento' && (
           <>
             <div>
               <Label>Briefing / Contexto</Label>
@@ -608,9 +633,9 @@ export function CriacaoModal({
         )}
 
         {/* "Sobre essa entrega" — texto que aparece no PDF. Vazio = usa o
-            template global (em Admin > Textos do PDF). Não aparece pro
-            planejamento e roteiro (têm forms estruturados próprios). */}
-        {tipoEfetivo !== 'planejamento' && tipoEfetivo !== 'roteiro' && (
+            template global (em Admin > Textos do PDF). Só aparece pra Copy LP
+            agora (planejamento/roteiro/copy_criativos têm forms estruturados). */}
+        {tipoEfetivo === 'copy_lp' && (
           <SobreEssaEntregaField
             tipo={tipoEfetivo}
             value={form.introducao_pdf}
@@ -632,17 +657,20 @@ export function CriacaoModal({
             value={form.roteiro_estrutura}
             onChange={(estrutura) => setForm({ ...form, roteiro_estrutura: estrutura })}
           />
+        ) : tipoEfetivo === 'copy_criativos' ? (
+          <CopyCriativosEstruturaForm
+            value={form.copy_criativos_estrutura}
+            onChange={(estrutura) =>
+              setForm({ ...form, copy_criativos_estrutura: estrutura })
+            }
+          />
         ) : (
           <div>
             <Label>Conteúdo</Label>
             <Textarea
               value={form.conteudo}
               onChange={(e) => setForm({ ...form, conteudo: e.target.value })}
-              placeholder={
-                tipoEfetivo === 'copy_lp'
-                  ? 'Cole aqui a copy completa da landing page (headline, subhead, benefícios, prova social, CTA, etc.).'
-                  : 'Cole aqui o conteúdo.'
-              }
+              placeholder="Cole aqui a copy completa da landing page (headline, subhead, benefícios, prova social, CTA, etc.)."
               className="min-h-[260px] font-mono text-[13px] leading-relaxed"
             />
           </div>

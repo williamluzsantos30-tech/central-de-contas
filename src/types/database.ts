@@ -263,6 +263,28 @@ export interface RoteiroEstrutura {
   trilha?: string
 }
 
+/**
+ * Estrutura usada quando `Criacao.tipo === 'copy_criativos'`.
+ * Mesma linha do Roteiro (3 atos), adaptada pra peças estáticas.
+ */
+export interface CopyCriativosEstrutura {
+  formato?: 'feed_estatico' | 'story' | 'carrossel' | 'outro'
+  plataforma?: string
+  headline?: {
+    texto?: string
+    subheadline?: string
+  }
+  corpo?: {
+    texto?: string
+    pontos_chave?: string[]
+  }
+  cta?: {
+    texto?: string
+    link?: string
+  }
+  hashtags?: string
+}
+
 export interface Criacao {
   id: string
   cliente_id: string
@@ -276,6 +298,8 @@ export interface Criacao {
   planejamento_estrutura: PlanejamentoEstrutura | null
   /** Schema estruturado pro PDF do Roteiro. Null para outros tipos. */
   roteiro_estrutura: RoteiroEstrutura | null
+  /** Schema estruturado pro PDF da Copy Criativos. Null para outros tipos. */
+  copy_criativos_estrutura: CopyCriativosEstrutura | null
   status: StatusCriacao
   responsavel_id: string | null
   /**
