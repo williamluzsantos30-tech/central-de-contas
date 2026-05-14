@@ -45,21 +45,21 @@ import type {
   TipoReferenciaVideo,
 } from '@/types/database'
 
-// Cor do dot da seção (gloomy)
+// Cor do dot da seção
 const statusDot: Record<StatusEdicaoVideo, string> = {
   pendente: 'text-zinc-400',
-  em_edicao: 'text-sky-400',
+  em_edicao: 'text-violet-400',
   em_aprovacao: 'text-amber-400',
-  em_alteracao: 'text-orange-400',
+  em_alteracao: 'text-red-400',
   conclusao: 'text-emerald-400',
 }
 
 // Barra colorida lateral do card (esquerda)
 const statusBar: Record<StatusEdicaoVideo, string> = {
   pendente: 'bg-zinc-500/70',
-  em_edicao: 'bg-sky-500',
+  em_edicao: 'bg-violet-500',
   em_aprovacao: 'bg-amber-500',
-  em_alteracao: 'bg-orange-500',
+  em_alteracao: 'bg-red-500',
   conclusao: 'bg-emerald-500',
 }
 

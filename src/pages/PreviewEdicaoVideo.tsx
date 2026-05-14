@@ -26,9 +26,9 @@ import type {
 
 const statusDot: Record<StatusEdicaoVideo, string> = {
   pendente: 'bg-zinc-400 text-zinc-400',
-  em_edicao: 'bg-sky-400 text-sky-400',
+  em_edicao: 'bg-violet-400 text-violet-400',
   em_aprovacao: 'bg-amber-400 text-amber-400',
-  em_alteracao: 'bg-orange-400 text-orange-400',
+  em_alteracao: 'bg-red-400 text-red-400',
   conclusao: 'bg-emerald-400 text-emerald-400',
 }
 
