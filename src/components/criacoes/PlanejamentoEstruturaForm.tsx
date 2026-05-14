@@ -1,19 +1,10 @@
 /**
  * Formulário estruturado para Planejamento de Tráfego — Modelo A
- * "Por canal/plataforma". Cards: Visão geral, Meta Ads, Google Ads,
- * Orgânico, KPIs alvo.
+ * "Por canal/plataforma". Cards: Visão geral, Meta Ads, Google Ads, KPIs alvo.
+ * (Orgânico/Conteúdo foi removido — fica no Planejamento Mensal de Social Media.)
  */
 import { useState } from 'react'
-import {
-  Plus,
-  X,
-  Sparkles,
-  Target,
-  Megaphone,
-  TrendingUp,
-  Globe,
-  Calendar,
-} from 'lucide-react'
+import { Plus, X, Target, Megaphone, TrendingUp, Calendar } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -26,7 +17,6 @@ export function planejamentoEstruturaVazia(): PlanejamentoEstrutura {
     visao_geral: { mes: '', objetivo: '', orcamento_total: '' },
     meta_ads: { objetivo: '', publico: '', criativos_previstos: [], budget: '' },
     google_ads: { objetivo: '', segmentacao: '', budget: '' },
-    organico: { pilares: [], frequencia: '' },
     kpis: { cpl: '', ctr: '', cpc: '', conversoes: '' },
   }
 }
@@ -53,10 +43,8 @@ export function PlanejamentoEstruturaForm({ value, onChange }: Props) {
         value={v.google_ads ?? {}}
         onChange={(google_ads) => onChange({ ...v, google_ads })}
       />
-      <OrganicoCard
-        value={v.organico ?? {}}
-        onChange={(organico) => onChange({ ...v, organico })}
-      />
+      {/* Orgânico/Conteúdo removido — pilares/cadência são responsabilidade
+          do Planejamento Mensal de Social Media, não do Trafego. */}
       <KPIsCard
         value={v.kpis ?? {}}
         onChange={(kpis) => onChange({ ...v, kpis })}
@@ -224,43 +212,6 @@ function GoogleAdsCard({
 }
 
 /* =========================================================
-   Orgânico / Conteúdo
-========================================================= */
-
-function OrganicoCard({
-  value,
-  onChange,
-}: {
-  value: NonNullable<PlanejamentoEstrutura['organico']>
-  onChange: (v: NonNullable<PlanejamentoEstrutura['organico']>) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles size={14} className="text-brand-300" />
-          Orgânico / Conteúdo
-        </CardTitle>
-        <span className="text-[10px] text-muted">pilares e cadência de postagem</span>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        <PilaresChips
-          values={value.pilares ?? []}
-          onChange={(pilares) => onChange({ ...value, pilares })}
-        />
-        <Field label="Frequência de postagens">
-          <Input
-            value={value.frequencia ?? ''}
-            onChange={(e) => onChange({ ...value, frequencia: e.target.value })}
-            placeholder="Ex.: 3 posts/semana — Seg, Qua e Sex"
-          />
-        </Field>
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
    KPIs alvo
 ========================================================= */
 
@@ -313,103 +264,6 @@ function KPIsCard({
         </div>
       </CardBody>
     </Card>
-  )
-}
-
-/* =========================================================
-   Pilares como chips com sugestões (reutiliza padrão SM)
-========================================================= */
-
-const PILARES_SUGERIDOS = [
-  'conexão',
-  'autoridade',
-  'prova social',
-  'oferta',
-  'remarketing',
-  'urgência',
-  'transformação',
-  'educacional',
-]
-
-function PilaresChips({
-  values,
-  onChange,
-}: {
-  values: string[]
-  onChange: (next: string[]) => void
-}) {
-  const [novo, setNovo] = useState('')
-
-  function toggle(p: string) {
-    onChange(values.includes(p) ? values.filter((x) => x !== p) : [...values, p])
-  }
-  function addCustom() {
-    const t = novo.trim().toLowerCase()
-    if (!t || values.includes(t)) return
-    onChange([...values, t])
-    setNovo('')
-  }
-  function remove(p: string) {
-    onChange(values.filter((x) => x !== p))
-  }
-
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted">
-        Pilares de conteúdo
-      </label>
-      {values.length === 0 ? (
-        <p className="mb-2 text-xs text-muted">Nenhum pilar selecionado.</p>
-      ) : (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {values.map((p) => (
-            <span
-              key={p}
-              className="inline-flex items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/15 px-2 py-1 text-xs text-brand-200"
-            >
-              {p}
-              <button
-                onClick={() => remove(p)}
-                className="rounded p-0.5 hover:bg-brand-500/20"
-              >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div>
-        <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">Sugestões</p>
-        <div className="flex flex-wrap gap-1.5">
-          {PILARES_SUGERIDOS.filter((p) => !values.includes(p)).map((p) => (
-            <button
-              key={p}
-              onClick={() => toggle(p)}
-              className="rounded-md border border-border bg-bg-soft px-2 py-1 text-xs text-zinc-300 hover:border-brand-500/40 hover:text-brand-300"
-            >
-              + {p}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <Input
-          value={novo}
-          onChange={(e) => setNovo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              addCustom()
-            }
-          }}
-          placeholder="Adicionar pilar customizado"
-          className="text-xs"
-        />
-        <Button size="sm" variant="outline" onClick={addCustom} disabled={!novo.trim()}>
-          <Plus size={11} />
-        </Button>
-      </div>
-    </div>
   )
 }
 
@@ -503,5 +357,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-// Ícone Globe não usado, mas reservado caso adicione mais canais
-void Globe

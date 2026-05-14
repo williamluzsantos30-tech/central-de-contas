@@ -716,75 +716,8 @@ function PaginaGoogleAds({
 }
 
 // =========================================================
-// Página 04 — Orgânico
-// =========================================================
-
-function PaginaOrganico({
-  cliente,
-  organico,
-}: {
-  cliente: Cliente
-  organico: NonNullable<PlanejamentoEstrutura['organico']>
-}) {
-  const temConteudo = (organico.pilares?.length ?? 0) > 0 || organico.frequencia
-  if (!temConteudo) return null
-  return (
-    <Page size="A4" orientation="portrait" style={s.page}>
-      <PageHeader numero="04" eyebrow="CONTEÚDO" titulo="Orgânico" />
-      <View style={s.pageBody}>
-        {(organico.pilares?.length ?? 0) > 0 && (
-          <View style={s.card}>
-            <Text style={s.cardLabel}>PILARES DE CONTEÚDO</Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                marginTop: 6,
-              }}
-            >
-              {(organico.pilares ?? []).map((p, i) => (
-                <View
-                  key={i}
-                  style={{
-                    backgroundColor: COR_PRETO,
-                    borderRadius: 16,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    marginRight: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: COR_LARANJA,
-                      fontFamily: 'Helvetica-Bold',
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    {p}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-        {organico.frequencia && (
-          <View style={s.cardDestaque}>
-            <Text style={s.cardLabel}>FREQUÊNCIA DE POSTAGENS</Text>
-            <Text style={[s.cardTitulo, { color: COR_LARANJA_ESCURO, fontSize: 18 }]}>
-              {organico.frequencia}
-            </Text>
-          </View>
-        )}
-      </View>
-      <PageFooter contexto={cliente.nome.toUpperCase()} secao="ORGÂNICO" />
-    </Page>
-  )
-}
-
-// =========================================================
-// Página 05 — KPIs
+// Página 04 — KPIs
+// (Orgânico/Conteúdo foi removido — fica no Planejamento Mensal de SM.)
 // =========================================================
 
 function PaginaKPIs({
@@ -807,7 +740,7 @@ function PaginaKPIs({
 
   return (
     <Page size="A4" orientation="portrait" style={s.page}>
-      <PageHeader numero="05" eyebrow="METAS MENSURÁVEIS" titulo="KPIs Alvo" />
+      <PageHeader numero="04" eyebrow="METAS MENSURÁVEIS" titulo="KPIs Alvo" />
       <View style={s.pageBody}>
         <Text style={s.subHeader}>NÚMEROS QUE GUIAM A OPERAÇÃO</Text>
         <View style={s.kpiGrid}>
@@ -922,18 +855,9 @@ export function PlanejamentoTrafegoPDFDoc({ cliente, criacao }: Props) {
       render: () => <PaginaGoogleAds cliente={cliente} google={estrutura.google_ads!} />,
     })
   }
-  if (estrutura.organico && hasAnyValue(estrutura.organico)) {
-    secoes.push({
-      numero: '04',
-      label: 'SEÇÃO',
-      titulo: 'Orgânico',
-      subtitulo: 'Pilares de conteúdo e cadência de postagem alinhados com a campanha.',
-      render: () => <PaginaOrganico cliente={cliente} organico={estrutura.organico!} />,
-    })
-  }
   if (estrutura.kpis && hasAnyValue(estrutura.kpis)) {
     secoes.push({
-      numero: '05',
+      numero: '04',
       label: 'SEÇÃO',
       titulo: 'KPIs Alvo',
       subtitulo: 'Métricas que vamos perseguir mês a mês. O que faz dar certo.',

@@ -165,10 +165,6 @@ export default function PreviewCriacaoPDF() {
           '"ortodontia invisalign zona sul", "avaliação ortodôntica gratuita", "alinhadores transparentes preço"',
         budget: 'R$ 1.350 (30% do total)',
       },
-      organico: {
-        pilares: ['autoridade', 'prova social', 'educacional', 'transformação'],
-        frequencia: '3 posts/semana — Seg, Qua e Sex às 19h',
-      },
       kpis: {
         cpl: 'R$ 35',
         ctr: '> 2,5%',

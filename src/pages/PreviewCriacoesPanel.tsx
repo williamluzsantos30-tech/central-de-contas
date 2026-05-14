@@ -133,10 +133,6 @@ const criacoesFake: Criacao[] = [
         criativos_previstos: ['Provador', '1 peça 3 looks'],
         budget: 'R$ 3.150',
       },
-      organico: {
-        pilares: ['conexão', 'autoridade', 'prova social'],
-        frequencia: '3 posts/semana',
-      },
       kpis: { cpl: 'R$ 35', ctr: '> 2,5%', cpc: 'R$ 1,20', conversoes: '80 leads' },
     },
     status: 'em_revisao',
