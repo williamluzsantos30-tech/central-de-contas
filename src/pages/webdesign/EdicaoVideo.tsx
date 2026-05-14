@@ -335,8 +335,20 @@ export function EdicaoAccordion({
     e.stopPropagation()
     onClick()
   }
-  void onChanged
-  void previewMode
+
+  // Mudança rápida de status direto pelo dropdown no card.
+  async function mudarStatus(novoStatus: StatusEdicaoVideo) {
+    if (novoStatus === edicao.status) return
+    if (previewMode) {
+      alert('Preview: mudança de status desabilitada.')
+      return
+    }
+    await supabase
+      .from('edicoes_video')
+      .update({ status: novoStatus })
+      .eq('id', edicao.id)
+    onChanged()
+  }
 
   return (
     <div
@@ -407,7 +419,7 @@ export function EdicaoAccordion({
             <IconBadge on={temVideoFinal} icon={Video} title="Vídeo final entregue" />
           </div>
 
-          {/* Direita: prazo, responsável */}
+          {/* Direita: status, prazo, responsável */}
           <div className="flex items-center gap-2">
             {edicao.video_final_url && (
               <a
@@ -422,6 +434,20 @@ export function EdicaoAccordion({
                 vídeo
               </a>
             )}
+            {/* Mover de etapa direto sem abrir modal */}
+            <Select
+              value={edicao.status}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
+              className="h-7 w-36 text-[11px]"
+              title="Mover de etapa"
+            >
+              {ESTEIRA_EDICAO_VIDEO.map((s) => (
+                <option key={s} value={s}>
+                  {statusEdicaoVideoLabel[s]}
+                </option>
+              ))}
+            </Select>
             <PrazoBadge prazo={edicao.prazo} concluido={concluido} />
             {edicao.responsavel ? (
               <Avatar
