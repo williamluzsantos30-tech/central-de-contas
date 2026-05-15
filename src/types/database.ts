@@ -157,6 +157,12 @@ export interface Cliente {
   account_manager_id: string | null
   social_media_id: string | null
   status: StatusCliente
+  /**
+   * Timestamp de quando o cliente foi arquivado (=virou churn). Null = ativo
+   * nas listas. Não-null = some por padrão, só visível com toggle (admin).
+   * Sincronizado automaticamente pelo trigger sync_arquivado_em com `status`.
+   */
+  arquivado_em: string | null
   jornada: JornadaCliente | null
   jornada_social: JornadaSocial | null
   nps: number | null

@@ -165,6 +165,8 @@ export default function SocialClientes() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
+      // Arquivados (churn) ocultos por padrão
+      if (c.arquivado_em) return false
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fSocial && c.social_media_id !== fSocial) return false

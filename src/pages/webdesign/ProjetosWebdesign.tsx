@@ -111,7 +111,7 @@ export default function ProjetosWebdesign() {
         .from('projetos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
-      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
     ])
     setProjetos((pRes.data as ProjetoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])

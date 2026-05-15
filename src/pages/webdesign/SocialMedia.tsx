@@ -162,7 +162,7 @@ export default function SocialMedia() {
         // (responsavel_id + publicado_por). Sem isso, Supabase devolve PGRST201.
         .select('*, responsavel:profiles!responsavel_id(*)')
         .order('ordem', { ascending: true }),
-      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
     ])
     setPlanejamentos((pRes.data as PlanejamentoSocialMedia[]) ?? [])
     setItems((iRes.data as ItemSocialMedia[]) ?? [])

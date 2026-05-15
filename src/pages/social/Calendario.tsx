@@ -90,7 +90,7 @@ export default function CalendarioPostagens() {
     const [iRes, pRes, cRes] = await Promise.all([
       supabase.from('producoes_social_media_items').select('*'),
       supabase.from('producoes_social_media').select('*, cliente:clientes(*)'),
-      supabase.from('clientes').select('*').eq('status', 'ativo').order('nome'),
+      supabase.from('clientes').select('*').eq('status', 'ativo').is('arquivado_em', null).order('nome'),
     ])
     const allItems = (iRes.data as ItemSocialMedia[]) ?? []
     const planejamentos = (pRes.data as PlanejamentoSocialMedia[]) ?? []

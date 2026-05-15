@@ -122,7 +122,7 @@ export default function CriativosWebdesign() {
         .from('criativos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
-      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
     ])
     setCriativos((pRes.data as CriativoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])

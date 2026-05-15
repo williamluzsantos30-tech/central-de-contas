@@ -40,9 +40,13 @@ export default function Clientes() {
   // Cargos operacionais começam vendo só "os meus". Diretoria/head/admin veem todos.
   const cargoOperacional = temAlgumCargo(profile, ['gestor_trafego', 'account_manager'])
   const isAdmin = profile?.role === 'admin'
+  const podeVerArquivados =
+    isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
     !isAdmin && cargoOperacional ? 'meus' : 'todos',
   )
+  // Por padrão esconde arquivados (churn). Admin pode ligar.
+  const [mostrarArquivados, setMostrarArquivados] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -78,6 +82,10 @@ export default function Clientes() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
+      // Arquivados (churn) ficam ocultos por padrão. Toggle mostra apenas eles.
+      const eArquivado = !!c.arquivado_em
+      if (mostrarArquivados && !eArquivado) return false
+      if (!mostrarArquivados && eArquivado) return false
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fGestor && c.gestor_id !== fGestor) return false
@@ -93,14 +101,18 @@ export default function Clientes() {
       }
       return true
     })
-  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile])
+  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
   return (
     <div>
       <PageHeader
-        title="Clientes"
+        title={mostrarArquivados ? 'Clientes arquivados' : 'Clientes'}
         description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'}${
-          escopo === 'meus' ? ' atribuídos a você' : ' cadastrados'
+          mostrarArquivados
+            ? ' arquivados (churn)'
+            : escopo === 'meus'
+            ? ' atribuídos a você'
+            : ' cadastrados'
         }`}
         actions={
           <Button
@@ -182,6 +194,21 @@ export default function Clientes() {
               </option>
             ))}
           </Select>
+          {podeVerArquivados && (
+            <button
+              type="button"
+              onClick={() => setMostrarArquivados((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors',
+                mostrarArquivados
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+                  : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
+              )}
+              title="Mostrar apenas clientes arquivados (churn)"
+            >
+              {mostrarArquivados ? '↻ Voltar pra ativos' : '📁 Ver arquivados'}
+            </button>
+          )}
         </CardBody>
       </Card>
 

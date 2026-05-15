@@ -116,7 +116,7 @@ export default function EdicaoVideo() {
         .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
         .order('ordem', { ascending: true })
         .order('created_at', { ascending: false }),
-      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
     ])
     setEdicoes((eRes.data as EdicaoVideo[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
