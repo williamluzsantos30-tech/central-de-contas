@@ -2108,6 +2108,8 @@ function ItemReferenciasField({
 }) {
   const [url, setUrl] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement | null>(null)
 
   function detectTipo(u: string): 'drive' | 'youtube' | 'vimeo' | 'link' {
     const low = u.toLowerCase()
@@ -2121,10 +2123,10 @@ function ItemReferenciasField({
     drive: 'Drive',
     youtube: 'YouTube',
     vimeo: 'Vimeo',
-    link: 'Link',
+    link: 'Arquivo',
   }
 
-  function add() {
+  function addUrl() {
     const u = url.trim()
     if (!u) return
     onChange([
@@ -2133,6 +2135,28 @@ function ItemReferenciasField({
     ])
     setUrl('')
     setDescricao('')
+  }
+
+  async function onFilesSelected(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    const novas: ItemSocialMedia['referencias'] = []
+    for (const file of Array.from(files)) {
+      const u = await uploadToStorageSafe(file, 'social/referencias', 'webdesign-assets')
+      if (!u) continue
+      novas.push({
+        tipo: 'link',
+        url: u,
+        // Se o usuário digitou descrição antes de subir, usa ela; senão usa nome do arquivo
+        descricao: descricao.trim() || file.name,
+      })
+    }
+    if (novas.length > 0) {
+      onChange([...values, ...novas])
+      setDescricao('')
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
   }
 
   function remove(idx: number) {
@@ -2144,7 +2168,7 @@ function ItemReferenciasField({
       <div className="mb-2 flex items-center gap-2">
         <Sparkles size={12} className="text-brand-300" />
         <h4 className="text-sm font-semibold text-brand-200">Referências</h4>
-        <span className="text-[10px] text-muted">— Drive, YouTube, links</span>
+        <span className="text-[10px] text-muted">— Drive, YouTube, links ou upload</span>
       </div>
       {values.length > 0 && (
         <ul className="mb-2 space-y-1.5">
@@ -2178,31 +2202,46 @@ function ItemReferenciasField({
           ))}
         </ul>
       )}
-      <div className="grid grid-cols-[1fr_auto] gap-2">
+      <div className="grid grid-cols-[1fr_auto_auto] gap-2">
         <Input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              add()
+              addUrl()
             }
           }}
-          placeholder="Cole URL (Drive, YouTube, Vimeo ou link genérico)"
+          placeholder="Cole URL (Drive, YouTube, Vimeo, link)"
           className="h-8 text-xs"
         />
-        <Button size="sm" variant="outline" onClick={add} disabled={!url.trim()}>
+        <Button size="sm" variant="outline" onClick={addUrl} disabled={!url.trim()}>
           <Plus size={11} /> URL
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          <Upload size={11} /> {uploading ? 'Enviando...' : 'Upload'}
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => onFilesSelected(e.target.files)}
+        />
       </div>
       <Input
         value={descricao}
         onChange={(e) => setDescricao(e.target.value)}
-        placeholder='Descrição opcional (ex.: "Pasta com brutos da gravação")'
+        placeholder='Descrição opcional (ex.: "Pasta com brutos") — usada também como nome do arquivo'
         className="mt-2 h-8 text-xs"
       />
       <p className="mt-1 text-[10px] text-muted">
-        Tipo detectado automaticamente pela URL.
+        URLs: tipo detectado pela URL. Upload: vai pro Storage MovMed.
       </p>
     </div>
   )
