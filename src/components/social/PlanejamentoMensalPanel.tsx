@@ -242,8 +242,14 @@ function DatasAprovacao({
   }
 
   async function toggleAprovado() {
-    const novoValor = plano.aprovado_em ? null : new Date().toISOString()
+    const aprovando = !plano.aprovado_em
+    const novoValor = aprovando ? new Date().toISOString() : null
     await saveField('aprovado_em', novoValor)
+    if (aprovando) {
+      alert(
+        '✓ Planejamento aprovado!\n\nAs ideias agora aparecem na esteira de produção em Operacional Webdesign · Produção social media.',
+      )
+    }
   }
 
   const hojeStr = new Date().toISOString().slice(0, 10)

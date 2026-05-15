@@ -151,20 +151,28 @@ export default function SocialMedia() {
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [pRes, iRes, cRes] = await Promise.all([
+    // Esteira de produção mostra SÓ planejamentos aprovados pelo cliente.
+    // Enquanto está no Planejamento Mensal sem aprovação, não polui a esteira
+    // — assim o designer só vê o que pode/deve trabalhar.
+    const [pRes, cRes] = await Promise.all([
       supabase
         .from('producoes_social_media')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('producoes_social_media_items')
-        // Explicita FK porque a tabela tem 2 relações com profiles
-        // (responsavel_id + publicado_por). Sem isso, Supabase devolve PGRST201.
-        .select('*, responsavel:profiles!responsavel_id(*)')
-        .order('ordem', { ascending: true }),
+        .not('aprovado_em', 'is', null)
+        .order('aprovado_em', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
     ])
-    setPlanejamentos((pRes.data as PlanejamentoSocialMedia[]) ?? [])
+    const planejamentosAprovados = (pRes.data as PlanejamentoSocialMedia[]) ?? []
+    const idsAprovados = planejamentosAprovados.map((p) => p.id)
+    // Items só dos planejamentos aprovados
+    const iRes = idsAprovados.length
+      ? await supabase
+          .from('producoes_social_media_items')
+          .select('*, responsavel:profiles!responsavel_id(*)')
+          .in('producao_id', idsAprovados)
+          .order('ordem', { ascending: true })
+      : { data: [] as ItemSocialMedia[] }
+    setPlanejamentos(planejamentosAprovados)
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
     if (!silent) setLoading(false)
@@ -292,9 +300,10 @@ export default function SocialMedia() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-bg-soft/40 p-12 text-center">
-          <p className="text-sm text-zinc-200">Nenhum planejamento encontrado</p>
+          <p className="text-sm text-zinc-200">Nenhum planejamento aprovado ainda</p>
           <p className="mt-1 text-xs text-muted">
-            Clique em <span className="text-brand-300">Novo planejamento</span> para começar.
+            A esteira de produção mostra apenas planejamentos com <span className="text-brand-300">aprovação do cliente</span>.
+            Aprove o planejamento mensal em <em>Social → Cliente → Planejamento mensal → "Marcar como aprovado"</em> e ele aparece aqui.
           </p>
         </div>
       ) : (
