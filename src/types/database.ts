@@ -515,6 +515,22 @@ export interface Tarefa {
   template?: TaskTemplate | null
 }
 
+/**
+ * Log de açoes em tarefas (atualmente: só exclusão).
+ * Snapshot completo dos dados da tarefa antes da exclusão + quem fez.
+ */
+export interface TarefaLog {
+  id: string
+  acao: 'delete' | 'update' | 'insert'
+  tarefa_id: string
+  tarefa_data: Record<string, unknown>
+  ator_user_id: string | null
+  ator_nome: string | null
+  ator_email: string | null
+  cliente_id: string | null
+  created_at: string
+}
+
 export interface TarefaComentario {
   id: string
   tarefa_id: string
