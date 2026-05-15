@@ -437,6 +437,11 @@ export interface ItemSocialMedia {
   copy_texto: string | null
   copy_arquivo_url: string | null
   artes_prontas: string[]
+  /**
+   * Referências por arte (Drive, YouTube, Vimeo, links). Mesma estrutura
+   * usada em edicoes_video.referencias. Cada entrada: {tipo, url, descricao}.
+   */
+  referencias: EdicaoReferencia[]
   observacoes: string | null
   ordem: number
   // Marcação de publicação (playbook 3.3 e KPI #1)

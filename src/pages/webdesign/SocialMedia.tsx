@@ -1480,6 +1480,7 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
       copy_texto: item.copy_texto ?? '',
       copy_arquivo_url: stripBlobUrl(item.copy_arquivo_url),
       artes_prontas: stripBlobUrls(item.artes_prontas),
+      referencias: (item.referencias ?? []) as ItemSocialMedia['referencias'],
       observacoes: item.observacoes ?? '',
     }),
     [item],
@@ -1501,6 +1502,8 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
       payload.copy_arquivo_url = form.copy_arquivo_url || null
     if (JSON.stringify(form.artes_prontas) !== JSON.stringify(base.artes_prontas))
       payload.artes_prontas = form.artes_prontas
+    if (JSON.stringify(form.referencias) !== JSON.stringify(base.referencias))
+      payload.referencias = form.referencias
     if (form.observacoes !== base.observacoes)
       payload.observacoes = form.observacoes || null
 
@@ -1672,6 +1675,12 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
           </div>
         )}
       </div>
+
+      {/* Referências por arte — links de Drive/YouTube/Vimeo + descrição */}
+      <ItemReferenciasField
+        values={form.referencias}
+        onChange={(referencias) => setForm({ ...form, referencias })}
+      />
 
       <Field label="Observações">
         <Textarea
@@ -2082,5 +2091,119 @@ function NovoPlanejamentoModal({
         </Field>
       </div>
     </Modal>
+  )
+}
+
+/* =========================================================
+   Campo de Referências por arte (Drive/YouTube/Vimeo/links)
+   Mesma estrutura usada em EdicaoVideo
+========================================================= */
+
+function ItemReferenciasField({
+  values,
+  onChange,
+}: {
+  values: ItemSocialMedia['referencias']
+  onChange: (next: ItemSocialMedia['referencias']) => void
+}) {
+  const [url, setUrl] = useState('')
+  const [descricao, setDescricao] = useState('')
+
+  function detectTipo(u: string): 'drive' | 'youtube' | 'vimeo' | 'link' {
+    const low = u.toLowerCase()
+    if (low.includes('drive.google')) return 'drive'
+    if (low.includes('youtube.com') || low.includes('youtu.be')) return 'youtube'
+    if (low.includes('vimeo.com')) return 'vimeo'
+    return 'link'
+  }
+
+  const tipoLabel: Record<'drive' | 'youtube' | 'vimeo' | 'link', string> = {
+    drive: 'Drive',
+    youtube: 'YouTube',
+    vimeo: 'Vimeo',
+    link: 'Link',
+  }
+
+  function add() {
+    const u = url.trim()
+    if (!u) return
+    onChange([
+      ...values,
+      { tipo: detectTipo(u), url: u, descricao: descricao.trim() || null },
+    ])
+    setUrl('')
+    setDescricao('')
+  }
+
+  function remove(idx: number) {
+    onChange(values.filter((_, i) => i !== idx))
+  }
+
+  return (
+    <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Sparkles size={12} className="text-brand-300" />
+        <h4 className="text-sm font-semibold text-brand-200">Referências</h4>
+        <span className="text-[10px] text-muted">— Drive, YouTube, links</span>
+      </div>
+      {values.length > 0 && (
+        <ul className="mb-2 space-y-1.5">
+          {values.map((r, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-2.5 py-1.5"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <Badge tone="neutral" className="text-[9px] shrink-0">
+                  {tipoLabel[r.tipo]}
+                </Badge>
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate text-xs text-brand-300 hover:underline"
+                  title={r.url}
+                >
+                  {r.descricao || r.url}
+                </a>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
+              >
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              add()
+            }
+          }}
+          placeholder="Cole URL (Drive, YouTube, Vimeo ou link genérico)"
+          className="h-8 text-xs"
+        />
+        <Button size="sm" variant="outline" onClick={add} disabled={!url.trim()}>
+          <Plus size={11} /> URL
+        </Button>
+      </div>
+      <Input
+        value={descricao}
+        onChange={(e) => setDescricao(e.target.value)}
+        placeholder='Descrição opcional (ex.: "Pasta com brutos da gravação")'
+        className="mt-2 h-8 text-xs"
+      />
+      <p className="mt-1 text-[10px] text-muted">
+        Tipo detectado automaticamente pela URL.
+      </p>
+    </div>
   )
 }
