@@ -75,11 +75,15 @@ export function CriacoesPanel({ cliente }: Props) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('criacoes')
-      .select('*, responsavel:profiles(*)')
+      .select('*, responsavel:profiles!responsavel_id(*)')
       .eq('cliente_id', cliente.id)
       .order('updated_at', { ascending: false })
+    if (error) {
+      console.error('Erro ao carregar Criações:', error)
+      alert('Erro ao carregar Criações: ' + error.message)
+    }
     setCriacoes((data as Criacao[]) ?? [])
     setLoading(false)
   }
@@ -337,13 +341,36 @@ export function CriacaoModal({
     let criacaoId = criacao?.id ?? null
 
     if (criacao) {
-      await supabase.from('criacoes').update(payload).eq('id', criacao.id)
+      const { error: errUpd } = await supabase
+        .from('criacoes')
+        .update(payload)
+        .eq('id', criacao.id)
+      if (errUpd) {
+        console.error('Erro ao atualizar Criação:', errUpd)
+        alert(
+          'Erro ao salvar: ' +
+            errUpd.message +
+            '\n\nProvavelmente falta rodar alguma migration no Supabase (021, 022, 024 — referentes a planejamento/roteiro/copy criativos estruturados).',
+        )
+        setSaving(false)
+        return
+      }
     } else {
-      const { data } = await supabase
+      const { data, error: errIns } = await supabase
         .from('criacoes')
         .insert(payload)
         .select('id')
         .single()
+      if (errIns) {
+        console.error('Erro ao criar Criação:', errIns)
+        alert(
+          'Erro ao criar: ' +
+            errIns.message +
+            '\n\nProvavelmente falta rodar alguma migration no Supabase (021, 022, 024 — referentes a planejamento/roteiro/copy criativos estruturados).',
+        )
+        setSaving(false)
+        return
+      }
       criacaoId = (data as { id: string } | null)?.id ?? null
     }
 
