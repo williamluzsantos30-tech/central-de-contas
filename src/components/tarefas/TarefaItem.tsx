@@ -30,7 +30,16 @@ interface Props {
   comentariosCount?: number
 }
 
-/** Calcula a próxima data de vencimento baseada na frequência + template. */
+/** Se a data cair em sáb/dom, empurra pra segunda. Não mexe em dias úteis. */
+function skipWeekend(d: Date): Date {
+  const dow = d.getDay() // 0=dom, 6=sab
+  if (dow === 6) d.setDate(d.getDate() + 2)
+  else if (dow === 0) d.setDate(d.getDate() + 1)
+  return d
+}
+
+/** Calcula a próxima data de vencimento baseada na frequência + template.
+ *  Pula sáb/dom em todas as frequências recorrentes. */
 function computeNextDueDate(tarefa: Tarefa): string | null {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -38,7 +47,7 @@ function computeNextDueDate(tarefa: Tarefa): string | null {
   if (tarefa.frequencia === 'diaria') {
     const d = new Date(today)
     d.setDate(d.getDate() + 1)
-    return d.toISOString().slice(0, 10)
+    return skipWeekend(d).toISOString().slice(0, 10)
   }
 
   if (tarefa.frequencia === 'semanal') {
@@ -46,22 +55,24 @@ function computeNextDueDate(tarefa: Tarefa): string | null {
     if (dias.length === 0) {
       const d = new Date(today)
       d.setDate(d.getDate() + 7)
-      return d.toISOString().slice(0, 10)
+      return skipWeekend(d).toISOString().slice(0, 10)
     }
+    // Se o usuário escolheu dias específicos, respeita a escolha — mas se
+    // mesmo assim cair em fds (config errada), empurra pra segunda.
     for (let i = 1; i <= 7; i++) {
       const d = new Date(today)
       d.setDate(d.getDate() + i)
-      if (dias.includes(d.getDay())) return d.toISOString().slice(0, 10)
+      if (dias.includes(d.getDay())) return skipWeekend(d).toISOString().slice(0, 10)
     }
     const d = new Date(today)
     d.setDate(d.getDate() + 7)
-    return d.toISOString().slice(0, 10)
+    return skipWeekend(d).toISOString().slice(0, 10)
   }
 
   if (tarefa.frequencia === 'mensal') {
     const diaMes = tarefa.template?.dia_mes ?? today.getDate()
     const next = new Date(today.getFullYear(), today.getMonth() + 1, diaMes)
-    return next.toISOString().slice(0, 10)
+    return skipWeekend(next).toISOString().slice(0, 10)
   }
 
   return null
