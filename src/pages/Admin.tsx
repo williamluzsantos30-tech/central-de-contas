@@ -84,39 +84,156 @@ export default function Admin() {
   async function load() {
     setLoading(true)
     const today = new Date().toISOString().slice(0, 10)
-    const [uRes, tRes] = await Promise.all([
+    // Carrega: usuários, tarefas, items de design (4 tipos) e clientes
+    // (pra mapear papéis no cliente quando responsavel_id está null).
+    const [uRes, tRes, pRes, crRes, evRes, smRes, cRes] = await Promise.all([
       supabase.from('profiles').select('*').order('nome'),
       supabase
         .from('tarefas')
-        .select('status, data_vencimento, responsavel_id, responsavel:profiles(nome)'),
+        .select('status, data_vencimento, responsavel_id, cliente_id'),
+      supabase
+        .from('projetos_webdesign')
+        .select('status, prazo, responsavel_id, cliente_id'),
+      supabase
+        .from('criativos_webdesign')
+        .select('status, prazo, responsavel_id, cliente_id'),
+      supabase
+        .from('edicoes_video')
+        .select('status, prazo, responsavel_id, cliente_id'),
+      supabase
+        .from('producoes_social_media_items')
+        .select('status, prazo, responsavel_id'),
+      supabase
+        .from('clientes')
+        .select('id, account_manager_id, gestor_id, social_media_id'),
     ])
-    setUsuarios((uRes.data as Profile[]) ?? [])
+    const usuariosArr = (uRes.data as Profile[]) ?? []
+    setUsuarios(usuariosArr)
 
-    const tarefas = (tRes.data as {
+    // Mapa user_id -> nome (pra exibir)
+    const nomePorUser = new Map<string, string>()
+    for (const u of usuariosArr) nomePorUser.set(u.id, u.nome)
+
+    // Mapa cliente_id -> papéis
+    type ClienteRoles = {
+      account_manager_id: string | null
+      gestor_id: string | null
+      social_media_id: string | null
+    }
+    const clienteRolesMap = new Map<string, ClienteRoles>()
+    for (const c of ((cRes.data ?? []) as Array<{ id: string } & ClienteRoles>)) {
+      clienteRolesMap.set(c.id, {
+        account_manager_id: c.account_manager_id,
+        gestor_id: c.gestor_id,
+        social_media_id: c.social_media_id,
+      })
+    }
+
+    // Estrutura unificada de "item de trabalho"
+    type WI = {
+      concluida: boolean
+      atrasada: boolean
+      responsavel_id: string | null
+      cliente_id: string | null
+      origem: 'tarefa' | 'design'
+    }
+    const todos: WI[] = []
+
+    // tarefas
+    for (const t of ((tRes.data ?? []) as Array<{
       status: string
       data_vencimento: string | null
       responsavel_id: string | null
-      responsavel: { nome: string } | null
-    }[]) ?? []
-    const total = tarefas.length
-    const concluidas = tarefas.filter((t) => t.status === 'concluida').length
-    const atrasadas = tarefas.filter(
-      (t) => t.status !== 'concluida' && t.data_vencimento && t.data_vencimento < today,
-    ).length
-    const porGestorMap = new Map<string, { pendentes: number; concluidas: number }>()
-    for (const t of tarefas) {
-      const nome = t.responsavel?.nome ?? 'Sem responsável'
-      const cur = porGestorMap.get(nome) ?? { pendentes: 0, concluidas: 0 }
-      if (t.status === 'concluida') cur.concluidas++
-      else cur.pendentes++
-      porGestorMap.set(nome, cur)
+      cliente_id: string
+    }>)) {
+      const concluida = t.status === 'concluida'
+      todos.push({
+        concluida,
+        atrasada:
+          !concluida && !!t.data_vencimento && t.data_vencimento < today,
+        responsavel_id: t.responsavel_id,
+        cliente_id: t.cliente_id,
+        origem: 'tarefa',
+      })
     }
+
+    function pushDesign(rows: Array<{
+      status: string
+      prazo: string | null
+      responsavel_id: string | null
+      cliente_id: string | null
+    }>) {
+      for (const r of rows) {
+        const concluida = r.status === 'conclusao'
+        todos.push({
+          concluida,
+          atrasada: !concluida && !!r.prazo && r.prazo < today,
+          responsavel_id: r.responsavel_id,
+          cliente_id: r.cliente_id,
+          origem: 'design',
+        })
+      }
+    }
+    pushDesign((pRes.data ?? []) as Parameters<typeof pushDesign>[0])
+    pushDesign((crRes.data ?? []) as Parameters<typeof pushDesign>[0])
+    pushDesign((evRes.data ?? []) as Parameters<typeof pushDesign>[0])
+    // social_items não têm cliente_id direto
+    for (const i of ((smRes.data ?? []) as Array<{
+      status: string
+      prazo: string | null
+      responsavel_id: string | null
+    }>)) {
+      const concluida = i.status === 'conclusao'
+      todos.push({
+        concluida,
+        atrasada: !concluida && !!i.prazo && i.prazo < today,
+        responsavel_id: i.responsavel_id,
+        cliente_id: null,
+        origem: 'design',
+      })
+    }
+
+    const total = todos.length
+    const concluidas = todos.filter((it) => it.concluida).length
+    const atrasadas = todos.filter((it) => it.atrasada).length
+
+    // Produtividade por responsável: para cada usuário, conta items onde
+    // ele é responsável direto OU (pra tarefas) AM/Gestor/SM do cliente.
+    const porUserMap = new Map<string, { pendentes: number; concluidas: number }>()
+    for (const u of usuariosArr) {
+      const meus = todos.filter((it) => {
+        if (it.responsavel_id === u.id) return true
+        if (it.origem !== 'tarefa') return false
+        if (!it.cliente_id) return false
+        const c = clienteRolesMap.get(it.cliente_id)
+        if (!c) return false
+        return (
+          c.account_manager_id === u.id ||
+          c.gestor_id === u.id ||
+          c.social_media_id === u.id
+        )
+      })
+      if (meus.length === 0) continue
+      const cur = { pendentes: 0, concluidas: 0 }
+      for (const it of meus) {
+        if (it.concluida) cur.concluidas++
+        else cur.pendentes++
+      }
+      porUserMap.set(nomePorUser.get(u.id) ?? 'Sem nome', cur)
+    }
+
     setStats({
       total,
       concluidas,
       atrasadas,
       taxa: total > 0 ? Math.round((concluidas / total) * 100) : 0,
-      porGestor: Array.from(porGestorMap.entries()).map(([nome, v]) => ({ nome, ...v })),
+      porGestor: Array.from(porUserMap.entries())
+        .map(([nome, v]) => ({ nome, ...v }))
+        // Ordena por TOTAL desc (mais ativo primeiro)
+        .sort(
+          (a, b) =>
+            b.concluidas + b.pendentes - (a.concluidas + a.pendentes),
+        ),
     })
     setLoading(false)
   }
