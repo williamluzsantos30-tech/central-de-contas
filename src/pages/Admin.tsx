@@ -1076,8 +1076,28 @@ interface ColaboradorStats {
   porFrequencia: { diaria: number; semanal: number; mensal: number; esporadica: number }
 }
 
+/**
+ * Item de trabalho unificado pra cálculo de performance.
+ * Mapeia tarefas + projetos_webdesign + criativos_webdesign + edicoes_video
+ * + producoes_social_media_items pra uma estrutura comum.
+ */
+interface WorkItem {
+  id: string
+  origem: 'tarefa' | 'projeto' | 'criativo' | 'edicao_video' | 'social_item'
+  responsavel_id: string | null
+  cliente_id: string | null
+  // Status normalizado: 'concluida' | outro
+  concluida: boolean
+  // Prazo (data limite) — pode ser data_vencimento (tarefa) ou prazo (demais)
+  prazo: string | null
+  // Quando foi concluída (data_conclusao da tarefa OU updated_at dos demais
+  // se status=conclusao). Usado pra calcular pontualidade.
+  data_conclusao: string | null
+  frequencia?: string
+}
+
 function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
-  const [tarefas, setTarefas] = useState<Tarefa[]>([])
+  const [items, setItems] = useState<WorkItem[]>([])
   const [clientesMap, setClientesMap] = useState<
     Record<string, {
       account_manager_id: string | null
@@ -1090,16 +1110,106 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
 
   async function load() {
     setLoading(true)
-    const [tRes, cRes] = await Promise.all([
+    // Carrega tarefas + os 4 tipos de "trabalho" do design + clientes
+    const [tRes, pRes, crRes, evRes, smRes, cRes] = await Promise.all([
       supabase
         .from('tarefas')
-        .select('*, responsavel:profiles!responsavel_id(*)')
-        .order('data_vencimento', { ascending: false }),
+        .select('id, status, data_vencimento, data_conclusao, responsavel_id, cliente_id, frequencia'),
+      supabase
+        .from('projetos_webdesign')
+        .select('id, status, prazo, responsavel_id, cliente_id, updated_at'),
+      supabase
+        .from('criativos_webdesign')
+        .select('id, status, prazo, responsavel_id, cliente_id, updated_at'),
+      supabase
+        .from('edicoes_video')
+        .select('id, status, prazo, responsavel_id, cliente_id, updated_at'),
+      supabase
+        .from('producoes_social_media_items')
+        .select('id, status, prazo, responsavel_id, producao_id, updated_at'),
       supabase
         .from('clientes')
         .select('id, account_manager_id, gestor_id, social_media_id'),
     ])
-    setTarefas((tRes.data as Tarefa[]) ?? [])
+
+    const unified: WorkItem[] = []
+
+    // tarefas
+    for (const t of (tRes.data ?? []) as Array<{
+      id: string
+      status: string
+      data_vencimento: string | null
+      data_conclusao: string | null
+      responsavel_id: string | null
+      cliente_id: string
+      frequencia: string
+    }>) {
+      unified.push({
+        id: t.id,
+        origem: 'tarefa',
+        responsavel_id: t.responsavel_id,
+        cliente_id: t.cliente_id,
+        concluida: t.status === 'concluida',
+        prazo: t.data_vencimento,
+        data_conclusao: t.data_conclusao,
+        frequencia: t.frequencia,
+      })
+    }
+
+    function mapDesign(
+      rows: Array<{
+        id: string
+        status: string
+        prazo: string | null
+        responsavel_id: string | null
+        cliente_id: string | null
+        updated_at: string | null
+      }>,
+      origem: WorkItem['origem'],
+    ) {
+      for (const r of rows) {
+        const concluida = r.status === 'conclusao'
+        unified.push({
+          id: r.id,
+          origem,
+          responsavel_id: r.responsavel_id,
+          cliente_id: r.cliente_id,
+          concluida,
+          prazo: r.prazo,
+          // Sem campo data_conclusao explícito — usa updated_at como proxy
+          // quando o status já é 'conclusao'.
+          data_conclusao: concluida ? r.updated_at : null,
+        })
+      }
+    }
+
+    mapDesign((pRes.data ?? []) as Parameters<typeof mapDesign>[0], 'projeto')
+    mapDesign((crRes.data ?? []) as Parameters<typeof mapDesign>[0], 'criativo')
+    mapDesign((evRes.data ?? []) as Parameters<typeof mapDesign>[0], 'edicao_video')
+
+    // social_item: usa producao_id como referência (não tem cliente direto;
+    // pra performance não precisa do cliente exato)
+    for (const i of (smRes.data ?? []) as Array<{
+      id: string
+      status: string
+      prazo: string | null
+      responsavel_id: string | null
+      producao_id: string
+      updated_at: string | null
+    }>) {
+      const concluida = i.status === 'conclusao'
+      unified.push({
+        id: i.id,
+        origem: 'social_item',
+        responsavel_id: i.responsavel_id,
+        cliente_id: null,
+        concluida,
+        prazo: i.prazo,
+        data_conclusao: concluida ? i.updated_at : null,
+      })
+    }
+
+    setItems(unified)
     const map: typeof clientesMap = {}
     for (const c of (cRes.data ?? []) as Array<{
       id: string
@@ -1133,25 +1243,31 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
             return d.toISOString().slice(0, 10)
           })()
 
-    const tarefasFiltradas = cutoff
-      ? tarefas.filter((t) => {
-          // Inclui tarefas concluídas no período OU criadas/com vencimento no período
-          if (t.data_conclusao && t.data_conclusao.slice(0, 10) >= cutoff) return true
-          if (t.data_vencimento && t.data_vencimento >= cutoff) return true
+    const itemsFiltrados = cutoff
+      ? items.filter((it) => {
+          // Inclui items concluídos no período OU com prazo no período
+          if (it.data_conclusao && it.data_conclusao.slice(0, 10) >= cutoff) return true
+          if (it.prazo && it.prazo >= cutoff) return true
           return false
         })
-      : tarefas
+      : items
+
+    const todayStr = today.toISOString().slice(0, 10)
 
     return usuarios
       .map<ColaboradorStats>((u) => {
-        // Conta uma tarefa pro colaborador se ELE é:
-        //  • Responsável direto da tarefa (responsavel_id), OU
-        //  • Account Manager / Gestor de Tráfego / Social Media do cliente
-        // Isso evita o caso comum de tarefas sem responsavel_id (criadas sem
-        // selecionar responsável) ficarem invisíveis pra todo mundo.
-        const minhas = tarefasFiltradas.filter((t) => {
-          if (t.responsavel_id === u.id) return true
-          const c = clientesMap[t.cliente_id]
+        // Conta um item de trabalho pro colaborador se ELE é:
+        //  • Responsável direto (responsavel_id), OU
+        //  • AM / Gestor / Social Media do cliente (só pra tarefas — pros
+        //    items de design o responsavel é direto)
+        const minhas = itemsFiltrados.filter((it) => {
+          if (it.responsavel_id === u.id) return true
+          // Pra itens de design (projeto/criativo/edicao/social_item),
+          // só conta se for responsavel direto. Pra tarefas, vale também
+          // o papel no cliente.
+          if (it.origem !== 'tarefa') return false
+          if (!it.cliente_id) return false
+          const c = clientesMap[it.cliente_id]
           if (!c) return false
           return (
             c.account_manager_id === u.id ||
@@ -1160,31 +1276,25 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
           )
         })
         const total = minhas.length
-        const concluidas = minhas.filter((t) => t.status === 'concluida').length
+        const concluidas = minhas.filter((it) => it.concluida).length
         const pendentes = minhas.filter(
-          (t) =>
-            t.status !== 'concluida' &&
-            (!t.data_vencimento || t.data_vencimento >= today.toISOString().slice(0, 10)),
+          (it) => !it.concluida && (!it.prazo || it.prazo >= todayStr),
         ).length
         const atrasadas = minhas.filter(
-          (t) =>
-            t.status !== 'concluida' &&
-            t.data_vencimento &&
-            t.data_vencimento < today.toISOString().slice(0, 10),
+          (it) => !it.concluida && it.prazo && it.prazo < todayStr,
         ).length
 
         const concluidasComDatas = minhas.filter(
-          (t) => t.status === 'concluida' && t.data_conclusao && t.data_vencimento,
+          (it) => it.concluida && it.data_conclusao && it.prazo,
         )
         const noPrazo = concluidasComDatas.filter(
-          (t) => (t.data_conclusao ?? '').slice(0, 10) <= (t.data_vencimento ?? ''),
+          (it) => (it.data_conclusao ?? '').slice(0, 10) <= (it.prazo ?? ''),
         ).length
         const forada = concluidasComDatas.length - noPrazo
 
         const taxaConclusao = total > 0 ? (concluidas / total) * 100 : 0
         const taxaPontualidade =
           concluidasComDatas.length > 0 ? (noPrazo / concluidasComDatas.length) * 100 : 0
-        // Score: 60% conclusão + 30% pontualidade + 10% penalidade por atrasadas
         const penalidade = total > 0 ? (atrasadas / total) * 100 : 0
         const score = Math.max(
           0,
@@ -1192,10 +1302,10 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         )
 
         const porFrequencia = {
-          diaria: minhas.filter((t) => t.frequencia === 'diaria').length,
-          semanal: minhas.filter((t) => t.frequencia === 'semanal').length,
-          mensal: minhas.filter((t) => t.frequencia === 'mensal').length,
-          esporadica: minhas.filter((t) => t.frequencia === 'esporadica').length,
+          diaria: minhas.filter((it) => it.frequencia === 'diaria').length,
+          semanal: minhas.filter((it) => it.frequencia === 'semanal').length,
+          mensal: minhas.filter((it) => it.frequencia === 'mensal').length,
+          esporadica: minhas.filter((it) => it.frequencia === 'esporadica').length,
         }
 
         return {
@@ -1213,7 +1323,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         }
       })
       .sort((a, b) => b.score - a.score || b.concluidas - a.concluidas)
-  }, [usuarios, tarefas, periodo])
+  }, [usuarios, items, clientesMap, periodo])
 
   // KPIs do time todo
   const teamKpis = useMemo(() => {
