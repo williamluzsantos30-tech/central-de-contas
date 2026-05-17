@@ -649,6 +649,7 @@ function ProjetoEditor({
       identidade_visual_urls: identidadeVisualUrls,
       fotos: stripBlobUrls(projeto.fotos),
       copy_arquivo_url: stripBlobUrl(projeto.copy_arquivo_url),
+      copy_texto: projeto.copy_texto ?? '',
       observacoes: projeto.observacoes ?? '',
     }
   }, [projeto])
@@ -740,6 +741,8 @@ function ProjetoEditor({
       payload.fotos = form.fotos
     if (form.copy_arquivo_url !== base.copy_arquivo_url)
       payload.copy_arquivo_url = form.copy_arquivo_url || null
+    if (form.copy_texto !== base.copy_texto)
+      payload.copy_texto = form.copy_texto || null
     if (form.observacoes !== base.observacoes)
       payload.observacoes = form.observacoes || null
 
@@ -913,9 +916,26 @@ function ProjetoEditor({
 
       <Section
         title="Copy do projeto"
-        subtitle="Upload do arquivo com a copy final (PDF, DOC, TXT, etc.)"
+        subtitle="Texto da copy (recebido automaticamente da Criação aprovada) e/ou arquivo"
         icon={Sparkles}
       >
+        {/* Texto da copy — vem preenchido quando o projeto foi criado via
+            aprovação de uma Copy LP em Criações */}
+        <div className="mb-3">
+          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">
+            Texto da copy {projeto.criacao_origem_id && '(vindo da Criação aprovada)'}
+          </p>
+          <Textarea
+            value={form.copy_texto}
+            onChange={(e) => setForm({ ...form, copy_texto: e.target.value })}
+            placeholder="Cole aqui a copy completa da landing page OU recebida automaticamente da Criação."
+            className="min-h-[200px] font-mono text-[13px] leading-relaxed"
+          />
+        </div>
+
+        <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">
+          Arquivo de copy (PDF/DOC)
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={form.copy_arquivo_url}
