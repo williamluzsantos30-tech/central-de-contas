@@ -1078,16 +1078,42 @@ interface ColaboradorStats {
 
 function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
+  const [clientesMap, setClientesMap] = useState<
+    Record<string, {
+      account_manager_id: string | null
+      gestor_id: string | null
+      social_media_id: string | null
+    }>
+  >({})
   const [loading, setLoading] = useState(true)
   const [periodo, setPeriodo] = useState<Periodo>('30d')
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('tarefas')
-      .select('*, responsavel:profiles(*)')
-      .order('data_vencimento', { ascending: false })
-    setTarefas((data as Tarefa[]) ?? [])
+    const [tRes, cRes] = await Promise.all([
+      supabase
+        .from('tarefas')
+        .select('*, responsavel:profiles!responsavel_id(*)')
+        .order('data_vencimento', { ascending: false }),
+      supabase
+        .from('clientes')
+        .select('id, account_manager_id, gestor_id, social_media_id'),
+    ])
+    setTarefas((tRes.data as Tarefa[]) ?? [])
+    const map: typeof clientesMap = {}
+    for (const c of (cRes.data ?? []) as Array<{
+      id: string
+      account_manager_id: string | null
+      gestor_id: string | null
+      social_media_id: string | null
+    }>) {
+      map[c.id] = {
+        account_manager_id: c.account_manager_id,
+        gestor_id: c.gestor_id,
+        social_media_id: c.social_media_id,
+      }
+    }
+    setClientesMap(map)
     setLoading(false)
   }
 
@@ -1118,7 +1144,21 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
 
     return usuarios
       .map<ColaboradorStats>((u) => {
-        const minhas = tarefasFiltradas.filter((t) => t.responsavel_id === u.id)
+        // Conta uma tarefa pro colaborador se ELE é:
+        //  • Responsável direto da tarefa (responsavel_id), OU
+        //  • Account Manager / Gestor de Tráfego / Social Media do cliente
+        // Isso evita o caso comum de tarefas sem responsavel_id (criadas sem
+        // selecionar responsável) ficarem invisíveis pra todo mundo.
+        const minhas = tarefasFiltradas.filter((t) => {
+          if (t.responsavel_id === u.id) return true
+          const c = clientesMap[t.cliente_id]
+          if (!c) return false
+          return (
+            c.account_manager_id === u.id ||
+            c.gestor_id === u.id ||
+            c.social_media_id === u.id
+          )
+        })
         const total = minhas.length
         const concluidas = minhas.filter((t) => t.status === 'concluida').length
         const pendentes = minhas.filter(
@@ -1181,12 +1221,23 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
     const totalConcluidas = stats.reduce((s, c) => s + c.concluidas, 0)
     const totalAtrasadas = stats.reduce((s, c) => s + c.atrasadas, 0)
     const taxaTime = totalTarefas > 0 ? Math.round((totalConcluidas / totalTarefas) * 100) : 0
+    // Score médio só considera quem TEM tarefas no período — pessoas
+    // sem tarefas (score = 0) puxariam a média artificialmente pra baixo.
+    const ativos = stats.filter((c) => c.total > 0)
     const scoreMedio =
-      stats.length > 0
-        ? Math.round(stats.reduce((s, c) => s + c.score, 0) / stats.length)
+      ativos.length > 0
+        ? Math.round(ativos.reduce((s, c) => s + c.score, 0) / ativos.length)
         : 0
     const top = stats[0]
-    return { totalTarefas, totalConcluidas, totalAtrasadas, taxaTime, scoreMedio, top }
+    return {
+      totalTarefas,
+      totalConcluidas,
+      totalAtrasadas,
+      taxaTime,
+      scoreMedio,
+      ativosCount: ativos.length,
+      top,
+    }
   }, [stats])
 
   if (loading) {
@@ -1224,6 +1275,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
           icon={<Target size={15} />}
           label="Score médio do time"
           value={`${teamKpis.scoreMedio}%`}
+          subtitle={`${teamKpis.ativosCount} ativo(s) no período`}
           tone={teamKpis.scoreMedio >= 75 ? 'success' : teamKpis.scoreMedio >= 50 ? 'warning' : 'danger'}
         />
         <KpiCard
