@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -29,6 +29,7 @@ export function TemplatesTab() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<TaskTemplate | null>(null)
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -56,20 +57,61 @@ export function TemplatesTab() {
     load()
   }
 
+  async function sincronizar() {
+    if (
+      !confirm(
+        'Sincronizar templates: pra cada cliente ativo, vai CRIAR as tarefas faltantes (baseadas nos templates ativos). Não duplica trabalho em aberto. Continuar?',
+      )
+    )
+      return
+    setSyncing(true)
+    const { data, error } = await supabase.rpc('sync_tarefas_faltantes')
+    setSyncing(false)
+    if (error) {
+      alert('Erro ao sincronizar: ' + error.message)
+      return
+    }
+    const n = Array.isArray(data) ? data.length : 0
+    if (n === 0) {
+      alert('Nenhuma tarefa faltando — está tudo sincronizado.')
+    } else {
+      // Resumo por cliente
+      const porCliente: Record<string, number> = {}
+      for (const row of data as { cliente_nome: string }[]) {
+        porCliente[row.cliente_nome] = (porCliente[row.cliente_nome] ?? 0) + 1
+      }
+      const resumo = Object.entries(porCliente)
+        .map(([nome, qtd]) => `• ${nome}: ${qtd} tarefa(s)`)
+        .join('\n')
+      alert(`${n} tarefa(s) criada(s):\n\n${resumo}`)
+    }
+  }
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted">
           Templates ativos são aplicados automaticamente quando um novo cliente é cadastrado.
         </p>
-        <Button
-          onClick={() => {
-            setEditing(null)
-            setModalOpen(true)
-          }}
-        >
-          <Plus size={14} /> Novo template
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={sincronizar}
+            disabled={syncing}
+            title="Cria tarefas faltantes pra todos os clientes ativos. Útil quando alguém deletou tarefa por engano ou quando um template novo foi adicionado."
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar clientes'}
+          </Button>
+          <Button
+            onClick={() => {
+              setEditing(null)
+              setModalOpen(true)
+            }}
+          >
+            <Plus size={14} /> Novo template
+          </Button>
+        </div>
       </div>
 
       <Card>
