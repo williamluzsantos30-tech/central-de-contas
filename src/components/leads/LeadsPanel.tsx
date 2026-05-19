@@ -462,28 +462,88 @@ function ConectarGoogleSheetsModal({
   }
 
   const appsScriptCode = `/**
- * MovMed CRM — envio automático de leads pro Central de Contas.
- * Toda vez que uma nova linha for adicionada na planilha (manual,
- * Google Forms, automação), este script POSTa o lead pra plataforma.
+ * MovMed CRM — envio automático de leads pro Central de Contas (v3)
  *
- * Mapeamento de colunas: lê a primeira linha (cabeçalhos) e detecta
- * nome/telefone/email/etapa/valor automaticamente.
+ * 2 funções:
+ *   1) enviarParaCRM(e)   — chamada pelo trigger "Em edição"
+ *   2) testarConexao()    — rode manualmente pra debugar (não usa planilha)
+ *
+ * Logs aparecem em Apps Script → Execuções → clicar na linha.
  */
 const RPC_URL = ${JSON.stringify(rpcUrl)};
 const ANON_KEY = ${JSON.stringify(ANON_KEY ?? 'CONFIGURE_VITE_SUPABASE_ANON_KEY')};
 const TOKEN = ${JSON.stringify(cliente.crm_sheets_token)};
 
-function enviarParaCRM(e) {
-  try {
-    const sheet = e && e.range ? e.range.getSheet() : SpreadsheetApp.getActiveSheet();
-    const row = e && e.range ? e.range.getRow() : sheet.getLastRow();
-    if (row < 2) return; // pula linha de cabeçalho
+/**
+ * Dispara um lead FAKE direto pra plataforma, sem depender da planilha.
+ * Use pra confirmar que a URL/token/permissões estão corretas.
+ *
+ * Como rodar: dropdown ao lado do botão Executar → escolhe testarConexao → ▶
+ */
+function testarConexao() {
+  console.log('[testarConexao] Iniciando...');
+  console.log('[testarConexao] RPC_URL =', RPC_URL);
+  console.log('[testarConexao] TOKEN (primeiros 8 chars) =', TOKEN.substring(0, 8) + '...');
 
-    const lastCol = sheet.getLastColumn();
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+  var payload = {
+    p_token: TOKEN,
+    p_nome: 'TESTE MANUAL Apps Script',
+    p_telefone: '+55 11 9' + new Date().getTime().toString().slice(-8),
+    p_email: null,
+    p_etapa: 'Teste manual do script',
+    p_valor: null,
+    p_data_entrada: new Date().toISOString(),
+    p_observacoes: 'Disparado pela função testarConexao do Apps Script',
+    p_fonte: 'sheets'
+  };
+
+  console.log('[testarConexao] Payload:', JSON.stringify(payload));
+
+  var response = UrlFetchApp.fetch(RPC_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + ANON_KEY
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  console.log('[testarConexao] Status HTTP:', response.getResponseCode());
+  console.log('[testarConexao] Body:', response.getContentText());
+
+  if (response.getResponseCode() === 200) {
+    console.log('[testarConexao] ✅ SUCESSO — lead criado na plataforma');
+  } else {
+    console.log('[testarConexao] ❌ FALHA — verifique URL/token/permissões');
+  }
+}
+
+/**
+ * Trigger "Em edição": detecta colunas pelo nome do cabeçalho (linha 1)
+ * e envia o lead pra plataforma.
+ */
+function enviarParaCRM(e) {
+  console.log('[enviarParaCRM] Trigger disparado');
+
+  try {
+    var sheet = e && e.range ? e.range.getSheet() : SpreadsheetApp.getActiveSheet();
+    var row = e && e.range ? e.range.getRow() : sheet.getLastRow();
+    console.log('[enviarParaCRM] Sheet:', sheet.getName(), '| Row editada:', row);
+
+    if (row < 2) {
+      console.log('[enviarParaCRM] ⊘ Linha 1 (cabeçalho) — ignorando');
+      return;
+    }
+
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
       return String(h || '').toLowerCase().trim();
     });
-    const values = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
+    var values = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
+    console.log('[enviarParaCRM] Headers detectados:', JSON.stringify(headers));
+    console.log('[enviarParaCRM] Values da linha ' + row + ':', JSON.stringify(values));
 
     function find() {
       for (var i = 0; i < arguments.length; i++) {
@@ -504,7 +564,12 @@ function enviarParaCRM(e) {
     var data = find('data', 'data de entrada', 'carimbo de data/hora');
     var observacoes = find('observações', 'observacoes', 'notas', 'obs');
 
-    if (!nome && !telefone) return; // linha em branco
+    console.log('[enviarParaCRM] Extraído — nome:', nome, '| telefone:', telefone, '| etapa:', etapa);
+
+    if (!nome && !telefone) {
+      console.log('[enviarParaCRM] ⊘ Linha sem nome nem telefone — ignorando. Verifique os cabeçalhos da linha 1.');
+      return;
+    }
 
     var payload = {
       p_token: TOKEN,
@@ -517,6 +582,7 @@ function enviarParaCRM(e) {
       p_observacoes: observacoes ? String(observacoes) : null,
       p_fonte: 'sheets'
     };
+    console.log('[enviarParaCRM] Enviando POST...');
 
     var response = UrlFetchApp.fetch(RPC_URL, {
       method: 'post',
@@ -529,10 +595,16 @@ function enviarParaCRM(e) {
       muteHttpExceptions: true
     });
 
-    Logger.log('Status: ' + response.getResponseCode());
-    Logger.log('Body: ' + response.getContentText());
+    console.log('[enviarParaCRM] Status HTTP:', response.getResponseCode());
+    console.log('[enviarParaCRM] Body:', response.getContentText());
+
+    if (response.getResponseCode() === 200) {
+      console.log('[enviarParaCRM] ✅ Lead enviado com sucesso');
+    } else {
+      console.log('[enviarParaCRM] ❌ Falha — verifique a aba "Últimos eventos" na plataforma');
+    }
   } catch (err) {
-    Logger.log('Erro: ' + err);
+    console.log('[enviarParaCRM] ❌ Exception:', err.toString());
   }
 }
 `
