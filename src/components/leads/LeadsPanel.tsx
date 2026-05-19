@@ -503,8 +503,7 @@ function testarConexao() {
     method: 'post',
     contentType: 'application/json',
     headers: {
-      'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + ANON_KEY
+      'apikey': ANON_KEY
     },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
