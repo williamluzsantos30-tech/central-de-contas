@@ -1,13 +1,49 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Upload, FileSpreadsheet, Copy, Check, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Plus,
+  Upload,
+  FileSpreadsheet,
+  Copy,
+  Check,
+  RefreshCw,
+  Send,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+} from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import type { Cliente, Lead } from '@/types/database'
+
+interface IngestLogRow {
+  id: string
+  ts: string
+  http_status: number | null
+  ok: boolean
+  lead_id: string | null
+  acao: string | null
+  erro: string | null
+  payload: Record<string, unknown> | null
+  fonte: string | null
+}
+
+interface CrmSheetsStatusRow {
+  cliente_id: string
+  has_token: boolean
+  crm_sheets_url: string | null
+  last_event_at: string | null
+  last_success_at: string | null
+  last_error_at: string | null
+  last_error_msg: string | null
+  eventos_24h: number
+  eventos_7d: number
+  sucesso_24h: number
+}
 
 interface Props {
   cliente: Cliente
@@ -288,7 +324,12 @@ function ImportCsv({
 }
 
 /* =========================================================
-   Modal: Conectar Google Sheets (webhook via Apps Script)
+   Modal: Conectar Google Sheets — v2
+   - Status header (verde/amarelo/vermelho)
+   - Token + endpoint visíveis (copy)
+   - Testar conexão (dispara POST de teste real)
+   - Apps Script v2 (com Authorization Bearer)
+   - Painel de últimos eventos
 ========================================================= */
 
 function ConectarGoogleSheetsModal({
@@ -313,10 +354,46 @@ function ConectarGoogleSheetsModal({
   const [copying, setCopying] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [savingUrl, setSavingUrl] = useState(false)
+  const [status, setStatus] = useState<CrmSheetsStatusRow | null>(null)
+  const [logs, setLogs] = useState<IngestLogRow[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<
+    | { ok: true; msg: string }
+    | { ok: false; msg: string }
+    | null
+  >(null)
 
   useEffect(() => {
     setSheetsUrl(cliente.crm_sheets_url ?? '')
   }, [cliente.crm_sheets_url])
+
+  const carregarStatus = useCallback(async () => {
+    setLoadingLogs(true)
+    const [statusRes, logsRes] = await Promise.all([
+      supabase
+        .from('crm_sheets_status')
+        .select('*')
+        .eq('cliente_id', cliente.id)
+        .maybeSingle(),
+      supabase
+        .from('crm_sheets_ingest_log')
+        .select('*')
+        .eq('cliente_id', cliente.id)
+        .order('ts', { ascending: false })
+        .limit(20),
+    ])
+    setStatus((statusRes.data as CrmSheetsStatusRow) ?? null)
+    setLogs((logsRes.data as IngestLogRow[]) ?? [])
+    setLoadingLogs(false)
+  }, [cliente.id])
+
+  useEffect(() => {
+    if (open) {
+      void carregarStatus()
+      setTestResult(null)
+    }
+  }, [open, carregarStatus])
 
   function copy(value: string, key: string) {
     navigator.clipboard.writeText(value)
@@ -332,7 +409,6 @@ function ConectarGoogleSheetsModal({
     )
       return
     setRegenerating(true)
-    // Gera token novo (32 chars hex) no banco
     const novoToken = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
@@ -355,74 +431,102 @@ function ConectarGoogleSheetsModal({
     onSaved()
   }
 
+  async function testarConexao() {
+    setTesting(true)
+    setTestResult(null)
+    const stamp = new Date()
+      .toLocaleTimeString('pt-BR', { hour12: false })
+      .replace(/:/g, '')
+    const { data, error } = await supabase.rpc('intake_lead_from_sheets', {
+      p_token: cliente.crm_sheets_token,
+      p_nome: `TESTE — ${stamp}`,
+      p_telefone: `+55 11 9TESTE${stamp}`,
+      p_email: null,
+      p_etapa: 'Teste de integração',
+      p_valor: null,
+      p_data_entrada: new Date().toISOString(),
+      p_observacoes: 'Lead de teste disparado pela plataforma (não é real)',
+      p_fonte: 'test',
+    })
+    setTesting(false)
+    if (error) {
+      setTestResult({ ok: false, msg: error.message })
+    } else {
+      setTestResult({
+        ok: true,
+        msg: `Lead de teste criado (id ${String(data).slice(0, 8)}…). Veja na lista de leads.`,
+      })
+      onSaved()
+    }
+    void carregarStatus()
+  }
+
   const appsScriptCode = `/**
  * MovMed CRM — envio automático de leads pro Central de Contas.
  * Toda vez que uma nova linha for adicionada na planilha (manual,
  * Google Forms, automação), este script POSTa o lead pra plataforma.
  *
- * Mapeamento de colunas: o script lê a primeira linha (headers) e
- * tenta detectar nome/telefone/email/etapa/valor automaticamente.
- *
- * Configure o trigger em Acionadores → onEdit (ou onFormSubmit
- * se a planilha estiver ligada a um Google Forms).
+ * Mapeamento de colunas: lê a primeira linha (cabeçalhos) e detecta
+ * nome/telefone/email/etapa/valor automaticamente.
  */
-const SUPABASE_URL = ${JSON.stringify(rpcUrl)};
+const RPC_URL = ${JSON.stringify(rpcUrl)};
 const ANON_KEY = ${JSON.stringify(ANON_KEY ?? 'CONFIGURE_VITE_SUPABASE_ANON_KEY')};
 const TOKEN = ${JSON.stringify(cliente.crm_sheets_token)};
 
 function enviarParaCRM(e) {
   try {
-    const sheet = e ? e.range.getSheet() : SpreadsheetApp.getActiveSheet();
-    const row = e ? e.range.getRow() : sheet.getLastRow();
-    if (row < 2) return; // pula header
+    const sheet = e && e.range ? e.range.getSheet() : SpreadsheetApp.getActiveSheet();
+    const row = e && e.range ? e.range.getRow() : sheet.getLastRow();
+    if (row < 2) return; // pula linha de cabeçalho
 
-    // Lê headers (linha 1) e a linha de dados
     const lastCol = sheet.getLastColumn();
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h =>
-      String(h || '').toLowerCase().trim()
-    );
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+      return String(h || '').toLowerCase().trim();
+    });
     const values = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
 
-    // Helper: encontra coluna pelo nome (com sinônimos)
-    function find(...nomes) {
-      for (const n of nomes) {
-        const i = headers.indexOf(n);
-        if (i >= 0) return values[i];
+    function find() {
+      for (var i = 0; i < arguments.length; i++) {
+        var idx = headers.indexOf(arguments[i]);
+        if (idx >= 0) return values[idx];
       }
       return null;
     }
 
-    const nome = find('nome', 'nome completo', 'cliente');
-    const telefone = find('telefone', 'whatsapp', 'celular', 'fone');
-    const email = find('email', 'e-mail');
-    const etapa = find('etapa', 'status', 'fase');
-    const valorBruto = find('valor', 'ticket', 'preço', 'preco');
-    const valor = valorBruto ? Number(String(valorBruto).replace(/[^\\d,.-]/g, '').replace(',', '.')) : null;
-    const data = find('data', 'data de entrada', 'carimbo de data/hora');
-    const observacoes = find('observações', 'observacoes', 'notas', 'obs');
+    var nome = find('nome', 'nome completo', 'cliente');
+    var telefone = find('telefone', 'whatsapp', 'celular', 'fone');
+    var email = find('email', 'e-mail');
+    var etapa = find('etapa', 'status', 'fase');
+    var valorBruto = find('valor', 'ticket', 'preço', 'preco');
+    var valor = valorBruto
+      ? Number(String(valorBruto).replace(/[^\\d,.-]/g, '').replace(',', '.'))
+      : null;
+    var data = find('data', 'data de entrada', 'carimbo de data/hora');
+    var observacoes = find('observações', 'observacoes', 'notas', 'obs');
 
-    // Não envia se não tem nem nome nem telefone (linha em branco)
-    if (!nome && !telefone) return;
+    if (!nome && !telefone) return; // linha em branco
 
-    const payload = {
+    var payload = {
       p_token: TOKEN,
       p_nome: nome ? String(nome) : null,
       p_telefone: telefone ? String(telefone) : null,
       p_email: email ? String(email) : null,
       p_etapa: etapa ? String(etapa) : null,
-      p_valor: isNaN(valor) ? null : valor,
+      p_valor: valor && !isNaN(valor) ? valor : null,
       p_data_entrada: data ? new Date(data).toISOString() : null,
       p_observacoes: observacoes ? String(observacoes) : null,
+      p_fonte: 'sheets'
     };
 
-    const response = UrlFetchApp.fetch(SUPABASE_URL, {
+    var response = UrlFetchApp.fetch(RPC_URL, {
       method: 'post',
       contentType: 'application/json',
       headers: {
         'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + ANON_KEY
       },
       payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
+      muteHttpExceptions: true
     });
 
     Logger.log('Status: ' + response.getResponseCode());
@@ -433,12 +537,36 @@ function enviarParaCRM(e) {
 }
 `
 
+  // Status visual
+  const hasEvents = !!status?.last_event_at
+  const lastEventAgo = status?.last_event_at
+    ? minutosAtras(status.last_event_at)
+    : null
+  const tone: 'success' | 'warning' | 'danger' | 'neutral' = !hasEvents
+    ? 'neutral'
+    : (lastEventAgo ?? 99999) < 60 * 24 && (status?.sucesso_24h ?? 0) > 0
+    ? 'success'
+    : status?.last_error_at && lastEventAgo !== null && lastEventAgo < 60 * 6
+    ? 'danger'
+    : 'warning'
+
+  const statusLabel = !hasEvents
+    ? 'Sem eventos ainda'
+    : tone === 'success'
+    ? 'Conectado e funcionando'
+    : tone === 'danger'
+    ? 'Erro no último evento'
+    : 'Sem eventos recentes'
+
+  const StatusIcon =
+    tone === 'success' ? CircleCheck : tone === 'danger' ? CircleAlert : CircleDot
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Conectar Google Sheets — CRM"
-      className="max-w-3xl"
+      title="CRM Google Sheets — Integração"
+      className="max-w-4xl"
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -447,16 +575,148 @@ function enviarParaCRM(e) {
         </div>
       }
     >
-      <div className="space-y-5 text-sm">
-        <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 p-3 text-xs leading-relaxed text-brand-200">
-          <strong>Como funciona:</strong> você instala um pequeno script na planilha
-          desse cliente. Toda vez que uma linha nova for adicionada, o script POSTa
-          o lead direto pra essa página em tempo real. Sem importar CSV manualmente.
+      <div className="space-y-4 text-sm">
+        {/* STATUS HEADER */}
+        <div
+          className={
+            'rounded-lg border p-3 ' +
+            (tone === 'success'
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : tone === 'danger'
+              ? 'border-red-500/30 bg-red-500/5'
+              : tone === 'warning'
+              ? 'border-amber-500/30 bg-amber-500/5'
+              : 'border-border bg-bg-soft')
+          }
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <StatusIcon
+                size={20}
+                className={
+                  tone === 'success'
+                    ? 'text-emerald-400'
+                    : tone === 'danger'
+                    ? 'text-red-400'
+                    : tone === 'warning'
+                    ? 'text-amber-400'
+                    : 'text-muted'
+                }
+              />
+              <div>
+                <p className="text-sm font-semibold text-zinc-100">{statusLabel}</p>
+                <p className="text-[11px] text-muted">
+                  {hasEvents ? (
+                    <>
+                      Último evento{' '}
+                      <strong className="text-zinc-300">
+                        {agoLabel(status?.last_event_at)}
+                      </strong>{' '}
+                      · {status?.sucesso_24h ?? 0} sucesso(s) nas últimas 24h
+                      {(status?.eventos_24h ?? 0) - (status?.sucesso_24h ?? 0) > 0 && (
+                        <>
+                          {' '}· {(status?.eventos_24h ?? 0) - (status?.sucesso_24h ?? 0)}{' '}
+                          erro(s)
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>Configure o Apps Script abaixo. Quando começar a chegar lead, aparece aqui.</>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void carregarStatus()}
+                disabled={loadingLogs}
+              >
+                <RefreshCw size={12} className={loadingLogs ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+              <Button size="sm" onClick={testarConexao} disabled={testing}>
+                <Send size={12} />
+                {testing ? 'Enviando...' : 'Testar conexão'}
+              </Button>
+            </div>
+          </div>
+          {testResult && (
+            <div
+              className={
+                'mt-2 rounded border px-2 py-1.5 text-[11px] ' +
+                (testResult.ok
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  : 'border-red-500/30 bg-red-500/10 text-red-200')
+              }
+            >
+              {testResult.ok ? '✓ ' : '✗ '} {testResult.msg}
+            </div>
+          )}
+          {status?.last_error_msg && tone !== 'success' && (
+            <div className="mt-2 rounded border border-red-500/20 bg-red-500/5 px-2 py-1.5 font-mono text-[10px] text-red-300">
+              Último erro: {status.last_error_msg}
+            </div>
+          )}
         </div>
 
-        {/* Passo 1: URL da planilha (referência) */}
-        <Section numero="1" titulo="URL da planilha (opcional, só pra referência)">
-          <div className="flex gap-2">
+        {/* CREDENCIAIS — token + endpoint */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-border bg-bg-soft p-3">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Token do cliente
+              </span>
+              <button
+                type="button"
+                onClick={regenerarToken}
+                disabled={regenerating}
+                className="text-[10px] text-muted hover:text-red-300 underline-offset-2 hover:underline"
+              >
+                <RefreshCw size={9} className="inline" /> Regenerar
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <Input
+                value={cliente.crm_sheets_token}
+                readOnly
+                className="flex-1 font-mono text-[11px]"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => copy(cliente.crm_sheets_token, 'token')}
+              >
+                {copying === 'token' ? <Check size={12} /> : <Copy size={12} />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-bg-soft p-3">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Endpoint RPC
+              </span>
+              <span className="text-[10px] text-muted">readonly</span>
+            </div>
+            <div className="flex gap-1.5">
+              <Input value={rpcUrl} readOnly className="flex-1 font-mono text-[11px]" />
+              <Button size="sm" variant="outline" onClick={() => copy(rpcUrl, 'url')}>
+                {copying === 'url' ? <Check size={12} /> : <Copy size={12} />}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* URL DA PLANILHA — referência */}
+        <div className="rounded-lg border border-border bg-bg-soft p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              URL da planilha (referência — opcional)
+            </span>
+          </div>
+          <div className="flex gap-1.5">
             <Input
               value={sheetsUrl}
               onChange={(e) => setSheetsUrl(e.target.value)}
@@ -472,57 +732,15 @@ function enviarParaCRM(e) {
               {savingUrl ? 'Salvando...' : 'Salvar'}
             </Button>
           </div>
-        </Section>
+        </div>
 
-        {/* Passo 2: token (read-only, copy) */}
-        <Section
-          numero="2"
-          titulo="Token deste cliente (secreto)"
-          extra={
-            <button
-              type="button"
-              onClick={regenerarToken}
-              disabled={regenerating}
-              className="text-[10px] text-muted hover:text-red-300 underline-offset-2 hover:underline"
-              title="Cria um token novo e invalida o atual"
-            >
-              <RefreshCw size={10} className="inline" /> Regenerar
-            </button>
-          }
-        >
-          <div className="flex gap-2">
-            <Input
-              value={cliente.crm_sheets_token}
-              readOnly
-              className="flex-1 font-mono text-xs"
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => copy(cliente.crm_sheets_token, 'token')}
-            >
-              {copying === 'token' ? (
-                <>
-                  <Check size={12} /> Copiado
-                </>
-              ) : (
-                <>
-                  <Copy size={12} /> Copiar
-                </>
-              )}
-            </Button>
-          </div>
-          <p className="mt-1 text-[10px] text-muted">
-            Cada cliente tem um token único. Não compartilhe — é o que autoriza o envio
-            de leads pra esse cliente específico.
-          </p>
-        </Section>
-
-        {/* Passo 3: instruções + código */}
-        <Section
-          numero="3"
-          titulo="Código do Apps Script (copia e cola na planilha)"
-          extra={
+        {/* APPS SCRIPT CODE */}
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-200">
+              <FileSpreadsheet size={14} className="text-brand-300" />
+              Código Apps Script (v2)
+            </h4>
             <Button
               size="sm"
               variant="outline"
@@ -538,93 +756,153 @@ function enviarParaCRM(e) {
                 </>
               )}
             </Button>
-          }
-        >
-          <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-bg-soft p-3 font-mono text-[11px] leading-relaxed text-zinc-200">
+          </div>
+          <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-bg-soft p-3 font-mono text-[10.5px] leading-relaxed text-zinc-200">
             {appsScriptCode}
           </pre>
-        </Section>
+        </div>
 
-        {/* Passo a passo */}
-        <Section numero="4" titulo="Passo a passo na planilha">
-          <ol className="space-y-1.5 text-xs leading-relaxed text-zinc-300">
+        {/* PASSO A PASSO — conciso */}
+        <details className="rounded-lg border border-border bg-bg-soft p-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-zinc-200">
+            Passo a passo de instalação na planilha
+          </summary>
+          <ol className="mt-2 space-y-1 text-zinc-300">
             <li>
-              <strong>1.</strong> Abra a planilha do cliente no Google Sheets
+              <strong>1.</strong> Planilha → <em>Extensões → Apps Script</em>
             </li>
             <li>
-              <strong>2.</strong> Menu <em>Extensões → Apps Script</em>
+              <strong>2.</strong> Apague o código padrão e cole o código acima → <em>Salvar</em> (Ctrl+S)
             </li>
             <li>
-              <strong>3.</strong> Apague o código padrão e cole o código acima
+              <strong>3.</strong> No dropdown ao lado do <em>Executar</em>, selecione{' '}
+              <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">enviarParaCRM</code>{' '}
+              → <em>Executar</em> (vai dar erro — é esperado, é só pra disparar a permissão).{' '}
+              <em>Revisar permissões</em> → escolha sua conta → <em>Avançado → Acessar (não seguro) → Permitir</em>.
             </li>
             <li>
-              <strong>4.</strong> Clique em <em>Salvar</em> (ícone de disquete) — dê o nome{' '}
-              <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">MovMed CRM</code>
+              <strong>4.</strong> Barra lateral → <em>Acionadores</em> ⏰ →{' '}
+              <em>+ Adicionar acionador</em>. Função:{' '}
+              <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">enviarParaCRM</code>.
+              Implantação: <em>Head</em>. Origem: <em>Da planilha</em>. Tipo de evento:{' '}
+              <strong>Em edição</strong>{' '}
+              (ou <strong>No envio de formulário</strong> se for planilha de Forms). Salvar.
             </li>
             <li>
-              <strong>5.</strong> Na barra lateral, clique em <em>Acionadores</em> (ícone
-              de relógio)
-            </li>
-            <li>
-              <strong>6.</strong> <em>+ Adicionar acionador</em> →
-              Função: <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">enviarParaCRM</code> →
-              Evento: <strong>Em edição</strong> (ou <strong>No envio do formulário</strong> se for Google Forms)
-            </li>
-            <li>
-              <strong>7.</strong> Salvar → autorizar permissões (Google vai pedir 1 vez)
-            </li>
-            <li>
-              <strong>8.</strong> Pronto. Adicione uma linha na planilha pra testar — o
-              lead deve aparecer aqui na hora.
+              <strong>5.</strong> Volta aqui e clica em <em>Testar conexão</em> (ou adiciona uma linha na planilha).
+              O status acima muda pra <span className="text-emerald-400">verde</span> e o evento aparece no painel abaixo.
             </li>
           </ol>
-        </Section>
-
-        <Section numero="5" titulo="Cabeçalhos esperados na planilha (linha 1)">
-          <div className="rounded-lg border border-border bg-bg-soft p-3 text-xs leading-relaxed text-muted">
-            <p className="mb-2">
-              O script detecta as colunas automaticamente pelo nome do cabeçalho. Use
-              qualquer um destes (case-insensitive):
-            </p>
-            <ul className="space-y-0.5 font-mono text-[11px]">
-              <li>• <strong className="text-zinc-200">Nome</strong> — "Nome", "Nome completo", "Cliente"</li>
-              <li>• <strong className="text-zinc-200">Telefone</strong> — "Telefone", "WhatsApp", "Celular", "Fone"</li>
-              <li>• <strong className="text-zinc-200">Email</strong> — "Email", "E-mail"</li>
-              <li>• <strong className="text-zinc-200">Etapa</strong> — "Etapa", "Status", "Fase"</li>
-              <li>• <strong className="text-zinc-200">Valor</strong> — "Valor", "Ticket", "Preço"</li>
-              <li>• <strong className="text-zinc-200">Data</strong> — "Data", "Data de entrada", "Carimbo de data/hora"</li>
-              <li>• <strong className="text-zinc-200">Observações</strong> — "Observações", "Notas", "Obs"</li>
-            </ul>
+          <div className="mt-3 rounded border border-border bg-bg-elev p-2 text-[10.5px] text-muted">
+            <p className="mb-1 font-semibold text-zinc-300">Cabeçalhos detectados (linha 1):</p>
+            Nome / Telefone / Email / Etapa / Valor / Data / Observações (e sinônimos: WhatsApp, Celular, E-mail, Status, Fase, Ticket, Preço, etc).
           </div>
-        </Section>
+        </details>
+
+        {/* LOG DE EVENTOS */}
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-200">
+              Últimos eventos
+              {logs.length > 0 && (
+                <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] font-normal text-muted">
+                  {logs.length}
+                </span>
+              )}
+            </h4>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-bg-soft">
+                <tr className="text-left text-[10px] uppercase tracking-wide text-muted">
+                  <th className="px-2 py-1.5">Quando</th>
+                  <th className="px-2 py-1.5">Status</th>
+                  <th className="px-2 py-1.5">Ação</th>
+                  <th className="px-2 py-1.5">Fonte</th>
+                  <th className="px-2 py-1.5">Detalhe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingLogs ? (
+                  <tr>
+                    <td colSpan={5} className="px-2 py-6 text-center text-muted">
+                      Carregando...
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-2 py-6 text-center text-muted">
+                      Nenhum evento ainda. Faça um teste ou aguarde uma linha nova na planilha.
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((l) => {
+                    const payload = (l.payload ?? {}) as Record<string, unknown>
+                    const nomeNoPayload =
+                      (payload['nome'] as string | undefined) ?? null
+                    return (
+                      <tr key={l.id} className="border-t border-border">
+                        <td className="px-2 py-1.5 font-mono text-[10.5px] text-muted">
+                          {formatDateTime(l.ts)}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Badge tone={l.ok ? 'success' : 'danger'}>
+                            {l.http_status ?? (l.ok ? 'ok' : 'err')}
+                          </Badge>
+                        </td>
+                        <td className="px-2 py-1.5 text-[11px] capitalize">
+                          {l.acao ?? '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-[11px]">{l.fonte ?? '—'}</td>
+                        <td className="px-2 py-1.5 text-[11px]">
+                          {l.ok ? (
+                            <span className="text-zinc-300">
+                              {nomeNoPayload ?? <em className="text-muted">sem nome</em>}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-[10.5px] text-red-300">
+                              {l.erro ?? '—'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          {logs.length >= 20 && (
+            <p className="mt-1.5 text-[10px] text-muted">
+              Mostrando os 20 eventos mais recentes.
+            </p>
+          )}
+        </div>
       </div>
     </Modal>
   )
 }
 
-function Section({
-  numero,
-  titulo,
-  extra,
-  children,
-}: {
-  numero: string
-  titulo: string
-  extra?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-200">
-          <span className="grid h-5 w-5 place-items-center rounded-md bg-brand-500/15 text-[10px] font-bold text-brand-300">
-            {numero}
-          </span>
-          {titulo}
-        </h4>
-        {extra}
-      </div>
-      {children}
-    </div>
-  )
+/** "5min atrás", "2h atrás", "ontem 14:32"... */
+function agoLabel(ts: string | null | undefined): string {
+  if (!ts) return '—'
+  const mins = minutosAtras(ts)
+  if (mins === null) return '—'
+  if (mins < 1) return 'agora há pouco'
+  if (mins < 60) return `${mins}min atrás`
+  const horas = Math.floor(mins / 60)
+  if (horas < 24) return `${horas}h atrás`
+  const dias = Math.floor(horas / 24)
+  if (dias === 1) return 'ontem'
+  return `${dias} dias atrás`
+}
+
+function minutosAtras(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  try {
+    const d = new Date(ts).getTime()
+    return Math.floor((Date.now() - d) / 60000)
+  } catch {
+    return null
+  }
 }
