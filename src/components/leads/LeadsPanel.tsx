@@ -516,9 +516,55 @@ function testarConexao() {
   }
 }
 
+// Palavras-chave reconhecidas em cabeçalhos. Cada array são sinônimos
+// pra mesma "coluna lógica".
+var HEADER_KEYWORDS = [
+  ['nome', 'nome completo', 'cliente', 'lead', 'paciente'],
+  ['telefone', 'whatsapp', 'celular', 'fone', 'contato', 'tel'],
+  ['email', 'e-mail'],
+  ['etapa', 'status', 'fase', 'situacao', 'situação'],
+  ['valor', 'ticket', 'preço', 'preco'],
+  ['data', 'data de entrada', 'carimbo de data/hora', 'data entrada'],
+  ['observações', 'observacoes', 'notas', 'obs']
+];
+
 /**
- * Trigger "Em edição": detecta colunas pelo nome do cabeçalho (linha 1)
- * e envia o lead pra plataforma.
+ * Procura nas primeiras 8 linhas qual contem os cabeçalhos.
+ * Retorna o numero da linha (1-based) que tem mais palavras-chave reconhecidas,
+ * ou null se nenhuma linha bater.
+ */
+function detectarLinhaDeHeaders(sheet, lastCol) {
+  var maxScan = Math.min(8, sheet.getLastRow());
+  var melhorLinha = null;
+  var melhorScore = 0;
+  for (var r = 1; r <= maxScan; r++) {
+    var vals = sheet.getRange(r, 1, 1, lastCol).getValues()[0];
+    var normalized = vals.map(function (v) {
+      return String(v || '').toLowerCase().trim();
+    });
+    var score = 0;
+    for (var i = 0; i < HEADER_KEYWORDS.length; i++) {
+      var sinonimos = HEADER_KEYWORDS[i];
+      for (var j = 0; j < sinonimos.length; j++) {
+        if (normalized.indexOf(sinonimos[j]) >= 0) {
+          score++;
+          break;
+        }
+      }
+    }
+    console.log('[detectarLinhaDeHeaders] Linha ' + r + ' score=' + score);
+    if (score > melhorScore) {
+      melhorScore = score;
+      melhorLinha = r;
+    }
+  }
+  if (melhorScore < 1) return null;
+  return melhorLinha;
+}
+
+/**
+ * Trigger "Em edição": auto-detecta a linha de cabeçalhos (1 a 8),
+ * lê a linha editada e envia o lead pra plataforma.
  */
 function enviarParaCRM(e) {
   console.log('[enviarParaCRM] Trigger disparado');
@@ -528,18 +574,25 @@ function enviarParaCRM(e) {
     var row = e && e.range ? e.range.getRow() : sheet.getLastRow();
     console.log('[enviarParaCRM] Sheet:', sheet.getName(), '| Row editada:', row);
 
-    if (row < 2) {
-      console.log('[enviarParaCRM] ⊘ Linha 1 (cabeçalho) — ignorando');
+    var lastCol = sheet.getLastColumn();
+    var headerRow = detectarLinhaDeHeaders(sheet, lastCol);
+    if (headerRow === null) {
+      console.log('[enviarParaCRM] ❌ Nenhuma linha tem cabeçalhos reconhecíveis (Nome/Telefone/Email/etc). Adicione uma linha com esses títulos.');
+      return;
+    }
+    console.log('[enviarParaCRM] Header detectado na linha ' + headerRow);
+
+    if (row <= headerRow) {
+      console.log('[enviarParaCRM] ⊘ Linha editada é cabeçalho ou anterior — ignorando');
       return;
     }
 
-    var lastCol = sheet.getLastColumn();
-    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+    var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function (h) {
       return String(h || '').toLowerCase().trim();
     });
     var values = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
-    console.log('[enviarParaCRM] Headers detectados:', JSON.stringify(headers));
-    console.log('[enviarParaCRM] Values da linha ' + row + ':', JSON.stringify(values));
+    console.log('[enviarParaCRM] Headers (linha ' + headerRow + '):', JSON.stringify(headers));
+    console.log('[enviarParaCRM] Values (linha ' + row + '):', JSON.stringify(values));
 
     function find() {
       for (var i = 0; i < arguments.length; i++) {
@@ -549,21 +602,21 @@ function enviarParaCRM(e) {
       return null;
     }
 
-    var nome = find('nome', 'nome completo', 'cliente');
-    var telefone = find('telefone', 'whatsapp', 'celular', 'fone');
+    var nome = find('nome', 'nome completo', 'cliente', 'lead', 'paciente');
+    var telefone = find('telefone', 'whatsapp', 'celular', 'fone', 'contato', 'tel');
     var email = find('email', 'e-mail');
-    var etapa = find('etapa', 'status', 'fase');
+    var etapa = find('etapa', 'status', 'fase', 'situacao', 'situação');
     var valorBruto = find('valor', 'ticket', 'preço', 'preco');
     var valor = valorBruto
       ? Number(String(valorBruto).replace(/[^\\d,.-]/g, '').replace(',', '.'))
       : null;
-    var data = find('data', 'data de entrada', 'carimbo de data/hora');
+    var data = find('data', 'data de entrada', 'carimbo de data/hora', 'data entrada');
     var observacoes = find('observações', 'observacoes', 'notas', 'obs');
 
     console.log('[enviarParaCRM] Extraído — nome:', nome, '| telefone:', telefone, '| etapa:', etapa);
 
     if (!nome && !telefone) {
-      console.log('[enviarParaCRM] ⊘ Linha sem nome nem telefone — ignorando. Verifique os cabeçalhos da linha 1.');
+      console.log('[enviarParaCRM] ⊘ Linha sem nome nem telefone — ignorando. Confira a linha de cabeçalho detectada e os valores extraídos acima.');
       return;
     }
 
