@@ -484,6 +484,7 @@ function testarConexao() {
   console.log('[testarConexao] Iniciando...');
   console.log('[testarConexao] RPC_URL =', RPC_URL);
   console.log('[testarConexao] TOKEN (primeiros 8 chars) =', TOKEN.substring(0, 8) + '...');
+  console.log('[testarConexao] ANON_KEY length =', ANON_KEY.length, '| primeiros 8 =', ANON_KEY.substring(0, 8) + '...');
 
   var payload = {
     p_token: TOKEN,
@@ -499,12 +500,12 @@ function testarConexao() {
 
   console.log('[testarConexao] Payload:', JSON.stringify(payload));
 
-  var response = UrlFetchApp.fetch(RPC_URL, {
+  // Passa apikey como query param pra contornar restricoes de header do Apps Script
+  var urlComKey = RPC_URL + '?apikey=' + encodeURIComponent(ANON_KEY);
+
+  var response = UrlFetchApp.fetch(urlComKey, {
     method: 'post',
     contentType: 'application/json',
-    headers: {
-      'apikey': ANON_KEY
-    },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
@@ -583,13 +584,12 @@ function enviarParaCRM(e) {
     };
     console.log('[enviarParaCRM] Enviando POST...');
 
-    var response = UrlFetchApp.fetch(RPC_URL, {
+    // apikey via query param (contorna restricao de header do Apps Script)
+    var urlComKey = RPC_URL + '?apikey=' + encodeURIComponent(ANON_KEY);
+
+    var response = UrlFetchApp.fetch(urlComKey, {
       method: 'post',
       contentType: 'application/json',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + ANON_KEY
-      },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
