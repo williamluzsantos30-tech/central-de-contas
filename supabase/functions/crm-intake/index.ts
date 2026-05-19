@@ -72,6 +72,7 @@ Deno.serve(async (req) => {
     p_data_entrada: (body.data_entrada as string | null) ?? null,
     p_observacoes: (body.observacoes as string | null) ?? null,
     p_fonte: (body.fonte as string | undefined) ?? 'sheets',
+    p_external_ref: (body.external_ref as string | null) ?? null,
   })
 
   if (error) {

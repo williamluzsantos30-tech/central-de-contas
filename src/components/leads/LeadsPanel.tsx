@@ -620,6 +620,12 @@ function enviarParaCRM(e) {
       return;
     }
 
+    // external_ref unico por linha (dedup quando user edita celulas
+    // separadamente da mesma linha). Inclui spreadsheet ID pra evitar
+    // colisao entre planilhas diferentes.
+    var ssId = sheet.getParent().getId();
+    var externalRef = 'sheet:' + ssId + ':' + sheet.getName() + ':row' + row;
+
     var payload = {
       token: TOKEN,
       nome: nome ? String(nome) : null,
@@ -629,8 +635,10 @@ function enviarParaCRM(e) {
       valor: valor && !isNaN(valor) ? valor : null,
       data_entrada: data ? new Date(data).toISOString() : null,
       observacoes: observacoes ? String(observacoes) : null,
-      fonte: 'sheets'
+      fonte: 'sheets',
+      external_ref: externalRef
     };
+    console.log('[enviarParaCRM] external_ref:', externalRef);
     console.log('[enviarParaCRM] Enviando POST...');
 
     var response = UrlFetchApp.fetch(INGEST_URL, {
