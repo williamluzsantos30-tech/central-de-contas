@@ -344,10 +344,11 @@ function ConectarGoogleSheetsModal({
   onSaved: () => void
 }) {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-  const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-  const rpcUrl = SUPABASE_URL
-    ? `${SUPABASE_URL}/rest/v1/rpc/intake_lead_from_sheets`
+  // Edge Function publica (deploy com --no-verify-jwt). Sem necessidade
+  // de apikey ou Authorization — autorizacao e via token no body.
+  const ingestUrl = SUPABASE_URL
+    ? `${SUPABASE_URL}/functions/v1/crm-intake`
     : 'CONFIGURE_VITE_SUPABASE_URL_NO_AMBIENTE'
 
   const [sheetsUrl, setSheetsUrl] = useState(cliente.crm_sheets_url ?? '')
@@ -462,48 +463,43 @@ function ConectarGoogleSheetsModal({
   }
 
   const appsScriptCode = `/**
- * MovMed CRM — envio automático de leads pro Central de Contas (v3)
+ * MovMed CRM — envio automático de leads pro Central de Contas (v4)
+ *
+ * Endpoint: Edge Function publica crm-intake. Sem necessidade de
+ * apikey, Authorization, ou qualquer header custom. Autorizacao
+ * via TOKEN no body (validado server-side).
  *
  * 2 funções:
  *   1) enviarParaCRM(e)   — chamada pelo trigger "Em edição"
  *   2) testarConexao()    — rode manualmente pra debugar (não usa planilha)
- *
- * Logs aparecem em Apps Script → Execuções → clicar na linha.
  */
-const RPC_URL = ${JSON.stringify(rpcUrl)};
-const ANON_KEY = ${JSON.stringify(ANON_KEY ?? 'CONFIGURE_VITE_SUPABASE_ANON_KEY')};
+const INGEST_URL = ${JSON.stringify(ingestUrl)};
 const TOKEN = ${JSON.stringify(cliente.crm_sheets_token)};
 
 /**
  * Dispara um lead FAKE direto pra plataforma, sem depender da planilha.
- * Use pra confirmar que a URL/token/permissões estão corretas.
- *
  * Como rodar: dropdown ao lado do botão Executar → escolhe testarConexao → ▶
  */
 function testarConexao() {
   console.log('[testarConexao] Iniciando...');
-  console.log('[testarConexao] RPC_URL =', RPC_URL);
+  console.log('[testarConexao] INGEST_URL =', INGEST_URL);
   console.log('[testarConexao] TOKEN (primeiros 8 chars) =', TOKEN.substring(0, 8) + '...');
-  console.log('[testarConexao] ANON_KEY length =', ANON_KEY.length, '| primeiros 8 =', ANON_KEY.substring(0, 8) + '...');
 
   var payload = {
-    p_token: TOKEN,
-    p_nome: 'TESTE MANUAL Apps Script',
-    p_telefone: '+55 11 9' + new Date().getTime().toString().slice(-8),
-    p_email: null,
-    p_etapa: 'Teste manual do script',
-    p_valor: null,
-    p_data_entrada: new Date().toISOString(),
-    p_observacoes: 'Disparado pela função testarConexao do Apps Script',
-    p_fonte: 'sheets'
+    token: TOKEN,
+    nome: 'TESTE MANUAL Apps Script',
+    telefone: '+55 11 9' + new Date().getTime().toString().slice(-8),
+    email: null,
+    etapa: 'Teste manual do script',
+    valor: null,
+    data_entrada: new Date().toISOString(),
+    observacoes: 'Disparado pela função testarConexao do Apps Script',
+    fonte: 'sheets'
   };
 
   console.log('[testarConexao] Payload:', JSON.stringify(payload));
 
-  // Passa apikey como query param pra contornar restricoes de header do Apps Script
-  var urlComKey = RPC_URL + '?apikey=' + encodeURIComponent(ANON_KEY);
-
-  var response = UrlFetchApp.fetch(urlComKey, {
+  var response = UrlFetchApp.fetch(INGEST_URL, {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
@@ -516,7 +512,7 @@ function testarConexao() {
   if (response.getResponseCode() === 200) {
     console.log('[testarConexao] ✅ SUCESSO — lead criado na plataforma');
   } else {
-    console.log('[testarConexao] ❌ FALHA — verifique URL/token/permissões');
+    console.log('[testarConexao] ❌ FALHA — verifique URL/token');
   }
 }
 
@@ -572,22 +568,19 @@ function enviarParaCRM(e) {
     }
 
     var payload = {
-      p_token: TOKEN,
-      p_nome: nome ? String(nome) : null,
-      p_telefone: telefone ? String(telefone) : null,
-      p_email: email ? String(email) : null,
-      p_etapa: etapa ? String(etapa) : null,
-      p_valor: valor && !isNaN(valor) ? valor : null,
-      p_data_entrada: data ? new Date(data).toISOString() : null,
-      p_observacoes: observacoes ? String(observacoes) : null,
-      p_fonte: 'sheets'
+      token: TOKEN,
+      nome: nome ? String(nome) : null,
+      telefone: telefone ? String(telefone) : null,
+      email: email ? String(email) : null,
+      etapa: etapa ? String(etapa) : null,
+      valor: valor && !isNaN(valor) ? valor : null,
+      data_entrada: data ? new Date(data).toISOString() : null,
+      observacoes: observacoes ? String(observacoes) : null,
+      fonte: 'sheets'
     };
     console.log('[enviarParaCRM] Enviando POST...');
 
-    // apikey via query param (contorna restricao de header do Apps Script)
-    var urlComKey = RPC_URL + '?apikey=' + encodeURIComponent(ANON_KEY);
-
-    var response = UrlFetchApp.fetch(urlComKey, {
+    var response = UrlFetchApp.fetch(INGEST_URL, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
@@ -767,13 +760,13 @@ function enviarParaCRM(e) {
           <div className="rounded-lg border border-border bg-bg-soft p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Endpoint RPC
+                Endpoint (Edge Function)
               </span>
               <span className="text-[10px] text-muted">readonly</span>
             </div>
             <div className="flex gap-1.5">
-              <Input value={rpcUrl} readOnly className="flex-1 font-mono text-[11px]" />
-              <Button size="sm" variant="outline" onClick={() => copy(rpcUrl, 'url')}>
+              <Input value={ingestUrl} readOnly className="flex-1 font-mono text-[11px]" />
+              <Button size="sm" variant="outline" onClick={() => copy(ingestUrl, 'url')}>
                 {copying === 'url' ? <Check size={12} /> : <Copy size={12} />}
               </Button>
             </div>
