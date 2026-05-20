@@ -13,10 +13,13 @@ import {
   Share2,
   CalendarDays,
   Film,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { loadCargoPermissoes, cargosDoProfile, type Modulo } from '@/lib/cargos'
+import { useTheme } from '@/hooks/useTheme'
 
 type Item = {
   to: string
@@ -83,6 +86,7 @@ const nav: Group[] = [
 export function Sidebar() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  const { theme, toggle: toggleTheme } = useTheme()
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       nav
@@ -167,9 +171,20 @@ export function Sidebar() {
         })}
       </nav>
       <div className="absolute inset-x-0 bottom-0 border-t border-border/80 p-3">
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Settings2 size={14} />
-          v0.1.0
+        <div className="flex items-center justify-between gap-2 text-xs text-muted">
+          <div className="flex items-center gap-2">
+            <Settings2 size={14} />
+            v0.1.0
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-bg-elev text-zinc-300 transition-colors hover:bg-bg-soft hover:text-brand-300"
+          >
+            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
         </div>
       </div>
     </aside>

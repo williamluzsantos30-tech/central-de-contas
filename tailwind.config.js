@@ -8,15 +8,18 @@ export default {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
+        // Cores semanticas via CSS variables — definidas em src/index.css
+        // (:root = dark, html.light = light). Permite toggle de tema sem
+        // mexer em cada componente.
         bg: {
-          DEFAULT: '#0a0a0b',
-          soft: '#111114',
-          card: '#17171c',
-          elev: '#1c1c22',
+          DEFAULT: 'rgb(var(--bg) / <alpha-value>)',
+          soft: 'rgb(var(--bg-soft) / <alpha-value>)',
+          card: 'rgb(var(--bg-card) / <alpha-value>)',
+          elev: 'rgb(var(--bg-elev) / <alpha-value>)',
         },
         border: {
-          DEFAULT: '#26262e',
-          soft: '#1f1f26',
+          DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+          soft: 'rgb(var(--border-soft) / <alpha-value>)',
         },
         // Laranja (Tailwind orange) como cor principal
         brand: {
