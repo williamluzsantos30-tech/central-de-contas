@@ -19,7 +19,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AtivoHealth } from '@/components/clientes/AtivoHealth'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, isOverdue, relativeDueLabel, rotaCliente } from '@/lib/utils'
+import { cn, formatCurrency, isOverdue, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
@@ -113,6 +113,7 @@ function DashboardCliente({
   const [kpis, setKpis] = useState({ clientes: 0, verba: 0, atrasadas: 0, ativosProblema: 0 })
   const [minhasTarefas, setMinhasTarefas] = useState<Tarefa[]>([])
   const [atencao, setAtencao] = useState<ClienteAtencao[]>([])
+  const [tabAtencao, setTabAtencao] = useState<'trafego' | 'social'>('trafego')
   const [loading, setLoading] = useState(true)
 
   const clienteFilterField = escopo.tipo === 'cliente' ? escopo.field : null
@@ -212,11 +213,11 @@ function DashboardCliente({
         tarefasAtrasadas: atrasadasPorCliente.get(c.id) ?? 0,
       }
     })
+    // Lista bruta (sem slice) — vai ser dividida por modulo na render
     setAtencao(
       lista
         .filter((c) => c.ativosProblema > 0 || c.tarefasAtrasadas > 0)
-        .sort((a, b) => b.tarefasAtrasadas + b.ativosProblema - (a.tarefasAtrasadas + a.ativosProblema))
-        .slice(0, 8),
+        .sort((a, b) => b.tarefasAtrasadas + b.ativosProblema - (a.tarefasAtrasadas + a.ativosProblema)),
     )
     setLoading(false)
   }
@@ -233,6 +234,17 @@ function DashboardCliente({
   const labelVerba = ehGlobal ? 'Verba sob gestão' : 'Verba sob gestão (meus)'
   const labelAtrasadas = ehGlobal ? 'Tarefas atrasadas' : 'Minhas tarefas atrasadas'
   const labelAtivos = ehGlobal ? 'Ativos com problema' : 'Ativos problema (meus)'
+
+  // Divide atencao por modulo (legado sem modulos = trafego)
+  const atencaoTrafego = useMemo(
+    () => atencao.filter((c) => (c.modulos ?? ['trafego']).includes('trafego')).slice(0, 8),
+    [atencao],
+  )
+  const atencaoSocial = useMemo(
+    () => atencao.filter((c) => (c.modulos ?? []).includes('social_media')).slice(0, 8),
+    [atencao],
+  )
+  const listaVisivel = tabAtencao === 'trafego' ? atencaoTrafego : atencaoSocial
 
   return (
     <>
@@ -293,17 +305,62 @@ function DashboardCliente({
 
         <Card>
           <CardHeader>
-            <CardTitle>
-              {ehGlobal ? 'Clientes que precisam de atenção' : 'Meus clientes que precisam de atenção'}
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>
+                {ehGlobal ? 'Clientes que precisam de atenção' : 'Meus clientes que precisam de atenção'}
+              </CardTitle>
+              <div className="inline-flex rounded-md border border-border bg-bg-soft p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setTabAtencao('trafego')}
+                  className={cn(
+                    'rounded px-2.5 py-1 transition-colors',
+                    tabAtencao === 'trafego'
+                      ? 'bg-brand-500/20 text-brand-200'
+                      : 'text-muted hover:text-zinc-200',
+                  )}
+                >
+                  Tráfego
+                  {atencaoTrafego.length > 0 && (
+                    <span className="ml-1.5 rounded bg-bg-elev px-1 py-0.5 text-[10px] text-zinc-300">
+                      {atencaoTrafego.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTabAtencao('social')}
+                  className={cn(
+                    'rounded px-2.5 py-1 transition-colors',
+                    tabAtencao === 'social'
+                      ? 'bg-brand-500/20 text-brand-200'
+                      : 'text-muted hover:text-zinc-200',
+                  )}
+                >
+                  Social Media
+                  {atencaoSocial.length > 0 && (
+                    <span className="ml-1.5 rounded bg-bg-elev px-1 py-0.5 text-[10px] text-zinc-300">
+                      {atencaoSocial.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardBody className="space-y-2">
             {loading ? (
               <p className="text-sm text-muted">Carregando...</p>
-            ) : atencao.length === 0 ? (
-              <EmptyState title="Tudo em dia" description="Nenhum cliente com alerta." />
+            ) : listaVisivel.length === 0 ? (
+              <EmptyState
+                title="Tudo em dia"
+                description={
+                  tabAtencao === 'trafego'
+                    ? 'Nenhum cliente de Tráfego com alerta.'
+                    : 'Nenhum cliente de Social Media com alerta.'
+                }
+              />
             ) : (
-              atencao.map((c) => (
+              listaVisivel.map((c) => (
                 <Link
                   key={c.id}
                   to={rotaCliente(c)}
