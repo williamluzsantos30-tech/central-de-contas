@@ -11,7 +11,7 @@ export function Header() {
   const [editFotoOpen, setEditFotoOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border/60 bg-bg-soft/70 px-6 backdrop-blur-xl">
+    <header className="theme-dark sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border/60 bg-bg-soft/70 px-6 backdrop-blur-xl">
       <div>
         {isDemoMode && (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-medium text-yellow-300 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]">

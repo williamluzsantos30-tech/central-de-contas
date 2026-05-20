@@ -118,7 +118,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
+    <aside className="theme-dark fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
       <div className="flex h-16 items-center gap-2.5 border-b border-border/80 bg-black px-5">
         <img
           src="/logo-movmed.png"

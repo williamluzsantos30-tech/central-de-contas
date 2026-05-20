@@ -64,14 +64,30 @@ html.light .text-zinc-400 { color: #52525b; }
 html.light .text-zinc-500 { color: #71717a; }
 html.light .text-muted { color: #71717a; }
 
-/* Bordas e backgrounds usando classes Tailwind utilitarias custom */
-html.light .border-border\/80 { border-color: rgb(228 228 231 / 0.8); }
-html.light .bg-bg-soft\/95 { background-color: rgb(244 244 245 / 0.95); }
-html.light .bg-bg-soft\/70 { background-color: rgb(244 244 245 / 0.7); }
-html.light .bg-bg-soft\/40 { background-color: rgb(244 244 245 / 0.4); }
+/* ============================================================
+   .theme-dark — ilha de tema escuro dentro de light mode
+   ============================================================
+   Use em containers (Sidebar, Header) que devem permanecer dark
+   mesmo quando o app esta em light mode. Reseta as CSS vars +
+   restaura tons de zinc-* originais. Estilo Linear/Vercel:
+   chrome escuro, conteudo claro. */
+.theme-dark {
+  --bg: 10 10 11;
+  --bg-soft: 17 17 20;
+  --bg-card: 23 23 28;
+  --bg-elev: 28 28 34;
+  --border: 38 38 46;
+  --border-soft: 31 31 38;
+  color-scheme: dark;
+}
 
-/* Topo da sidebar (header com logo) — sempre preto pra preservar identidade */
-/* Nao precisa override aqui pq usa `bg-black` literal */
+html.light .theme-dark { color: #f4f4f5; }
+html.light .theme-dark .text-zinc-100 { color: #f4f4f5; }
+html.light .theme-dark .text-zinc-200 { color: #e4e4e7; }
+html.light .theme-dark .text-zinc-300 { color: #d4d4d8; }
+html.light .theme-dark .text-zinc-400 { color: #a1a1aa; }
+html.light .theme-dark .text-zinc-500 { color: #71717a; }
+html.light .theme-dark .text-muted { color: #a1a1aa; }
 
 /* seleção com cor da marca, mas suave */
 ::selection {
