@@ -5,7 +5,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TarefaDrawer } from '@/components/tarefas/TarefaDrawer'
 import { supabase } from '@/lib/supabase'
-import { cn, isOverdue, prioridadeLabel, relativeDueLabel } from '@/lib/utils'
+import { cn, isOverdue, prioridadeLabel, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Tarefa } from '@/types/database'
 
@@ -114,7 +114,7 @@ export default function MinhasTarefas() {
                   <p>{t.nome}</p>
                   {t.cliente && (
                     <Link
-                      to={`/clientes/${t.cliente_id}`}
+                      to={rotaCliente(t.cliente)}
                       className="text-[11px] text-muted hover:text-brand-300"
                     >
                       {t.cliente.nome}

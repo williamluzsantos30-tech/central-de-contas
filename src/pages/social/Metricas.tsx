@@ -451,7 +451,7 @@ function ClienteRow({ stats, rank }: { stats: ClienteStats; rank: number }) {
 
   return (
     <Link
-      to={`/clientes/${cliente.id}`}
+      to={`/social/clientes/${cliente.id}`}
       className="block rounded-xl border border-border bg-bg-soft/40 p-4 transition-colors hover:bg-bg-soft/70"
     >
       <div className="flex items-center gap-3">

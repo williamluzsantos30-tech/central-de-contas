@@ -395,3 +395,22 @@ export function initials(name: string | null | undefined): string {
 export function monthKey(date: Date = new Date()): string {
   return format(date, 'yyyy-MM-01')
 }
+
+/**
+ * Resolve a rota correta pro detalhe do cliente baseado em quais módulos
+ * ele tem. Cliente só de Social Media vai pra /social/clientes/:id; caso
+ * contrário vai pra /clientes/:id (Tráfego é default — cliente legado).
+ *
+ * Use sempre que linkar pro detalhe a partir de listas que misturam
+ * clientes de módulos diferentes (Dashboard, MinhasTarefas, etc).
+ */
+export function rotaCliente(cliente: {
+  id: string
+  modulos?: string[] | null
+}): string {
+  const modulos = cliente.modulos ?? []
+  if (modulos.includes('social_media') && !modulos.includes('trafego')) {
+    return `/social/clientes/${cliente.id}`
+  }
+  return `/clientes/${cliente.id}`
+}

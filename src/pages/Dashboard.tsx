@@ -19,7 +19,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AtivoHealth } from '@/components/clientes/AtivoHealth'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, isOverdue, relativeDueLabel } from '@/lib/utils'
+import { formatCurrency, isOverdue, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
@@ -275,7 +275,7 @@ function DashboardCliente({
               minhasTarefas.map((t) => (
                 <Link
                   key={t.id}
-                  to={`/clientes/${t.cliente_id}`}
+                  to={rotaCliente({ id: t.cliente_id, modulos: t.cliente?.modulos })}
                   className="flex items-center justify-between rounded-lg border border-border bg-bg-soft px-3 py-2 hover:bg-bg-elev"
                 >
                   <div>
@@ -306,7 +306,7 @@ function DashboardCliente({
               atencao.map((c) => (
                 <Link
                   key={c.id}
-                  to={`/clientes/${c.id}`}
+                  to={rotaCliente(c)}
                   className="flex items-center justify-between rounded-lg border border-border bg-bg-soft px-3 py-2 hover:bg-bg-elev"
                 >
                   <div className="flex items-center gap-3">
