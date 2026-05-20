@@ -191,16 +191,38 @@ function DashboardCliente({
       ? ativos.filter((a) => a.status === 'com_problema').length
       : ativos.filter((a) => a.status === 'com_problema' && clienteIdsDoEscopo.has(a.cliente_id)).length
 
+    // Clientes de Trafego em onboarding — suas tarefas atrasadas nao contam
+    // no KPI (fase de estabilizacao). Social Media nao tem essa regra.
+    const trafegoOnboardingIds = new Set(
+      todosClientes
+        .filter(
+          (c) =>
+            (c.modulos ?? ['trafego']).includes('trafego') &&
+            c.jornada === 'onboarding',
+        )
+        .map((c) => c.id),
+    )
+    const atrasadasComCliente =
+      (tarefasAtrasadasComClienteRes.data as { cliente_id: string | null }[]) ?? []
+    const atrasadasOnboardingTrafego = atrasadasComCliente.filter(
+      (t) => t.cliente_id && trafegoOnboardingIds.has(t.cliente_id),
+    ).length
+    const atrasadasAjustadas = Math.max(
+      0,
+      (tarefasAtrasadasRes.count ?? 0) - atrasadasOnboardingTrafego,
+    )
+
     setKpis({
       clientes: clientesData.length,
       verba,
-      atrasadas: tarefasAtrasadasRes.count ?? 0,
+      atrasadas: atrasadasAjustadas,
       ativosProblema,
     })
     setMinhasTarefas((minhasRes.data as Tarefa[]) ?? [])
 
     const atrasadasPorCliente = new Map<string, number>()
-    for (const t of (tarefasAtrasadasComClienteRes.data as { cliente_id: string }[]) ?? []) {
+    for (const t of atrasadasComCliente) {
+      if (!t.cliente_id) continue
       atrasadasPorCliente.set(t.cliente_id, (atrasadasPorCliente.get(t.cliente_id) ?? 0) + 1)
     }
 
@@ -235,9 +257,14 @@ function DashboardCliente({
   const labelAtrasadas = ehGlobal ? 'Tarefas atrasadas' : 'Minhas tarefas atrasadas'
   const labelAtivos = ehGlobal ? 'Ativos com problema' : 'Ativos problema (meus)'
 
-  // Divide atencao por modulo (legado sem modulos = trafego)
+  // Divide atencao por modulo (legado sem modulos = trafego).
+  // Trafego: clientes em jornada onboarding nao contam (fase de estabilizacao).
   const atencaoTrafego = useMemo(
-    () => atencao.filter((c) => (c.modulos ?? ['trafego']).includes('trafego')).slice(0, 8),
+    () =>
+      atencao
+        .filter((c) => (c.modulos ?? ['trafego']).includes('trafego'))
+        .filter((c) => c.jornada !== 'onboarding')
+        .slice(0, 8),
     [atencao],
   )
   const atencaoSocial = useMemo(
