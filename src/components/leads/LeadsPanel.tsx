@@ -45,6 +45,12 @@ interface CrmSheetsStatusRow {
   sucesso_24h: number
 }
 
+// Email da Service Account do Google que lê as planilhas dos clientes.
+// Configurável via VITE_CRM_SHEETS_SA_EMAIL no .env (fallback hardcoded).
+const SHEETS_SA_EMAIL =
+  (import.meta.env.VITE_CRM_SHEETS_SA_EMAIL as string | undefined) ??
+  'movmed-sheets-reader@movmed-crm.iam.gserviceaccount.com'
+
 interface Props {
   cliente: Cliente
 }
@@ -478,13 +484,8 @@ function ConectarGoogleSheetsModal({
   cliente: Cliente
   onSaved: () => void
 }) {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-
-  // Edge Function publica (deploy com --no-verify-jwt). Sem necessidade
-  // de apikey ou Authorization — autorizacao e via token no body.
-  const ingestUrl = SUPABASE_URL
-    ? `${SUPABASE_URL}/functions/v1/crm-intake`
-    : 'CONFIGURE_VITE_SUPABASE_URL_NO_AMBIENTE'
+  // (URL da Edge Function não é mais exposta na UI — n8n consome
+  //  internamente. Mantemos SHEETS_SA_EMAIL no topo do arquivo.)
 
   const [sheetsUrl, setSheetsUrl] = useState(cliente.crm_sheets_url ?? '')
   const [copying, setCopying] = useState<string | null>(null)
@@ -597,206 +598,6 @@ function ConectarGoogleSheetsModal({
     void carregarStatus()
   }
 
-  const appsScriptCode = `/**
- * MovMed CRM — envio automático de leads pro Central de Contas (v4)
- *
- * Endpoint: Edge Function publica crm-intake. Sem necessidade de
- * apikey, Authorization, ou qualquer header custom. Autorizacao
- * via TOKEN no body (validado server-side).
- *
- * 2 funções:
- *   1) enviarParaCRM(e)   — chamada pelo trigger "Em edição"
- *   2) testarConexao()    — rode manualmente pra debugar (não usa planilha)
- */
-const INGEST_URL = ${JSON.stringify(ingestUrl)};
-const TOKEN = ${JSON.stringify(cliente.crm_sheets_token)};
-
-/**
- * Dispara um lead FAKE direto pra plataforma, sem depender da planilha.
- * Como rodar: dropdown ao lado do botão Executar → escolhe testarConexao → ▶
- */
-function testarConexao() {
-  console.log('[testarConexao] Iniciando...');
-  console.log('[testarConexao] INGEST_URL =', INGEST_URL);
-  console.log('[testarConexao] TOKEN (primeiros 8 chars) =', TOKEN.substring(0, 8) + '...');
-
-  var payload = {
-    token: TOKEN,
-    nome: 'TESTE MANUAL Apps Script',
-    telefone: '+55 11 9' + new Date().getTime().toString().slice(-8),
-    email: null,
-    etapa: 'Teste manual do script',
-    valor: null,
-    data_entrada: new Date().toISOString(),
-    observacoes: 'Disparado pela função testarConexao do Apps Script',
-    fonte: 'sheets'
-  };
-
-  console.log('[testarConexao] Payload:', JSON.stringify(payload));
-
-  var response = UrlFetchApp.fetch(INGEST_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-
-  console.log('[testarConexao] Status HTTP:', response.getResponseCode());
-  console.log('[testarConexao] Body:', response.getContentText());
-
-  if (response.getResponseCode() === 200) {
-    console.log('[testarConexao] ✅ SUCESSO — lead criado na plataforma');
-  } else {
-    console.log('[testarConexao] ❌ FALHA — verifique URL/token');
-  }
-}
-
-// Palavras-chave reconhecidas em cabeçalhos. Cada array são sinônimos
-// pra mesma "coluna lógica".
-var HEADER_KEYWORDS = [
-  ['nome', 'nome completo', 'cliente', 'lead', 'paciente'],
-  ['telefone', 'whatsapp', 'celular', 'fone', 'contato', 'tel'],
-  ['email', 'e-mail'],
-  ['etapa', 'status', 'fase', 'situacao', 'situação'],
-  ['valor', 'ticket', 'preço', 'preco'],
-  ['data', 'data de entrada', 'carimbo de data/hora', 'data entrada'],
-  ['observações', 'observacoes', 'notas', 'obs']
-];
-
-/**
- * Procura nas primeiras 8 linhas qual contem os cabeçalhos.
- * Retorna o numero da linha (1-based) que tem mais palavras-chave reconhecidas,
- * ou null se nenhuma linha bater.
- */
-function detectarLinhaDeHeaders(sheet, lastCol) {
-  var maxScan = Math.min(8, sheet.getLastRow());
-  var melhorLinha = null;
-  var melhorScore = 0;
-  for (var r = 1; r <= maxScan; r++) {
-    var vals = sheet.getRange(r, 1, 1, lastCol).getValues()[0];
-    var normalized = vals.map(function (v) {
-      return String(v || '').toLowerCase().trim();
-    });
-    var score = 0;
-    for (var i = 0; i < HEADER_KEYWORDS.length; i++) {
-      var sinonimos = HEADER_KEYWORDS[i];
-      for (var j = 0; j < sinonimos.length; j++) {
-        if (normalized.indexOf(sinonimos[j]) >= 0) {
-          score++;
-          break;
-        }
-      }
-    }
-    console.log('[detectarLinhaDeHeaders] Linha ' + r + ' score=' + score);
-    if (score > melhorScore) {
-      melhorScore = score;
-      melhorLinha = r;
-    }
-  }
-  if (melhorScore < 1) return null;
-  return melhorLinha;
-}
-
-/**
- * Trigger "Em edição": auto-detecta a linha de cabeçalhos (1 a 8),
- * lê a linha editada e envia o lead pra plataforma.
- */
-function enviarParaCRM(e) {
-  console.log('[enviarParaCRM] Trigger disparado');
-
-  try {
-    var sheet = e && e.range ? e.range.getSheet() : SpreadsheetApp.getActiveSheet();
-    var row = e && e.range ? e.range.getRow() : sheet.getLastRow();
-    console.log('[enviarParaCRM] Sheet:', sheet.getName(), '| Row editada:', row);
-
-    var lastCol = sheet.getLastColumn();
-    var headerRow = detectarLinhaDeHeaders(sheet, lastCol);
-    if (headerRow === null) {
-      console.log('[enviarParaCRM] ❌ Nenhuma linha tem cabeçalhos reconhecíveis (Nome/Telefone/Email/etc). Adicione uma linha com esses títulos.');
-      return;
-    }
-    console.log('[enviarParaCRM] Header detectado na linha ' + headerRow);
-
-    if (row <= headerRow) {
-      console.log('[enviarParaCRM] ⊘ Linha editada é cabeçalho ou anterior — ignorando');
-      return;
-    }
-
-    var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function (h) {
-      return String(h || '').toLowerCase().trim();
-    });
-    var values = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
-    console.log('[enviarParaCRM] Headers (linha ' + headerRow + '):', JSON.stringify(headers));
-    console.log('[enviarParaCRM] Values (linha ' + row + '):', JSON.stringify(values));
-
-    function find() {
-      for (var i = 0; i < arguments.length; i++) {
-        var idx = headers.indexOf(arguments[i]);
-        if (idx >= 0) return values[idx];
-      }
-      return null;
-    }
-
-    var nome = find('nome', 'nome completo', 'cliente', 'lead', 'paciente');
-    var telefone = find('telefone', 'whatsapp', 'celular', 'fone', 'contato', 'tel');
-    var email = find('email', 'e-mail');
-    var etapa = find('etapa', 'status', 'fase', 'situacao', 'situação');
-    var valorBruto = find('valor', 'ticket', 'preço', 'preco');
-    var valor = valorBruto
-      ? Number(String(valorBruto).replace(/[^\\d,.-]/g, '').replace(',', '.'))
-      : null;
-    var data = find('data', 'data de entrada', 'carimbo de data/hora', 'data entrada');
-    var observacoes = find('observações', 'observacoes', 'notas', 'obs');
-
-    console.log('[enviarParaCRM] Extraído — nome:', nome, '| telefone:', telefone, '| etapa:', etapa);
-
-    if (!nome && !telefone) {
-      console.log('[enviarParaCRM] ⊘ Linha sem nome nem telefone — ignorando. Confira a linha de cabeçalho detectada e os valores extraídos acima.');
-      return;
-    }
-
-    // external_ref unico por linha (dedup quando user edita celulas
-    // separadamente da mesma linha). Inclui spreadsheet ID pra evitar
-    // colisao entre planilhas diferentes.
-    var ssId = sheet.getParent().getId();
-    var externalRef = 'sheet:' + ssId + ':' + sheet.getName() + ':row' + row;
-
-    var payload = {
-      token: TOKEN,
-      nome: nome ? String(nome) : null,
-      telefone: telefone ? String(telefone) : null,
-      email: email ? String(email) : null,
-      etapa: etapa ? String(etapa) : null,
-      valor: valor && !isNaN(valor) ? valor : null,
-      data_entrada: data ? new Date(data).toISOString() : null,
-      observacoes: observacoes ? String(observacoes) : null,
-      fonte: 'sheets',
-      external_ref: externalRef
-    };
-    console.log('[enviarParaCRM] external_ref:', externalRef);
-    console.log('[enviarParaCRM] Enviando POST...');
-
-    var response = UrlFetchApp.fetch(INGEST_URL, {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
-
-    console.log('[enviarParaCRM] Status HTTP:', response.getResponseCode());
-    console.log('[enviarParaCRM] Body:', response.getContentText());
-
-    if (response.getResponseCode() === 200) {
-      console.log('[enviarParaCRM] ✅ Lead enviado com sucesso');
-    } else {
-      console.log('[enviarParaCRM] ❌ Falha — verifique a aba "Últimos eventos" na plataforma');
-    }
-  } catch (err) {
-    console.log('[enviarParaCRM] ❌ Exception:', err.toString());
-  }
-}
-`
-
   // Status visual
   const hasEvents = !!status?.last_event_at
   const lastEventAgo = status?.last_event_at
@@ -825,7 +626,7 @@ function enviarParaCRM(e) {
     <Modal
       open={open}
       onClose={onClose}
-      title="CRM Google Sheets — Integração"
+      title="Conectar Google Sheets (via n8n)"
       className="max-w-4xl"
       footer={
         <div className="flex justify-end gap-2">
@@ -881,7 +682,7 @@ function enviarParaCRM(e) {
                       )}
                     </>
                   ) : (
-                    <>Configure o Apps Script abaixo. Quando começar a chegar lead, aparece aqui.</>
+                    <>Configure os 2 passos abaixo. Quando o n8n rodar (≤2min), os leads aparecem aqui.</>
                   )}
                 </p>
               </div>
@@ -956,32 +757,36 @@ function enviarParaCRM(e) {
           <div className="rounded-lg border border-border bg-bg-soft p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Endpoint (Edge Function)
+                Compartilhar planilha com
               </span>
-              <span className="text-[10px] text-muted">readonly</span>
+              <span className="text-[10px] text-muted">Leitor</span>
             </div>
             <div className="flex gap-1.5">
-              <Input value={ingestUrl} readOnly className="flex-1 font-mono text-[11px]" />
-              <Button size="sm" variant="outline" onClick={() => copy(ingestUrl, 'url')}>
-                {copying === 'url' ? <Check size={12} /> : <Copy size={12} />}
+              <Input value={SHEETS_SA_EMAIL} readOnly className="flex-1 font-mono text-[11px]" />
+              <Button size="sm" variant="outline" onClick={() => copy(SHEETS_SA_EMAIL, 'sa')}>
+                {copying === 'sa' ? <Check size={12} /> : <Copy size={12} />}
               </Button>
             </div>
+            <p className="mt-1 text-[10px] text-muted">
+              Cliente compartilha a planilha com esse email (Permissão: Leitor).
+            </p>
           </div>
         </div>
 
-        {/* URL DA PLANILHA — referência */}
+        {/* URL DA PLANILHA — obrigatorio agora */}
         <div className="rounded-lg border border-border bg-bg-soft p-3">
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              URL da planilha (referência — opcional)
+              URL da planilha do cliente
             </span>
+            <span className="text-[10px] text-brand-300">obrigatório</span>
           </div>
           <div className="flex gap-1.5">
             <Input
               value={sheetsUrl}
               onChange={(e) => setSheetsUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              className="flex-1"
+              placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..."
+              className="flex-1 font-mono text-[11px]"
             />
             <Button
               size="sm"
@@ -992,72 +797,57 @@ function enviarParaCRM(e) {
               {savingUrl ? 'Salvando...' : 'Salvar'}
             </Button>
           </div>
+          <p className="mt-1 text-[10px] text-muted">
+            Copie da barra de endereço enquanto está na aba dos leads —
+            o <code className="rounded bg-bg-elev px-1">gid</code> identifica a aba certa.
+          </p>
         </div>
 
-        {/* APPS SCRIPT CODE */}
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-200">
-              <FileSpreadsheet size={14} className="text-brand-300" />
-              Código Apps Script (v2)
-            </h4>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => copy(appsScriptCode, 'code')}
-            >
-              {copying === 'code' ? (
-                <>
-                  <Check size={12} /> Copiado
-                </>
-              ) : (
-                <>
-                  <Copy size={12} /> Copiar código
-                </>
-              )}
-            </Button>
-          </div>
-          <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-bg-soft p-3 font-mono text-[10.5px] leading-relaxed text-zinc-200">
-            {appsScriptCode}
-          </pre>
-        </div>
-
-        {/* PASSO A PASSO — conciso */}
-        <details className="rounded-lg border border-border bg-bg-soft p-3 text-xs">
-          <summary className="cursor-pointer font-semibold text-zinc-200">
-            Passo a passo de instalação na planilha
-          </summary>
-          <ol className="mt-2 space-y-1 text-zinc-300">
+        {/* PASSO A PASSO — fluxo n8n */}
+        <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 p-3 text-xs">
+          <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-200">
+            <FileSpreadsheet size={14} />
+            Como conectar
+          </h4>
+          <ol className="space-y-1.5 text-zinc-300">
             <li>
-              <strong>1.</strong> Planilha → <em>Extensões → Apps Script</em>
+              <strong className="text-brand-300">1.</strong> Cliente abre a planilha → clica em{' '}
+              <em>Compartilhar</em> → cola o email da Service Account (acima) → permissão{' '}
+              <strong>Leitor</strong> → Enviar
             </li>
             <li>
-              <strong>2.</strong> Apague o código padrão e cole o código acima → <em>Salvar</em> (Ctrl+S)
+              <strong className="text-brand-300">2.</strong> Cole a URL da planilha no campo{' '}
+              <em>"URL da planilha"</em> acima → Salvar
+              <span className="ml-1 text-muted">
+                (de preferência copie da barra de endereço estando na aba certa — o
+                <code className="mx-0.5 rounded bg-bg-elev px-1 text-[10px]">gid</code>
+                identifica qual aba ler)
+              </span>
             </li>
             <li>
-              <strong>3.</strong> No dropdown ao lado do <em>Executar</em>, selecione{' '}
-              <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">enviarParaCRM</code>{' '}
-              → <em>Executar</em> (vai dar erro — é esperado, é só pra disparar a permissão).{' '}
-              <em>Revisar permissões</em> → escolha sua conta → <em>Avançado → Acessar (não seguro) → Permitir</em>.
-            </li>
-            <li>
-              <strong>4.</strong> Barra lateral → <em>Acionadores</em> ⏰ →{' '}
-              <em>+ Adicionar acionador</em>. Função:{' '}
-              <code className="rounded bg-bg-elev px-1 py-0.5 text-[10px]">enviarParaCRM</code>.
-              Implantação: <em>Head</em>. Origem: <em>Da planilha</em>. Tipo de evento:{' '}
-              <strong>Em edição</strong>{' '}
-              (ou <strong>No envio de formulário</strong> se for planilha de Forms). Salvar.
-            </li>
-            <li>
-              <strong>5.</strong> Volta aqui e clica em <em>Testar conexão</em> (ou adiciona uma linha na planilha).
-              O status acima muda pra <span className="text-emerald-400">verde</span> e o evento aparece no painel abaixo.
+              <strong className="text-brand-300">3.</strong> Aguarde até{' '}
+              <strong>2 minutos</strong> — o n8n vai puxar as linhas e os leads vão aparecer no
+              CRM acima. O status no topo deste modal vai virar verde.
             </li>
           </ol>
+
           <div className="mt-3 rounded border border-border bg-bg-elev p-2 text-[10.5px] text-muted">
-            <p className="mb-1 font-semibold text-zinc-300">Cabeçalhos detectados (linha 1):</p>
-            Nome / Telefone / Email / Etapa / Valor / Data / Observações (e sinônimos: WhatsApp, Celular, E-mail, Status, Fase, Ticket, Preço, etc).
+            <p className="mb-1 font-semibold text-zinc-300">Cabeçalhos reconhecidos na planilha:</p>
+            <span className="text-zinc-300">Nome</span>, <span className="text-zinc-300">Telefone</span>,{' '}
+            <span className="text-zinc-300">Email</span>, <span className="text-zinc-300">Etapa</span>,{' '}
+            <span className="text-zinc-300">Valor</span>, <span className="text-zinc-300">Data</span>,{' '}
+            <span className="text-zinc-300">Observações</span> + sinônimos comuns (WhatsApp, Contato,
+            E-mail, Status, Ticket, etc). Campos extras (de onde veio, motivo perdido, agendou, etc)
+            entram em "Detalhes da planilha" automaticamente.
           </div>
-        </details>
+
+          <div className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-[10.5px] text-amber-200">
+            <strong>⚠ Importante:</strong> a planilha precisa estar em formato{' '}
+            <strong>Google Sheets nativo</strong> (não Excel .xlsx).
+            Se o cliente compartilhar um .xlsx do Drive, abra a planilha e use{' '}
+            <em>Arquivo → Salvar como Planilha Google</em> antes.
+          </div>
+        </div>
 
         {/* LOG DE EVENTOS */}
         <div>
