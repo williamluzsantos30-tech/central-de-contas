@@ -56,6 +56,7 @@ export function LeadsPanel({ cliente }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [sheetsOpen, setSheetsOpen] = useState(false)
+  const [leadDetalhe, setLeadDetalhe] = useState<Lead | null>(null)
 
   const readonly = cliente.fonte_crm === 'kommo'
 
@@ -121,6 +122,7 @@ export function LeadsPanel({ cliente }: Props) {
             <tr className="text-left text-xs uppercase tracking-wide text-muted">
               <th className="px-3 py-2">Nome</th>
               <th className="px-3 py-2">Telefone</th>
+              <th className="px-3 py-2">Canal</th>
               <th className="px-3 py-2">Etapa</th>
               <th className="px-3 py-2">Data</th>
               <th className="px-3 py-2 text-right">Valor</th>
@@ -129,32 +131,47 @@ export function LeadsPanel({ cliente }: Props) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-muted">
+                <td colSpan={6} className="px-3 py-8 text-center text-muted">
                   Carregando...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-muted">
+                <td colSpan={6} className="px-3 py-8 text-center text-muted">
                   Nenhum lead.
                 </td>
               </tr>
             ) : (
-              filtered.map((l) => (
-                <tr key={l.id} className="border-t border-border hover:bg-bg-soft">
-                  <td className="px-3 py-2">{l.nome ?? '—'}</td>
-                  <td className="px-3 py-2">{l.telefone ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    {l.etapa ? <Badge tone="info">{l.etapa}</Badge> : '—'}
-                  </td>
-                  <td className="px-3 py-2">{formatDate(l.data_entrada)}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(l.valor ?? null)}</td>
-                </tr>
-              ))
+              filtered.map((l) => {
+                const canal = (l.dados_extras?.canal as string | undefined) ?? null
+                return (
+                  <tr
+                    key={l.id}
+                    className="cursor-pointer border-t border-border hover:bg-bg-soft"
+                    onClick={() => setLeadDetalhe(l)}
+                  >
+                    <td className="px-3 py-2">{l.nome ?? '—'}</td>
+                    <td className="px-3 py-2">{l.telefone ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      {canal ? <Badge tone="neutral">{canal}</Badge> : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {l.etapa ? <Badge tone="info">{l.etapa}</Badge> : '—'}
+                    </td>
+                    <td className="px-3 py-2">{formatDate(l.data_entrada)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(l.valor ?? null)}</td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
       </div>
+
+      <LeadDetalheModal
+        lead={leadDetalhe}
+        onClose={() => setLeadDetalhe(null)}
+      />
 
       {!readonly && (
         <>
@@ -320,6 +337,124 @@ function ImportCsv({
         placeholder="nome,telefone,etapa,data_entrada&#10;João,11999999,Novo,2026-04-01"
       />
     </Modal>
+  )
+}
+
+/* =========================================================
+   Modal: Detalhes do lead — mostra campos basicos + dados_extras
+========================================================= */
+
+function LeadDetalheModal({
+  lead,
+  onClose,
+}: {
+  lead: Lead | null
+  onClose: () => void
+}) {
+  if (!lead) return null
+
+  const extras = (lead.dados_extras ?? {}) as Record<string, unknown>
+  const extrasOrdenados: Array<[string, unknown]> = [
+    ['Canal', extras.canal],
+    ['Motivo perdido', extras.motivo_perdido],
+    ['Agendou consulta', extras.agendou_consulta],
+    ['Consulta realizada', extras.consulta_realizada],
+    ['Tratamento fechado', extras.tratamento_fechado],
+    ['Mensagem de confirmação', extras.mensagem_confirmacao],
+  ]
+  // Campos extras não previstos (caso a planilha tenha colunas novas)
+  const camposConhecidos = new Set([
+    'canal',
+    'motivo_perdido',
+    'agendou_consulta',
+    'consulta_realizada',
+    'tratamento_fechado',
+    'mensagem_confirmacao',
+  ])
+  for (const [k, v] of Object.entries(extras)) {
+    if (!camposConhecidos.has(k)) {
+      extrasOrdenados.push([k, v])
+    }
+  }
+
+  function formatExtra(v: unknown): string {
+    if (v === null || v === undefined || v === '') return '—'
+    if (typeof v === 'boolean') return v ? 'Sim' : 'Não'
+    return String(v)
+  }
+
+  return (
+    <Modal
+      open={!!lead}
+      onClose={onClose}
+      title="Detalhes do lead"
+      className="max-w-2xl"
+      footer={
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4 text-sm">
+        {/* Cabeçalho — info principal */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nome" value={lead.nome ?? '—'} />
+          <Field label="Telefone" value={lead.telefone ?? '—'} />
+          <Field label="Email" value={lead.email ?? '—'} />
+          <Field label="Etapa" value={lead.etapa ?? '—'} />
+          <Field label="Valor" value={formatCurrency(lead.valor ?? null)} />
+          <Field label="Data de entrada" value={formatDate(lead.data_entrada)} />
+        </div>
+
+        {/* Dados extras da planilha */}
+        {extrasOrdenados.some(([, v]) => v !== null && v !== undefined && v !== '') && (
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              Detalhes da planilha
+            </h4>
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-bg-soft p-3">
+              {extrasOrdenados.map(([label, v]) => (
+                <Field key={label} label={label} value={formatExtra(v)} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Observações */}
+        {lead.observacoes && (
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              Observações
+            </h4>
+            <div className="whitespace-pre-wrap rounded-lg border border-border bg-bg-soft p-3 text-xs text-zinc-300">
+              {lead.observacoes}
+            </div>
+          </div>
+        )}
+
+        {/* Metadata */}
+        <div className="border-t border-border pt-2 text-[10px] text-muted">
+          Fonte: <strong>{lead.origem}</strong>
+          {lead.external_ref && (
+            <>
+              {' · '}
+              <span className="font-mono">{lead.external_ref}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="mt-0.5 text-sm text-zinc-200">{value}</p>
+    </div>
   )
 }
 

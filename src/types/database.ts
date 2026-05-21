@@ -591,8 +591,20 @@ export interface Lead {
   responsavel_id: string | null
   data_entrada: string
   observacoes: string | null
+  external_ref: string | null
+  dados_extras: LeadDadosExtras | null
   created_at: string
   updated_at: string
+}
+
+export interface LeadDadosExtras {
+  canal?: string | null
+  motivo_perdido?: string | null
+  agendou_consulta?: boolean | null
+  consulta_realizada?: boolean | null
+  tratamento_fechado?: boolean | null
+  mensagem_confirmacao?: string | null
+  [key: string]: unknown
 }
 
 export interface MetasValores {
