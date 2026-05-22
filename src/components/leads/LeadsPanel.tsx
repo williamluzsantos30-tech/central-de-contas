@@ -58,6 +58,8 @@ interface Props {
 export function LeadsPanel({ cliente }: Props) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [filtroEtapa, setFiltroEtapa] = useState('')
+  const [filtroMes, setFiltroMes] = useState('')
+  const [filtroCanal, setFiltroCanal] = useState('')
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -86,13 +88,78 @@ export function LeadsPanel({ cliente }: Props) {
     [leads],
   )
 
-  const filtered = leads.filter((l) => !filtroEtapa || l.etapa === filtroEtapa)
+  // Meses únicos a partir das datas (formato YYYY-MM ordenado desc)
+  const meses = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of leads) {
+      if (!l.data_entrada) continue
+      const mes = l.data_entrada.slice(0, 7) // YYYY-MM
+      if (mes.length === 7) set.add(mes)
+    }
+    return Array.from(set).sort().reverse()
+  }, [leads])
+
+  // Canais únicos extraídos de dados_extras.canal
+  const canais = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of leads) {
+      const c = l.dados_extras?.canal
+      if (c && String(c).trim()) set.add(String(c).trim())
+    }
+    return Array.from(set).sort()
+  }, [leads])
+
+  function nomeMes(ym: string): string {
+    const [y, m] = ym.split('-')
+    const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    return `${nomes[+m - 1] ?? m}/${y}`
+  }
+
+  const filtered = leads.filter((l) => {
+    if (filtroEtapa && l.etapa !== filtroEtapa) return false
+    if (filtroMes) {
+      if (!l.data_entrada || l.data_entrada.slice(0, 7) !== filtroMes) return false
+    }
+    if (filtroCanal) {
+      const c = l.dados_extras?.canal
+      if (!c || String(c).trim() !== filtroCanal) return false
+    }
+    return true
+  })
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Select value={filtroEtapa} onChange={(e) => setFiltroEtapa(e.target.value)} className="w-48">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={filtroMes}
+            onChange={(e) => setFiltroMes(e.target.value)}
+            className="w-32"
+          >
+            <option value="">Todos meses</option>
+            {meses.map((m) => (
+              <option key={m} value={m}>
+                {nomeMes(m)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={filtroCanal}
+            onChange={(e) => setFiltroCanal(e.target.value)}
+            className="w-40"
+          >
+            <option value="">Todas plataformas</option>
+            {canais.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={filtroEtapa}
+            onChange={(e) => setFiltroEtapa(e.target.value)}
+            className="w-44"
+          >
             <option value="">Todas etapas</option>
             {etapas.map((e) => (
               <option key={e} value={e}>
@@ -100,9 +167,25 @@ export function LeadsPanel({ cliente }: Props) {
               </option>
             ))}
           </Select>
+          {(filtroMes || filtroCanal || filtroEtapa) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFiltroMes('')
+                setFiltroCanal('')
+                setFiltroEtapa('')
+              }}
+              className="text-[11px] text-muted underline-offset-2 hover:text-zinc-200 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
           <Badge tone={readonly ? 'info' : 'brand'}>
             {readonly ? 'Fonte: Kommo (read-only)' : 'Fonte: Nativo'}
           </Badge>
+          <span className="text-[11px] text-muted">
+            {filtered.length} {filtered.length === 1 ? 'lead' : 'leads'}
+          </span>
         </div>
         {!readonly && (
           <div className="flex items-center gap-2">
