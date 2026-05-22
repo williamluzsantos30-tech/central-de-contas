@@ -205,50 +205,74 @@ export function LeadsPanel({ cliente }: Props) {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-bg-soft">
-            <tr className="text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-3 py-2">Nome</th>
-              <th className="px-3 py-2">Telefone</th>
-              <th className="px-3 py-2">Canal</th>
-              <th className="px-3 py-2">Etapa</th>
-              <th className="px-3 py-2">Data</th>
-              <th className="px-3 py-2 text-right">Valor</th>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+              <th className="px-3 py-2.5">Data</th>
+              <th className="px-3 py-2.5">Nome</th>
+              <th className="px-3 py-2.5">Contato</th>
+              <th className="px-3 py-2.5">De onde veio?</th>
+              <th className="px-3 py-2.5">Contato perdido / Motivo?</th>
+              <th className="px-3 py-2.5 text-center">Agendou?</th>
+              <th className="px-3 py-2.5 text-center">Realizada?</th>
+              <th className="px-3 py-2.5 text-center">Fechado?</th>
+              <th className="px-3 py-2.5 text-right">Valor</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted">
+                <td colSpan={9} className="px-3 py-8 text-center text-muted">
                   Carregando...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted">
+                <td colSpan={9} className="px-3 py-8 text-center text-muted">
                   Nenhum lead.
                 </td>
               </tr>
             ) : (
               filtered.map((l) => {
-                const canal = (l.dados_extras?.canal as string | undefined) ?? null
+                const extras = l.dados_extras ?? {}
+                const canal = (extras.canal as string | undefined) ?? null
+                const motivo = (extras.motivo_perdido as string | undefined) ?? null
+                const agendou = extras.agendou_consulta as boolean | null | undefined
+                const realizou = extras.consulta_realizada as boolean | null | undefined
+                const fechou = extras.tratamento_fechado as boolean | null | undefined
+
                 return (
                   <tr
                     key={l.id}
                     className="cursor-pointer border-t border-border hover:bg-bg-soft"
                     onClick={() => setLeadDetalhe(l)}
                   >
-                    <td className="px-3 py-2">{l.nome ?? '—'}</td>
-                    <td className="px-3 py-2">{l.telefone ?? '—'}</td>
-                    <td className="px-3 py-2">
-                      {canal ? <Badge tone="neutral">{canal}</Badge> : '—'}
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-300">
+                      {formatDate(l.data_entrada)}
+                    </td>
+                    <td className="px-3 py-2 font-medium">{l.nome ?? '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-300">
+                      {l.telefone ?? '—'}
                     </td>
                     <td className="px-3 py-2">
-                      {l.etapa ? <Badge tone="info">{l.etapa}</Badge> : '—'}
+                      <CanalCell canal={canal} />
                     </td>
-                    <td className="px-3 py-2">{formatDate(l.data_entrada)}</td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(l.valor ?? null)}</td>
+                    <td className="px-3 py-2">
+                      <MotivoCell motivo={motivo} />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <SimNaoCell value={agendou} />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <SimNaoCell value={realizou} />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <SimNaoCell value={fechou} />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-300">
+                      {formatCurrency(l.valor ?? null)}
+                    </td>
                   </tr>
                 )
               })
@@ -426,6 +450,59 @@ function ImportCsv({
         placeholder="nome,telefone,etapa,data_entrada&#10;João,11999999,Novo,2026-04-01"
       />
     </Modal>
+  )
+}
+
+/* =========================================================
+   Celulas coloridas — reproduzem visual da planilha do cliente
+========================================================= */
+
+function CanalCell({ canal }: { canal: string | null | undefined }) {
+  if (!canal) return <span className="text-muted">—</span>
+  const c = canal.toLowerCase().trim()
+  // Cores semanticas por canal — replica visual do Google Sheets
+  let cls = 'bg-zinc-700 text-zinc-100'
+  if (c.includes('google')) cls = 'bg-emerald-600/90 text-emerald-50'
+  else if (c.includes('meta') || c.includes('facebook')) cls = 'bg-sky-600/90 text-sky-50'
+  else if (c.includes('instagram')) cls = 'bg-blue-600/90 text-blue-50'
+  else if (c.includes('tiktok')) cls = 'bg-pink-600/90 text-pink-50'
+  else if (c.includes('whatsapp')) cls = 'bg-emerald-500/90 text-emerald-50'
+  else if (c.includes('indica')) cls = 'bg-purple-600/90 text-purple-50'
+  return (
+    <span
+      className={
+        'inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold ' + cls
+      }
+    >
+      {canal}
+    </span>
+  )
+}
+
+function MotivoCell({ motivo }: { motivo: string | null | undefined }) {
+  if (!motivo) return <span className="text-muted">—</span>
+  return (
+    <span className="inline-flex items-center rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-200">
+      {motivo}
+    </span>
+  )
+}
+
+function SimNaoCell({ value }: { value: boolean | null | undefined }) {
+  if (value === null || value === undefined) {
+    return <span className="text-muted">—</span>
+  }
+  if (value) {
+    return (
+      <span className="inline-flex items-center rounded bg-emerald-500/90 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-50">
+        Sim
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center rounded bg-red-500/90 px-2 py-0.5 text-[11px] font-semibold uppercase text-red-50">
+      Não
+    </span>
   )
 }
 
