@@ -21,7 +21,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
-import { temCargo } from '@/lib/cargos'
+import { temCargo, temAlgumCargo } from '@/lib/cargos'
 import {
   cn,
   formatDate,
@@ -65,6 +65,11 @@ export default function SocialClientes() {
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
+  // Toggle pra mostrar SOMENTE arquivados (churn). Só admin/diretoria/head veem.
+  const [mostrarArquivados, setMostrarArquivados] = useState(false)
+  const isAdmin = profile?.role === 'admin'
+  const podeVerArquivados =
+    isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const [orfaos, setOrfaos] = useState<Cliente[]>([])
@@ -165,8 +170,10 @@ export default function SocialClientes() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
-      // Arquivados (churn) ocultos por padrão
-      if (c.arquivado_em) return false
+      // Arquivados (churn): toggle decide se mostra só ativos (default) ou só arquivados
+      const eArquivado = !!c.arquivado_em
+      if (mostrarArquivados && !eArquivado) return false
+      if (!mostrarArquivados && eArquivado) return false
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fSocial && c.social_media_id !== fSocial) return false
@@ -176,13 +183,19 @@ export default function SocialClientes() {
       if (escopo === 'meus' && profile && c.social_media_id !== profile.id) return false
       return true
     })
-  }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile])
+  }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
   return (
     <div>
       <PageHeader
-        title="Clientes · Social Media"
-        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`}
+        title={
+          mostrarArquivados ? 'Clientes arquivados · Social Media' : 'Clientes · Social Media'
+        }
+        description={
+          mostrarArquivados
+            ? `${filtered.length} ${filtered.length === 1 ? 'cliente arquivado' : 'clientes arquivados'} (churn)`
+            : `${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`
+        }
         actions={
           <Button
             onClick={() => {
@@ -295,6 +308,21 @@ export default function SocialClientes() {
               </option>
             ))}
           </Select>
+          {podeVerArquivados && (
+            <button
+              type="button"
+              onClick={() => setMostrarArquivados((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors',
+                mostrarArquivados
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+                  : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
+              )}
+              title="Mostrar apenas clientes arquivados (churn)"
+            >
+              {mostrarArquivados ? '↻ Voltar pra ativos' : '📁 Ver arquivados'}
+            </button>
+          )}
         </CardBody>
       </Card>
 
