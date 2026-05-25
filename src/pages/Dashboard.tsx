@@ -194,35 +194,33 @@ function DashboardCliente({
       return true
     }).length
 
-    // Clientes de Trafego em onboarding — suas tarefas atrasadas nao contam
-    // no KPI (fase de estabilizacao). Social Media nao tem essa regra.
-    const trafegoOnboardingIds = new Set(
+    // Clientes em ONBOARDING (de qualquer modulo) — em fase de estabilizacao,
+    // tarefas atrasadas nao entram nas metricas. Quando muda pra Otimizacao/
+    // Expansao/Retencao, prazos passam a ser computados.
+    const onboardingIds = new Set(
       todosClientes
         .filter(
           (c) =>
-            (c.modulos ?? ['trafego']).includes('trafego') &&
-            c.jornada === 'onboarding',
+            c.jornada === 'onboarding' ||
+            c.jornada_social === 'onboarding',
         )
         .map((c) => c.id),
     )
 
     // Tarefas atrasadas — exclui:
-    //  • Tarefas de clientes em churn ou arquivados (REGRA NOVA)
-    //  • Tarefas de clientes Trafego em onboarding
+    //  • Clientes em churn ou arquivados
+    //  • Clientes em onboarding (qualquer modulo)
     const atrasadasRaw =
       (tarefasAtrasadasComClienteRes.data as Array<{
         cliente_id: string | null
         cliente?: { status?: string | null; arquivado_em?: string | null } | null
       }>) ?? []
     const atrasadasValidas = atrasadasRaw.filter((t) => {
-      // Sem cliente_id — ignora se também não temos info do cliente
       if (!t.cliente_id) return true
-      // Cliente em churn ou arquivado → fora
       const cStatus = t.cliente?.status
       const cArq = t.cliente?.arquivado_em
       if (cStatus === 'churn' || cArq != null) return false
-      // Cliente Trafego em onboarding → fora
-      if (trafegoOnboardingIds.has(t.cliente_id)) return false
+      if (onboardingIds.has(t.cliente_id)) return false
       return true
     })
     const atrasadasAjustadas = atrasadasValidas.length
@@ -918,6 +916,8 @@ interface TarefaAtrasada {
     modulos: string[] | null
     status?: string | null
     arquivado_em?: string | null
+    jornada?: string | null
+    jornada_social?: string | null
   } | null
   responsavel?: { id: string; nome: string } | null
 }
@@ -949,7 +949,7 @@ function TarefasAtrasadasModal({
     let q = supabase
       .from('tarefas')
       .select(
-        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos, status, arquivado_em), responsavel:profiles!responsavel_id(id, nome)',
+        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos, status, arquivado_em, jornada, jornada_social), responsavel:profiles!responsavel_id(id, nome)',
       )
       .lt('data_vencimento', today)
       .neq('status', 'concluida')
@@ -959,11 +959,12 @@ function TarefasAtrasadasModal({
     }
     const { data } = await q
     const raw = (data as unknown as TarefaAtrasada[]) ?? []
-    // Exclui tarefas de clientes em churn ou arquivados
+    // Exclui tarefas de clientes em churn, arquivados ou em onboarding
     const valid = raw.filter((t) => {
-      const cStatus = t.cliente?.status
-      const cArq = t.cliente?.arquivado_em
-      if (cStatus === 'churn' || cArq != null) return false
+      const c = t.cliente
+      if (!c) return true
+      if (c.status === 'churn' || c.arquivado_em != null) return false
+      if (c.jornada === 'onboarding' || c.jornada_social === 'onboarding') return false
       return true
     })
     setTarefas(valid)
