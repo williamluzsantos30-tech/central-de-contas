@@ -227,6 +227,7 @@ function TemplateModal({
     dias_semana: [] as number[],
     dia_mes: '',
     ativo: true,
+    modulos: ['trafego'] as string[],
   })
   const [saving, setSaving] = useState(false)
 
@@ -241,6 +242,10 @@ function TemplateModal({
         dias_semana: [...(template.dias_semana ?? [])],
         dia_mes: template.dia_mes?.toString() ?? '',
         ativo: template.ativo,
+        modulos:
+          template.modulos && template.modulos.length > 0
+            ? template.modulos
+            : ['trafego'],
       })
     } else {
       setForm({
@@ -251,9 +256,18 @@ function TemplateModal({
         dias_semana: [],
         dia_mes: '',
         ativo: true,
+        modulos: ['trafego'],
       })
     }
   }, [open, template])
+
+  function toggleModulo(m: string) {
+    setForm((f) => {
+      const has = f.modulos.includes(m)
+      const next = has ? f.modulos.filter((x) => x !== m) : [...f.modulos, m]
+      return { ...f, modulos: next.length > 0 ? next : f.modulos }
+    })
+  }
 
   function toggleDia(n: number) {
     setForm((f) => ({
@@ -275,6 +289,7 @@ function TemplateModal({
       dias_semana: form.frequencia === 'semanal' ? form.dias_semana : [],
       dia_mes: form.dia_mes ? Number(form.dia_mes) : null,
       ativo: form.ativo,
+      modulos: form.modulos.length > 0 ? form.modulos : ['trafego'],
     }
     if (template) {
       await supabase.from('task_templates').update(payload).eq('id', template.id)
@@ -420,6 +435,38 @@ function TemplateModal({
           />
           Ativo (aplicar em novos clientes)
         </label>
+
+        {/* Módulos onde esse template se aplica */}
+        <div>
+          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted">
+            Aplica em quais módulos?
+          </label>
+          <div className="flex gap-1.5">
+            {[
+              { value: 'trafego', label: 'Tráfego' },
+              { value: 'social_media', label: 'Social Media' },
+            ].map((mod) => {
+              const selected = form.modulos.includes(mod.value)
+              return (
+                <button
+                  key={mod.value}
+                  type="button"
+                  onClick={() => toggleModulo(mod.value)}
+                  className={
+                    selected
+                      ? 'rounded-md border border-brand-500 bg-brand-500/20 px-3 py-1.5 text-xs font-medium text-brand-200'
+                      : 'rounded-md border border-border bg-bg-soft px-3 py-1.5 text-xs text-zinc-300 hover:border-brand-500/40'
+                  }
+                >
+                  {mod.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-muted">
+            Cliente só recebe a tarefa se tem pelo menos um módulo em comum.
+          </p>
+        </div>
       </div>
     </Modal>
   )

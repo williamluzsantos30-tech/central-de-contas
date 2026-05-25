@@ -493,6 +493,7 @@ export interface TaskTemplate {
   dias_semana: number[]
   dia_mes: number | null
   ativo: boolean
+  modulos: string[]
   created_at: string
 }
 
