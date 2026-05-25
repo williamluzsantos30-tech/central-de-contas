@@ -136,32 +136,23 @@ function DashboardCliente({
       clientesAtivosQ = clientesAtivosQ.eq(clienteFilterField, profile.id)
     }
 
-    // Tarefas atrasadas: globais (admin) ou minhas (gestor/AM)
-    let tarefasAtrasadasQ = supabase
-      .from('tarefas')
-      .select('id', { count: 'exact', head: true })
-      .lt('data_vencimento', today)
-      .neq('status', 'concluida')
-    if (!ehGlobal) tarefasAtrasadasQ = tarefasAtrasadasQ.eq('responsavel_id', profile.id)
-
-    // Tarefas atrasadas com cliente_id (pra atencao por cliente)
+    // Tarefas atrasadas com cliente embarcado — vamos filtrar churn/arquivados
+    // no JS. Não usa count exato porque precisa do JOIN.
     let tarefasAtrasadasComClienteQ = supabase
       .from('tarefas')
-      .select('cliente_id')
+      .select('cliente_id, cliente:clientes(status, arquivado_em)')
       .lt('data_vencimento', today)
       .neq('status', 'concluida')
     if (!ehGlobal) tarefasAtrasadasComClienteQ = tarefasAtrasadasComClienteQ.eq('responsavel_id', profile.id)
 
     const [
       clientesRes,
-      tarefasAtrasadasRes,
       minhasRes,
       todosClientesRes,
       todosAtivosRes,
       tarefasAtrasadasComClienteRes,
     ] = await Promise.all([
       clientesAtivosQ,
-      tarefasAtrasadasQ,
       // "Minhas tarefas de hoje" — sempre filtra por mim (faz sentido pra todos cargos)
       supabase
         .from('tarefas')
@@ -188,11 +179,20 @@ function DashboardCliente({
 
     const todosClientes = (todosClientesRes.data as Cliente[]) ?? []
     const clienteIdsDoEscopo = new Set(todosClientes.map((c) => c.id))
+    // Set de clientes em churn ou arquivados — descartar de TODAS as metricas
+    const clienteIdsInativos = new Set(
+      todosClientes
+        .filter((c) => c.status === 'churn' || c.arquivado_em != null)
+        .map((c) => c.id),
+    )
     const ativos = (todosAtivosRes.data as Ativo[]) ?? []
-    // Filtra ativos com problema só dos clientes do escopo
-    const ativosProblema = ehGlobal
-      ? ativos.filter((a) => a.status === 'com_problema').length
-      : ativos.filter((a) => a.status === 'com_problema' && clienteIdsDoEscopo.has(a.cliente_id)).length
+    // Filtra ativos com problema só dos clientes do escopo, excluindo churn/arquivados
+    const ativosProblema = ativos.filter((a) => {
+      if (a.status !== 'com_problema') return false
+      if (clienteIdsInativos.has(a.cliente_id)) return false
+      if (!ehGlobal && !clienteIdsDoEscopo.has(a.cliente_id)) return false
+      return true
+    }).length
 
     // Clientes de Trafego em onboarding — suas tarefas atrasadas nao contam
     // no KPI (fase de estabilizacao). Social Media nao tem essa regra.
@@ -205,15 +205,27 @@ function DashboardCliente({
         )
         .map((c) => c.id),
     )
-    const atrasadasComCliente =
-      (tarefasAtrasadasComClienteRes.data as { cliente_id: string | null }[]) ?? []
-    const atrasadasOnboardingTrafego = atrasadasComCliente.filter(
-      (t) => t.cliente_id && trafegoOnboardingIds.has(t.cliente_id),
-    ).length
-    const atrasadasAjustadas = Math.max(
-      0,
-      (tarefasAtrasadasRes.count ?? 0) - atrasadasOnboardingTrafego,
-    )
+
+    // Tarefas atrasadas — exclui:
+    //  • Tarefas de clientes em churn ou arquivados (REGRA NOVA)
+    //  • Tarefas de clientes Trafego em onboarding
+    const atrasadasRaw =
+      (tarefasAtrasadasComClienteRes.data as Array<{
+        cliente_id: string | null
+        cliente?: { status?: string | null; arquivado_em?: string | null } | null
+      }>) ?? []
+    const atrasadasValidas = atrasadasRaw.filter((t) => {
+      // Sem cliente_id — ignora se também não temos info do cliente
+      if (!t.cliente_id) return true
+      // Cliente em churn ou arquivado → fora
+      const cStatus = t.cliente?.status
+      const cArq = t.cliente?.arquivado_em
+      if (cStatus === 'churn' || cArq != null) return false
+      // Cliente Trafego em onboarding → fora
+      if (trafegoOnboardingIds.has(t.cliente_id)) return false
+      return true
+    })
+    const atrasadasAjustadas = atrasadasValidas.length
 
     setKpis({
       clientes: clientesData.length,
@@ -223,8 +235,9 @@ function DashboardCliente({
     })
     setMinhasTarefas((minhasRes.data as Tarefa[]) ?? [])
 
+    // Counts por cliente — usa as atrasadasValidas (já sem churn/arquivado)
     const atrasadasPorCliente = new Map<string, number>()
-    for (const t of atrasadasComCliente) {
+    for (const t of atrasadasValidas) {
       if (!t.cliente_id) continue
       atrasadasPorCliente.set(t.cliente_id, (atrasadasPorCliente.get(t.cliente_id) ?? 0) + 1)
     }
@@ -899,7 +912,13 @@ interface TarefaAtrasada {
   prioridade: string
   cliente_id: string
   responsavel_id: string | null
-  cliente?: { id: string; nome: string; modulos: string[] | null } | null
+  cliente?: {
+    id: string
+    nome: string
+    modulos: string[] | null
+    status?: string | null
+    arquivado_em?: string | null
+  } | null
   responsavel?: { id: string; nome: string } | null
 }
 
@@ -930,7 +949,7 @@ function TarefasAtrasadasModal({
     let q = supabase
       .from('tarefas')
       .select(
-        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos), responsavel:profiles!responsavel_id(id, nome)',
+        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos, status, arquivado_em), responsavel:profiles!responsavel_id(id, nome)',
       )
       .lt('data_vencimento', today)
       .neq('status', 'concluida')
@@ -939,7 +958,15 @@ function TarefasAtrasadasModal({
       q = q.eq('responsavel_id', profileId)
     }
     const { data } = await q
-    setTarefas((data as unknown as TarefaAtrasada[]) ?? [])
+    const raw = (data as unknown as TarefaAtrasada[]) ?? []
+    // Exclui tarefas de clientes em churn ou arquivados
+    const valid = raw.filter((t) => {
+      const cStatus = t.cliente?.status
+      const cArq = t.cliente?.arquivado_em
+      if (cStatus === 'churn' || cArq != null) return false
+      return true
+    })
+    setTarefas(valid)
     setLoading(false)
   }
 
