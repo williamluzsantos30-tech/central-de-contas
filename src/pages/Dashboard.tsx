@@ -16,6 +16,8 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AtivoHealth } from '@/components/clientes/AtivoHealth'
 import { supabase } from '@/lib/supabase'
@@ -115,6 +117,7 @@ function DashboardCliente({
   const [atencao, setAtencao] = useState<ClienteAtencao[]>([])
   const [tabAtencao, setTabAtencao] = useState<'trafego' | 'social'>('trafego')
   const [loading, setLoading] = useState(true)
+  const [atrasadasModalOpen, setAtrasadasModalOpen] = useState(false)
 
   const clienteFilterField = escopo.tipo === 'cliente' ? escopo.field : null
   const ehGlobal = escopo.tipo === 'global'
@@ -288,6 +291,7 @@ function DashboardCliente({
           label={labelAtrasadas}
           value={kpis.atrasadas.toString()}
           tone={kpis.atrasadas > 0 ? 'danger' : 'neutral'}
+          onClick={kpis.atrasadas > 0 ? () => setAtrasadasModalOpen(true) : undefined}
         />
         <Kpi
           icon={<ShieldAlert size={16} />}
@@ -414,6 +418,13 @@ function DashboardCliente({
           </CardBody>
         </Card>
       </div>
+
+      <TarefasAtrasadasModal
+        open={atrasadasModalOpen}
+        onClose={() => setAtrasadasModalOpen(false)}
+        ehGlobal={ehGlobal}
+        profileId={profile?.id ?? null}
+      />
     </>
   )
 }
@@ -875,16 +886,187 @@ function DashboardDesigner({ profile }: { profile: Profile | null }) {
    Sub-componente: Kpi card
    ========================================================= */
 
+/* =========================================================
+   Modal: Tarefas Atrasadas
+   Lista todas as tarefas atrasadas (globais p/ admin, próprias p/ outros).
+   Click numa tarefa → vai pro cliente.
+========================================================= */
+
+interface TarefaAtrasada {
+  id: string
+  nome: string
+  data_vencimento: string
+  prioridade: string
+  cliente_id: string
+  responsavel_id: string | null
+  cliente?: { id: string; nome: string; modulos: string[] | null } | null
+  responsavel?: { id: string; nome: string } | null
+}
+
+function TarefasAtrasadasModal({
+  open,
+  onClose,
+  ehGlobal,
+  profileId,
+}: {
+  open: boolean
+  onClose: () => void
+  ehGlobal: boolean
+  profileId: string | null
+}) {
+  const [tarefas, setTarefas] = useState<TarefaAtrasada[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filtroCliente, setFiltroCliente] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ehGlobal, profileId])
+
+  async function load() {
+    setLoading(true)
+    const today = new Date().toISOString().slice(0, 10)
+    let q = supabase
+      .from('tarefas')
+      .select(
+        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos), responsavel:profiles!responsavel_id(id, nome)',
+      )
+      .lt('data_vencimento', today)
+      .neq('status', 'concluida')
+      .order('data_vencimento', { ascending: true })
+    if (!ehGlobal && profileId) {
+      q = q.eq('responsavel_id', profileId)
+    }
+    const { data } = await q
+    setTarefas((data as unknown as TarefaAtrasada[]) ?? [])
+    setLoading(false)
+  }
+
+  // Filtro por nome de cliente
+  const tarefasFiltradas = tarefas.filter((t) => {
+    if (!filtroCliente.trim()) return true
+    const nome = (t.cliente?.nome ?? '').toLowerCase()
+    return nome.includes(filtroCliente.toLowerCase())
+  })
+
+  // Agrupa por cliente
+  const porCliente = new Map<string, { nome: string; tarefas: TarefaAtrasada[] }>()
+  for (const t of tarefasFiltradas) {
+    const key = t.cliente_id
+    const nome = t.cliente?.nome ?? '— Sem cliente'
+    if (!porCliente.has(key)) porCliente.set(key, { nome, tarefas: [] })
+    porCliente.get(key)!.tarefas.push(t)
+  }
+  const grupos = Array.from(porCliente.entries()).sort(
+    (a, b) => b[1].tarefas.length - a[1].tarefas.length,
+  )
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Tarefas atrasadas (${tarefasFiltradas.length}${
+        tarefasFiltradas.length !== tarefas.length ? ` de ${tarefas.length}` : ''
+      })`}
+      className="max-w-3xl"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {/* Filtro busca */}
+        <input
+          type="text"
+          value={filtroCliente}
+          onChange={(e) => setFiltroCliente(e.target.value)}
+          placeholder="Filtrar por cliente..."
+          className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-sm placeholder:text-muted focus:border-brand-500 focus:outline-none"
+        />
+
+        {/* Lista */}
+        {loading ? (
+          <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        ) : tarefasFiltradas.length === 0 ? (
+          <EmptyState
+            title="Nenhuma tarefa atrasada"
+            description={filtroCliente ? 'Nenhuma com esse filtro.' : 'Tudo em dia 🎉'}
+          />
+        ) : (
+          <div className="max-h-[480px] space-y-3 overflow-y-auto pr-1">
+            {grupos.map(([cid, grupo]) => (
+              <div key={cid}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    {grupo.nome}
+                  </h4>
+                  <Badge tone="danger">{grupo.tarefas.length}</Badge>
+                </div>
+                <div className="space-y-1">
+                  {grupo.tarefas.map((t) => {
+                    const diasAtraso = Math.max(
+                      1,
+                      Math.floor(
+                        (new Date().getTime() -
+                          new Date(t.data_vencimento + 'T00:00:00').getTime()) /
+                          86400000,
+                      ),
+                    )
+                    return (
+                      <Link
+                        key={t.id}
+                        to={rotaCliente({
+                          id: t.cliente_id,
+                          modulos: t.cliente?.modulos,
+                        })}
+                        onClick={onClose}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-soft px-3 py-2 transition-colors hover:bg-bg-elev"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{t.nome}</p>
+                          <p className="text-[11px] text-muted">
+                            {t.responsavel?.nome ?? 'Sem responsável'} ·{' '}
+                            {formatDateBR(t.data_vencimento)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {t.prioridade === 'alta' && (
+                            <Badge tone="danger">Alta</Badge>
+                          )}
+                          {t.prioridade === 'media' && (
+                            <Badge tone="warning">Média</Badge>
+                          )}
+                          <Badge tone="danger">{diasAtraso}d</Badge>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function Kpi({
   icon,
   label,
   value,
   tone = 'neutral',
+  onClick,
 }: {
   icon: React.ReactNode
   label: string
   value: string
   tone?: 'neutral' | 'danger' | 'success'
+  onClick?: () => void
 }) {
   const valueColor =
     tone === 'danger' ? 'text-red-400' : tone === 'success' ? 'text-emerald-300' : 'text-zinc-100'
@@ -897,25 +1079,36 @@ function Kpi({
   const glowColor =
     tone === 'success' ? 'bg-emerald-500/10' : tone === 'danger' ? 'bg-red-500/10' : 'bg-brand-500/10'
 
-  return (
-    <Card className="group/kpi overflow-hidden transition-transform duration-300 hover:-translate-y-0.5">
-      <CardBody className="relative flex items-start justify-between">
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full ${glowColor} blur-3xl opacity-0 transition-opacity duration-500 group-hover/kpi:opacity-100`}
-        />
-        <div className="relative">
-          <p className="text-[11px] uppercase tracking-wider text-muted">{label}</p>
-          <p className={`mt-2 text-3xl font-semibold tabular-nums ${valueColor}`}>{value}</p>
-        </div>
-        <div
-          className={`relative grid h-10 w-10 place-items-center rounded-xl border transition-all duration-300 group-hover/kpi:scale-110 ${iconBox}`}
-        >
-          {icon}
-        </div>
-      </CardBody>
-    </Card>
+  const cardCls = cn(
+    'group/kpi overflow-hidden transition-transform duration-300 hover:-translate-y-0.5',
+    onClick && 'cursor-pointer hover:shadow-lg',
   )
+  const content = (
+    <CardBody className="relative flex items-start justify-between">
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full ${glowColor} blur-3xl opacity-0 transition-opacity duration-500 group-hover/kpi:opacity-100`}
+      />
+      <div className="relative">
+        <p className="text-[11px] uppercase tracking-wider text-muted">{label}</p>
+        <p className={`mt-2 text-3xl font-semibold tabular-nums ${valueColor}`}>{value}</p>
+      </div>
+      <div
+        className={`relative grid h-10 w-10 place-items-center rounded-xl border transition-all duration-300 group-hover/kpi:scale-110 ${iconBox}`}
+      >
+        {icon}
+      </div>
+    </CardBody>
+  )
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="block w-full text-left">
+        <Card className={cardCls}>{content}</Card>
+      </button>
+    )
+  }
+  return <Card className={cardCls}>{content}</Card>
 }
 
 // CheckCircle2 import retained even if unused, in case future variants use it
