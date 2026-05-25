@@ -29,6 +29,9 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { isDateOverdue } from '@/lib/dates'
@@ -81,6 +84,7 @@ export default function CalendarioPostagens() {
   const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'' | StatusSocialMedia>('')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [atrasadasModalOpen, setAtrasadasModalOpen] = useState(false)
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
     temCargo(profile, 'social_media') ? 'meus' : 'todos',
   )
@@ -153,12 +157,14 @@ export default function CalendarioPostagens() {
       const d = parseISO(it.prazo)
       return d >= start && d <= end
     })
+    const atrasados = noMes.filter(
+      (it) => it.status !== 'conclusao' && isDateOverdue(it.prazo),
+    )
     return {
       total: noMes.length,
       concluidos: noMes.filter((it) => it.status === 'conclusao').length,
-      atrasados: noMes.filter(
-        (it) => it.status !== 'conclusao' && isDateOverdue(it.prazo),
-      ).length,
+      atrasados: atrasados.length,
+      atrasadosLista: atrasados,
       clientes: new Set(noMes.map((it) => it.cliente?.id).filter(Boolean)).size,
     }
   }, [filtered, cursor])
@@ -284,7 +290,12 @@ export default function CalendarioPostagens() {
               : undefined
           }
         />
-        <KpiSimple label="Atrasadas" value={monthStats.atrasados} tone="danger" />
+        <KpiSimple
+          label="Atrasadas"
+          value={monthStats.atrasados}
+          tone="danger"
+          onClick={monthStats.atrasados > 0 ? () => setAtrasadasModalOpen(true) : undefined}
+        />
         <KpiSimple label="Clientes ativos" value={monthStats.clientes} tone="info" />
       </div>
 
@@ -475,7 +486,136 @@ export default function CalendarioPostagens() {
           </Card>
         </div>
       </div>
+
+      <PostagensAtrasadasModal
+        open={atrasadasModalOpen}
+        onClose={() => setAtrasadasModalOpen(false)}
+        items={monthStats.atrasadosLista}
+        mes={format(cursor, "MMMM 'de' yyyy", { locale: ptBR })}
+      />
     </div>
+  )
+}
+
+function PostagensAtrasadasModal({
+  open,
+  onClose,
+  items,
+  mes,
+}: {
+  open: boolean
+  onClose: () => void
+  items: ItemComCliente[]
+  mes: string
+}) {
+  const [filtroCliente, setFiltroCliente] = useState('')
+
+  const filtered = items.filter((it) => {
+    if (!filtroCliente.trim()) return true
+    const nome = (it.cliente?.nome ?? '').toLowerCase()
+    return nome.includes(filtroCliente.toLowerCase())
+  })
+
+  // Agrupa por cliente
+  const porCliente = new Map<string, { nome: string; clienteId: string | null; items: ItemComCliente[] }>()
+  for (const it of filtered) {
+    const cid = it.cliente?.id ?? '__sem_cliente'
+    const nome = it.cliente?.nome ?? '— Sem cliente'
+    if (!porCliente.has(cid)) {
+      porCliente.set(cid, { nome, clienteId: it.cliente?.id ?? null, items: [] })
+    }
+    porCliente.get(cid)!.items.push(it)
+  }
+  const grupos = Array.from(porCliente.values()).sort(
+    (a, b) => b.items.length - a.items.length,
+  )
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Postagens atrasadas — ${mes} (${filtered.length}${
+        filtered.length !== items.length ? ` de ${items.length}` : ''
+      })`}
+      className="max-w-3xl"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={filtroCliente}
+          onChange={(e) => setFiltroCliente(e.target.value)}
+          placeholder="Filtrar por cliente..."
+          className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-sm placeholder:text-muted focus:border-brand-500 focus:outline-none"
+        />
+
+        {filtered.length === 0 ? (
+          <EmptyState
+            title="Nenhuma postagem atrasada"
+            description={filtroCliente ? 'Nenhuma com esse filtro.' : 'Tudo em dia 🎉'}
+          />
+        ) : (
+          <div className="max-h-[480px] space-y-3 overflow-y-auto pr-1">
+            {grupos.map((grupo) => (
+              <div key={grupo.nome}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    {grupo.nome}
+                  </h4>
+                  <Badge tone="danger">{grupo.items.length}</Badge>
+                </div>
+                <div className="space-y-1">
+                  {grupo.items.map((it) => {
+                    const diasAtraso = it.prazo
+                      ? Math.max(
+                          1,
+                          Math.floor(
+                            (new Date().getTime() - parseISO(it.prazo).getTime()) /
+                              86400000,
+                          ),
+                        )
+                      : 0
+                    const Icon = formatoIcon[it.formato]
+                    return (
+                      <Link
+                        key={it.id}
+                        to={
+                          grupo.clienteId ? `/social/clientes/${grupo.clienteId}` : '#'
+                        }
+                        onClick={onClose}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-soft px-3 py-2 transition-colors hover:bg-bg-elev"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn('h-2 w-2 rounded-full', statusDot[it.status])} />
+                            <p className="truncate text-sm font-medium">
+                              {it.titulo || 'Sem título'}
+                            </p>
+                          </div>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                            <Icon size={10} />
+                            <span>{statusLabel[it.status]}</span>
+                            <span>·</span>
+                            <span>{it.prazo ? format(parseISO(it.prazo), 'dd/MM') : '—'}</span>
+                          </p>
+                        </div>
+                        <Badge tone="danger">{diasAtraso}d</Badge>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -484,11 +624,13 @@ function KpiSimple({
   value,
   tone,
   hint,
+  onClick,
 }: {
   label: string
   value: number | string
   tone: 'brand' | 'success' | 'danger' | 'info'
   hint?: string
+  onClick?: () => void
 }) {
   const colors: Record<typeof tone, string> = {
     brand: 'text-zinc-100',
@@ -496,13 +638,21 @@ function KpiSimple({
     danger: 'text-red-300',
     info: 'text-sky-300',
   } as const
-  return (
-    <Card>
-      <CardBody>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
-        <p className={cn('mt-2 text-2xl font-bold tabular-nums', colors[tone])}>{value}</p>
-        {hint && <p className="mt-0.5 text-[10px] text-muted">{hint}</p>}
-      </CardBody>
-    </Card>
+  const content = (
+    <CardBody>
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p className={cn('mt-2 text-2xl font-bold tabular-nums', colors[tone])}>{value}</p>
+      {hint && <p className="mt-0.5 text-[10px] text-muted">{hint}</p>}
+    </CardBody>
   )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="block w-full text-left">
+        <Card className="cursor-pointer transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+          {content}
+        </Card>
+      </button>
+    )
+  }
+  return <Card>{content}</Card>
 }
