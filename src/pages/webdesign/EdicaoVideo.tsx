@@ -711,8 +711,45 @@ export function EdicaoVideoModal({
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [uploadingFinal, setUploadingFinal] = useState(false)
+  const [novoArquivoUrl, setNovoArquivoUrl] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const videoFinalInputRef = useRef<HTMLInputElement | null>(null)
+
+  /** Detecta o "tipo" do link pra rotular o item (Drive/YouTube/Vimeo/Link). */
+  function detectTipoLink(url: string): string {
+    const low = url.toLowerCase()
+    if (low.includes('drive.google')) return 'drive'
+    if (low.includes('youtube.com') || low.includes('youtu.be')) return 'youtube'
+    if (low.includes('vimeo.com')) return 'vimeo'
+    return 'link'
+  }
+
+  /** Extrai um "nome amigável" do URL pra exibir na lista. */
+  function nomeDoLink(url: string): string {
+    try {
+      const u = new URL(url)
+      // Pra Drive folder/file mostra o host + um sufixo curto
+      if (u.hostname.includes('drive.google')) return 'Google Drive'
+      if (u.hostname.includes('youtu')) return 'YouTube'
+      if (u.hostname.includes('vimeo')) return 'Vimeo'
+      return u.hostname.replace(/^www\./, '')
+    } catch {
+      return url
+    }
+  }
+
+  function addLinkArquivo() {
+    const url = novoArquivoUrl.trim()
+    if (!url) return
+    setForm((f) => ({
+      ...f,
+      arquivos: [
+        ...f.arquivos,
+        { nome: nomeDoLink(url), tamanho: 0, tipo: detectTipoLink(url), url },
+      ],
+    }))
+    setNovoArquivoUrl('')
+  }
 
   useEffect(() => {
     if (!open) return
@@ -981,31 +1018,63 @@ export function EdicaoVideoModal({
             className="hidden"
             onChange={(e) => onFilesSelected(e.target.files)}
           />
+          {/* Adicionar link (Drive/YouTube/Vimeo) — fica logo acima da lista,
+              evita ter que subir o arquivo quando o cliente entrega via Drive. */}
+          <div className="mb-1.5 grid grid-cols-[1fr_auto] gap-2">
+            <Input
+              value={novoArquivoUrl}
+              onChange={(e) => setNovoArquivoUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addLinkArquivo()
+                }
+              }}
+              placeholder="Cole um link do Drive/YouTube/Vimeo (pasta de brutos, etc)"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={addLinkArquivo}
+              disabled={!novoArquivoUrl.trim()}
+            >
+              <LinkIcon size={13} /> Adicionar link
+            </Button>
+          </div>
           {form.arquivos.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-bg-soft px-3 py-4 text-center text-xs text-muted">
               Suba briefings, prints, áudios de referência, transcrições — o que ajudar
-              o editor.
+              o editor. Ou cole um link do Drive acima.
             </div>
           ) : (
             <ul className="space-y-1.5">
-              {form.arquivos.map((a, i) => (
+              {form.arquivos.map((a, i) => {
+                const isLink = a.tamanho === 0
+                return (
                 <li
                   key={i}
                   className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
                 >
                   <div className="flex min-w-0 items-center gap-2">
+                    {isLink && (
+                      <Badge tone="neutral" className="shrink-0 text-[9px] uppercase">
+                        {a.tipo}
+                      </Badge>
+                    )}
                     <a
                       href={a.url}
                       target="_blank"
                       rel="noreferrer"
                       className="truncate text-xs text-zinc-200 hover:text-brand-300 hover:underline"
-                      title={a.nome}
+                      title={isLink ? a.url : a.nome}
                     >
-                      {a.nome}
+                      {isLink ? a.url : a.nome}
                     </a>
-                    <span className="shrink-0 text-[11px] text-muted">
-                      {formatBytes(a.tamanho)}
-                    </span>
+                    {!isLink && (
+                      <span className="shrink-0 text-[11px] text-muted">
+                        {formatBytes(a.tamanho)}
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1020,7 +1089,8 @@ export function EdicaoVideoModal({
                     <X size={13} />
                   </button>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
         </div>
