@@ -124,6 +124,7 @@ export default function EdicaoVideo() {
         .select('id, nome, avatar_url')
         .eq('ativo', true)
         .eq('aprovado', true)
+        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
         .order('nome'),
     ])
     setEdicoes((eRes.data as EdicaoVideo[]) ?? [])

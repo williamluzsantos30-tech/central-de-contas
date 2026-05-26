@@ -130,6 +130,7 @@ export default function CriativosWebdesign() {
         .select('id, nome, avatar_url')
         .eq('ativo', true)
         .eq('aprovado', true)
+        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
         .order('nome'),
     ])
     setCriativos((pRes.data as CriativoWebdesign[]) ?? [])

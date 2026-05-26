@@ -168,6 +168,7 @@ export default function SocialMedia() {
         .select('id, nome, avatar_url')
         .eq('ativo', true)
         .eq('aprovado', true)
+        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
         .order('nome'),
     ])
     const planejamentosAprovados = (pRes.data as PlanejamentoSocialMedia[]) ?? []
