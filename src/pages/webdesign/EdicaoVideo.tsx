@@ -100,9 +100,11 @@ function diasUteisEntre(start: Date, end: Date): number {
 export default function EdicaoVideo() {
   const [edicoes, setEdicoes] = useState<EdicaoVideo[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [filtroCliente, setFiltroCliente] = useState<string>('')
+  const [filtroResponsavel, setFiltroResponsavel] = useState<string>('')
   const [collapsed, setCollapsed] = useState<Partial<Record<StatusEdicaoVideo, boolean>>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -110,16 +112,23 @@ export default function EdicaoVideo() {
 
   async function load() {
     setLoading(true)
-    const [eRes, cRes] = await Promise.all([
+    const [eRes, cRes, rRes] = await Promise.all([
       supabase
         .from('edicoes_video')
         .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
         .order('ordem', { ascending: true })
         .order('created_at', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
+      supabase
+        .from('profiles')
+        .select('id, nome, avatar_url')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .order('nome'),
     ])
     setEdicoes((eRes.data as EdicaoVideo[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
+    setResponsaveisLista((rRes.data as Profile[]) ?? [])
     setLoading(false)
   }
 
@@ -130,6 +139,12 @@ export default function EdicaoVideo() {
   const filtered = useMemo(() => {
     let arr = edicoes
     if (filtroCliente) arr = arr.filter((e) => e.cliente_id === filtroCliente)
+    if (filtroResponsavel) {
+      arr = arr.filter((e) => {
+        if (filtroResponsavel === '__sem__') return !e.responsavel_id
+        return e.responsavel_id === filtroResponsavel
+      })
+    }
     if (q.trim()) {
       const term = q.toLowerCase()
       arr = arr.filter(
@@ -139,7 +154,7 @@ export default function EdicaoVideo() {
       )
     }
     return arr
-  }, [edicoes, filtroCliente, q])
+  }, [edicoes, filtroCliente, filtroResponsavel, q])
 
   const porStatus = useMemo(() => {
     const m = new Map<StatusEdicaoVideo, EdicaoVideo[]>()
@@ -192,6 +207,19 @@ export default function EdicaoVideo() {
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={filtroResponsavel}
+            onChange={(e) => setFiltroResponsavel(e.target.value)}
+            className="w-56"
+          >
+            <option value="">Todos responsáveis</option>
+            <option value="__sem__">Sem responsável</option>
+            {responsaveisLista.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
               </option>
             ))}
           </Select>

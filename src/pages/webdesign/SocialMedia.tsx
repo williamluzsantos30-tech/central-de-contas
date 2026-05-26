@@ -143,8 +143,10 @@ export default function SocialMedia() {
   const [planejamentos, setPlanejamentos] = useState<PlanejamentoSocialMedia[]>([])
   const [items, setItems] = useState<ItemSocialMedia[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
   const [q, setQ] = useState('')
   const [fCliente, setFCliente] = useState('')
+  const [fResponsavel, setFResponsavel] = useState('')
   const [loading, setLoading] = useState(true)
   const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set())
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
@@ -154,13 +156,19 @@ export default function SocialMedia() {
     // Esteira de produção mostra SÓ planejamentos aprovados pelo cliente.
     // Enquanto está no Planejamento Mensal sem aprovação, não polui a esteira
     // — assim o designer só vê o que pode/deve trabalhar.
-    const [pRes, cRes] = await Promise.all([
+    const [pRes, cRes, rRes] = await Promise.all([
       supabase
         .from('producoes_social_media')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .not('aprovado_em', 'is', null)
         .order('aprovado_em', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
+      supabase
+        .from('profiles')
+        .select('id, nome, avatar_url')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .order('nome'),
     ])
     const planejamentosAprovados = (pRes.data as PlanejamentoSocialMedia[]) ?? []
     const idsAprovados = planejamentosAprovados.map((p) => p.id)
@@ -175,6 +183,7 @@ export default function SocialMedia() {
     setPlanejamentos(planejamentosAprovados)
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
+    setResponsaveisLista((rRes.data as Profile[]) ?? [])
     if (!silent) setLoading(false)
   }
 
@@ -225,16 +234,40 @@ export default function SocialMedia() {
     setNovoPlanModalOpen(false)
   }
 
+  // Mapa de responsaveis por planejamento (inclui responsaveis dos items)
+  const respIdsByPlan = useMemo(() => {
+    const m = new Map<string, Set<string>>()
+    for (const it of items) {
+      if (!it.responsavel_id) continue
+      const s = m.get(it.producao_id) ?? new Set<string>()
+      s.add(it.responsavel_id)
+      m.set(it.producao_id, s)
+    }
+    return m
+  }, [items])
+
   const filtered = useMemo(() => {
     return planejamentos.filter((p) => {
       if (fCliente && p.cliente_id !== fCliente) return false
+      if (fResponsavel) {
+        const planResp = p.responsavel_id ?? null
+        const itemsResp = respIdsByPlan.get(p.id)
+        if (fResponsavel === '__sem__') {
+          // Mostra só quando NENHUM responsável (planejamento e items)
+          if (planResp) return false
+          if (itemsResp && itemsResp.size > 0) return false
+        } else {
+          const match = planResp === fResponsavel || (itemsResp?.has(fResponsavel) ?? false)
+          if (!match) return false
+        }
+      }
       if (q) {
         const hay = `${p.titulo} ${p.cliente?.nome ?? ''}`.toLowerCase()
         if (!hay.includes(q.toLowerCase())) return false
       }
       return true
     })
-  }, [planejamentos, q, fCliente])
+  }, [planejamentos, q, fCliente, fResponsavel, respIdsByPlan])
 
   const itemsByPlan = useMemo(() => {
     const m = new Map<string, ItemSocialMedia[]>()
@@ -288,6 +321,19 @@ export default function SocialMedia() {
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={fResponsavel}
+            onChange={(e) => setFResponsavel(e.target.value)}
+            className="w-56"
+          >
+            <option value="">Todos responsáveis</option>
+            <option value="__sem__">Sem responsável</option>
+            {responsaveisLista.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
               </option>
             ))}
           </Select>
@@ -649,7 +695,11 @@ function PlanejamentoCard({
                 }
               >
                 {planejamento.responsavel ? (
-                  <Avatar name={planejamento.responsavel.nome} size="sm" />
+                  <Avatar
+                    name={planejamento.responsavel.nome}
+                    url={planejamento.responsavel.avatar_url}
+                    size="sm"
+                  />
                 ) : (
                   <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
                     <User size={10} />
@@ -1447,7 +1497,11 @@ function ItemRow({
               title="Clique para mudar o responsável"
             >
               {item.responsavel ? (
-                <Avatar name={item.responsavel.nome} size="sm" />
+                <Avatar
+                  name={item.responsavel.nome}
+                  url={item.responsavel.avatar_url}
+                  size="sm"
+                />
               ) : (
                 <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
                   <User size={10} />

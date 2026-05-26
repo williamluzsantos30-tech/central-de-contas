@@ -108,24 +108,33 @@ async function uploadArquivo(file: File, folder = 'criativos/misc'): Promise<str
 export default function CriativosWebdesign() {
   const [criativos, setCriativos] = useState<CriativoWebdesign[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
   const [q, setQ] = useState('')
   const [fFormato, setFFormato] = useState('')
   const [fCliente, setFCliente] = useState('')
+  const [fResponsavel, setFResponsavel] = useState('')
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [pRes, cRes] = await Promise.all([
+    const [pRes, cRes, rRes] = await Promise.all([
       supabase
         .from('criativos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
+      supabase
+        .from('profiles')
+        .select('id, nome, avatar_url')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .order('nome'),
     ])
     setCriativos((pRes.data as CriativoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
+    setResponsaveisLista((rRes.data as Profile[]) ?? [])
     if (!silent) setLoading(false)
   }
 
@@ -181,9 +190,13 @@ export default function CriativosWebdesign() {
       if (q && !nomeCliente.toLowerCase().includes(q.toLowerCase())) return false
       if (fFormato && p.formato !== fFormato) return false
       if (fCliente && p.cliente_id !== fCliente) return false
+      if (fResponsavel) {
+        if (fResponsavel === '__sem__' && p.responsavel_id) return false
+        if (fResponsavel !== '__sem__' && p.responsavel_id !== fResponsavel) return false
+      }
       return true
     })
-  }, [criativos, q, fFormato, fCliente])
+  }, [criativos, q, fFormato, fCliente, fResponsavel])
 
   const byStatus = useMemo(() => {
     const m = new Map<StatusCriativoWebdesign, CriativoWebdesign[]>()
@@ -231,6 +244,19 @@ export default function CriativosWebdesign() {
             {FORMATOS_CRIATIVO.map((f) => (
               <option key={f} value={f}>
                 {formatoCriativoLabel[f]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={fResponsavel}
+            onChange={(e) => setFResponsavel(e.target.value)}
+            className="w-56"
+          >
+            <option value="">Todos responsáveis</option>
+            <option value="__sem__">Sem responsável</option>
+            {responsaveisLista.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
               </option>
             ))}
           </Select>
@@ -557,7 +583,11 @@ function CriativoAccordion({
                   }
                 >
                   {criativo.responsavel ? (
-                    <Avatar name={criativo.responsavel.nome} size="sm" />
+                    <Avatar
+                      name={criativo.responsavel.nome}
+                      url={criativo.responsavel.avatar_url}
+                      size="sm"
+                    />
                   ) : (
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
                       <User size={10} />

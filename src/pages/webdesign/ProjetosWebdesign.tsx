@@ -100,21 +100,30 @@ export default function ProjetosWebdesign() {
   const [q, setQ] = useState('')
   const [fTipo, setFTipo] = useState('')
   const [fCliente, setFCliente] = useState('')
+  const [fResponsavel, setFResponsavel] = useState('')
+  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [pRes, cRes] = await Promise.all([
+    const [pRes, cRes, rRes] = await Promise.all([
       supabase
         .from('projetos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
+      supabase
+        .from('profiles')
+        .select('id, nome, avatar_url')
+        .eq('ativo', true)
+        .eq('aprovado', true)
+        .order('nome'),
     ])
     setProjetos((pRes.data as ProjetoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
+    setResponsaveis((rRes.data as Profile[]) ?? [])
     if (!silent) setLoading(false)
   }
 
@@ -169,9 +178,13 @@ export default function ProjetosWebdesign() {
       if (q && !nomeCliente.toLowerCase().includes(q.toLowerCase())) return false
       if (fTipo && p.tipo !== fTipo) return false
       if (fCliente && p.cliente_id !== fCliente) return false
+      if (fResponsavel) {
+        if (fResponsavel === '__sem__' && p.responsavel_id) return false
+        if (fResponsavel !== '__sem__' && p.responsavel_id !== fResponsavel) return false
+      }
       return true
     })
-  }, [projetos, q, fTipo, fCliente])
+  }, [projetos, q, fTipo, fCliente, fResponsavel])
 
   const byStatus = useMemo(() => {
     const m = new Map<StatusProjetoWebdesign, ProjetoWebdesign[]>()
@@ -222,6 +235,19 @@ export default function ProjetosWebdesign() {
             {TIPOS_PROJETO_WEBDESIGN.map((t) => (
               <option key={t} value={t}>
                 {tipoProjetoWebdesignLabel[t]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={fResponsavel}
+            onChange={(e) => setFResponsavel(e.target.value)}
+            className="w-48"
+          >
+            <option value="">Todos responsáveis</option>
+            <option value="__sem__">Sem responsável</option>
+            {responsaveis.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
               </option>
             ))}
           </Select>
@@ -560,7 +586,11 @@ function ProjetoAccordion({
                   }
                 >
                   {projeto.responsavel ? (
-                    <Avatar name={projeto.responsavel.nome} size="sm" />
+                    <Avatar
+                      name={projeto.responsavel.nome}
+                      url={projeto.responsavel.avatar_url}
+                      size="sm"
+                    />
                   ) : (
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
                       <User size={10} />
