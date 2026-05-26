@@ -919,7 +919,7 @@ interface TarefaAtrasada {
     jornada?: string | null
     jornada_social?: string | null
   } | null
-  responsavel?: { id: string; nome: string } | null
+  responsavel?: { id: string; nome: string; avatar_url?: string | null } | null
 }
 
 function TarefasAtrasadasModal({
@@ -949,7 +949,7 @@ function TarefasAtrasadasModal({
     let q = supabase
       .from('tarefas')
       .select(
-        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos, status, arquivado_em, jornada, jornada_social), responsavel:profiles!responsavel_id(id, nome)',
+        'id, nome, data_vencimento, prioridade, cliente_id, responsavel_id, cliente:clientes(id, nome, modulos, status, arquivado_em, jornada, jornada_social), responsavel:profiles!responsavel_id(id, nome, avatar_url)',
       )
       .lt('data_vencimento', today)
       .neq('status', 'concluida')
@@ -1054,12 +1054,21 @@ function TarefasAtrasadasModal({
                         onClick={onClose}
                         className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-soft px-3 py-2 transition-colors hover:bg-bg-elev"
                       >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{t.nome}</p>
-                          <p className="text-[11px] text-muted">
-                            {t.responsavel?.nome ?? 'Sem responsável'} ·{' '}
-                            {formatDateBR(t.data_vencimento)}
-                          </p>
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          {t.responsavel ? (
+                            <Avatar
+                              name={t.responsavel.nome}
+                              url={t.responsavel.avatar_url ?? null}
+                              size="sm"
+                            />
+                          ) : null}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{t.nome}</p>
+                            <p className="text-[11px] text-muted">
+                              {t.responsavel?.nome ?? 'Sem responsável'} ·{' '}
+                              {formatDateBR(t.data_vencimento)}
+                            </p>
+                          </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {t.prioridade === 'alta' && (

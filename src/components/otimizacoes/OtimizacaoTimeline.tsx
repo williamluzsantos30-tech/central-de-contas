@@ -17,7 +17,11 @@ export function OtimizacaoTimeline({ otimizacoes }: { otimizacoes: Otimizacao[] 
           <div className="rounded-xl border border-border bg-bg-soft p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Avatar name={o.responsavel?.nome} size="sm" />
+                <Avatar
+                  name={o.responsavel?.nome}
+                  url={o.responsavel?.avatar_url ?? null}
+                  size="sm"
+                />
                 <div>
                   <p className="text-sm font-medium">{o.responsavel?.nome ?? 'Anônimo'}</p>
                   <p className="text-[11px] text-muted">{formatDate(o.data_otimizacao)}</p>

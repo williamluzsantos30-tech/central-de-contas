@@ -169,7 +169,13 @@ export function CriacoesPanel({ cliente }: Props) {
                           <span>Atualizado em {formatDateTime(c.updated_at)}</span>
                         </div>
                       </div>
-                      {c.responsavel && <Avatar name={c.responsavel.nome} size="sm" />}
+                      {c.responsavel && (
+                        <Avatar
+                          name={c.responsavel.nome}
+                          url={c.responsavel.avatar_url}
+                          size="sm"
+                        />
+                      )}
                     </button>
                   ))}
                 </div>

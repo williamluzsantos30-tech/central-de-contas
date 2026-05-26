@@ -182,7 +182,13 @@ export function TarefaItem({ tarefa, onChange, onOpen, comentariosCount }: Props
         >
           {flash ? '✓ Concluída!' : done ? 'Concluída' : relativeDueLabel(tarefa.data_vencimento)}
         </Badge>
-        {tarefa.responsavel && <Avatar name={tarefa.responsavel.nome} size="sm" />}
+        {tarefa.responsavel && (
+          <Avatar
+            name={tarefa.responsavel.nome}
+            url={tarefa.responsavel.avatar_url}
+            size="sm"
+          />
+        )}
       </div>
     </div>
   )

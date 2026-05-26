@@ -395,7 +395,11 @@ export default function SocialClientes() {
                         <td className="px-3 py-3 whitespace-nowrap">
                           {c.social_media ? (
                             <div className="flex items-center gap-2">
-                              <Avatar name={c.social_media.nome} size="sm" />
+                              <Avatar
+                                name={c.social_media.nome}
+                                url={c.social_media.avatar_url}
+                                size="sm"
+                              />
                               <span className="text-sm text-zinc-200">{c.social_media.nome}</span>
                             </div>
                           ) : (

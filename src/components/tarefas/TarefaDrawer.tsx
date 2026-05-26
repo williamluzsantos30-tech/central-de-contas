@@ -185,7 +185,7 @@ export function TarefaDrawer({ open, onClose, tarefa, onChanged }: Props) {
                   key={c.id}
                   className="flex gap-2 rounded-lg border border-border bg-bg-soft p-2"
                 >
-                  <Avatar name={c.autor?.nome} size="sm" />
+                  <Avatar name={c.autor?.nome} url={c.autor?.avatar_url} size="sm" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 text-xs">
                       <span className="font-medium">{c.autor?.nome ?? '—'}</span>
