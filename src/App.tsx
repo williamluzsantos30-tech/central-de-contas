@@ -7,6 +7,7 @@ import Clientes from '@/pages/Clientes'
 import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
 import Admin from '@/pages/Admin'
+import ControleHead from '@/pages/trafego/ControleHead'
 import ProjetosWebdesign from '@/pages/webdesign/ProjetosWebdesign'
 import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+            <Route path="/trafego/controle-head" element={<ControleHead />} />
             <Route path="/minhas-tarefas" element={<MinhasTarefas />} />
             <Route path="/webdesign/projetos" element={<ProjetosWebdesign />} />
             <Route path="/webdesign/criativos" element={<CriativosWebdesign />} />

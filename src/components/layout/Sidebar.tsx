@@ -15,10 +15,17 @@ import {
   Film,
   Sun,
   Moon,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
-import { loadCargoPermissoes, cargosDoProfile, type Modulo } from '@/lib/cargos'
+import {
+  loadCargoPermissoes,
+  cargosDoProfile,
+  temAlgumCargo,
+  type Cargo,
+  type Modulo,
+} from '@/lib/cargos'
 import { useTheme } from '@/hooks/useTheme'
 
 type Item = {
@@ -27,6 +34,8 @@ type Item = {
   icon: React.ComponentType<{ size?: number }>
   end?: boolean
   adminOnly?: boolean
+  /** Se preenchido, o item só aparece pra quem tem QUALQUER um desses cargos */
+  cargosPermitidos?: Cargo[]
 }
 
 type Group =
@@ -52,6 +61,12 @@ const nav: Group[] = [
     modulo: 'trafego',
     items: [
       { to: '/clientes', label: 'Clientes', icon: Users },
+      {
+        to: '/trafego/controle-head',
+        label: 'Controle do Head',
+        icon: Activity,
+        cargosPermitidos: ['head', 'diretoria'],
+      },
     ],
   },
   {
@@ -142,7 +157,14 @@ export function Sidebar() {
           }
           // Folder: bloqueia se o cargo não tem acesso a esse módulo
           if (g.modulo && !canAccessModulo(g.modulo)) return null
-          const visibleItems = g.items.filter((it) => !it.adminOnly || isAdmin)
+          const visibleItems = g.items.filter((it) => {
+            if (it.adminOnly && !isAdmin) return false
+            if (it.cargosPermitidos && it.cargosPermitidos.length > 0) {
+              // Admin sempre vê; demais só se tem algum dos cargos permitidos
+              if (!isAdmin && !temAlgumCargo(profile, it.cargosPermitidos)) return false
+            }
+            return true
+          })
           if (visibleItems.length === 0) return null
           const expanded = open[g.key]
           return (
