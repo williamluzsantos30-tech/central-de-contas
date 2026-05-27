@@ -8,7 +8,18 @@ import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
 import { formatDateTime, frequenciaLabel } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import { temAlgumCargo, type Cargo } from '@/lib/cargos'
 import type { Profile, Tarefa, TarefaComentario } from '@/types/database'
+
+// Tarefa de cliente e funcao de gestao: nao faz sentido listar designer
+// aqui (designer ja tem fila propria em Webdesign).
+const CARGOS_GESTAO: Cargo[] = [
+  'gestor_trafego',
+  'account_manager',
+  'social_media',
+  'head',
+  'diretoria',
+]
 
 interface Props {
   open: boolean
@@ -42,7 +53,12 @@ export function TarefaDrawer({ open, onClose, tarefa, onChanged }: Props) {
       .eq('ativo', true)
       .eq('aprovado', true)
       .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
+      .then(({ data }) => {
+        const all = (data as Profile[]) ?? []
+        // Filtra client-side pra cargos de gestao (principal OU extras)
+        const gestao = all.filter((p) => temAlgumCargo(p, CARGOS_GESTAO))
+        setResponsaveis(gestao)
+      })
   }, [tarefa])
 
   async function loadComentarios(tid: string) {
