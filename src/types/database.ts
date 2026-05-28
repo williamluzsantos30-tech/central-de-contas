@@ -1,4 +1,8 @@
 export type UserRole = 'admin' | 'gestor' | 'supervisor'
+// Controle do Head de Tráfego
+export type StatusSaudeConta = 'estavel' | 'instavel' | 'critico'
+export type StatusPlanoAcao = 'aberto' | 'em_andamento' | 'concluido'
+export type PlataformaTrafego = 'meta_ads' | 'google_ads' | 'tiktok_ads' | 'youtube_ads'
 export type PlataformaAds = 'google_ads' | 'meta_ads' | 'ambos'
 export type FonteCrm = 'kommo' | 'nativo'
 export type StatusCliente = 'ativo' | 'atencao' | 'pausado' | 'churn'
@@ -169,6 +173,14 @@ export interface Cliente {
   semaforo: SemaforoCliente | null
   data_inicio: string
   plataformas: PlataformaAds | null
+  /**
+   * Cache do pior status_saude entre as plataformas do cliente (migration 043).
+   * Atualizado por trigger quando cliente_saude_plataforma muda.
+   * Default 'estavel'.
+   */
+  status_saude_geral: StatusSaudeConta
+  /** Timestamp de quando o cliente entrou no status_saude_geral atual. Reseta no trigger. */
+  status_geral_desde: string
   verba_mensal: number | null
   verba_google: number | null
   verba_meta: number | null
@@ -636,4 +648,46 @@ export interface Meta {
   observacoes: string | null
   created_at: string
   updated_at: string
+}
+
+// =========================================================
+// Controle do Head de Tráfego (migration 043)
+// =========================================================
+
+/**
+ * Saúde + métricas de um cliente em uma plataforma específica.
+ * Um cliente pode ter 1+ linhas dessas (uma por plataforma).
+ * Métricas (leads / CPL / verba) são preenchidas MANUALMENTE pelo head.
+ */
+export interface ClienteSaudePlataforma {
+  cliente_id: string
+  plataforma: PlataformaTrafego
+  status_saude: StatusSaudeConta
+  leads_30d: number
+  cpl: number
+  verba_gasta: number
+  verba_orcamento: number
+  tendencia_pct: number
+  observacao: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
+/**
+ * Verificação registrada pelo head/diretoria. Cada uma cobre UMA plataforma
+ * de UM cliente. Tem que ter problema + plano de ação preenchidos.
+ */
+export interface VerificacaoConta {
+  id: string
+  cliente_id: string
+  plataforma: PlataformaTrafego
+  autor_id: string
+  problema: string
+  plano_acao: string
+  status_plano: StatusPlanoAcao
+  created_at: string
+  updated_at: string
+  // Joins opcionais
+  cliente?: Cliente | null
+  autor?: Profile | null
 }

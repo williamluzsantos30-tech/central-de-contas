@@ -2,27 +2,37 @@
  * Painel do Head de Tráfego — visão de TODAS as contas com status de saúde
  * (Estável / Instável / Crítica) e cadência de verificação obrigatória.
  *
- * Regra de cadência (definida pelo head):
+ * Regra de cadência:
  *   - Estável  → 1x por semana (≥ 1 verificação na semana corrente)
  *   - Instável → 2x por semana
  *   - Crítica  → 3x por semana
  *
- * Modelo de plataformas:
+ * Modelo de plataformas (Opção C):
  *   - Cliente pode rodar em mais de uma plataforma (Meta + Google + etc)
- *   - Cada plataforma tem SEU PRÓPRIO status de saúde
- *   - O card mostra o pior status como "geral" e badges individuais
- *     pra cada plataforma
- *   - Verificações são REGISTRADAS POR PLATAFORMA (problema + plano +
- *     qual plataforma cobre)
- *   - Cadência semanal usa o pior status (worst-case) — head pode
- *     distribuir as verificações entre plataformas como achar melhor
+ *   - Cada plataforma tem SEU PRÓPRIO status de saúde (cliente_saude_plataforma)
+ *   - Status "geral" do cliente = pior das plataformas (cache em clientes,
+ *     atualizado por trigger)
+ *   - Verificações são REGISTRADAS POR PLATAFORMA (verificacoes_conta)
+ *   - Cadência semanal usa o pior status (worst-case)
  *
- * ⚠️ ESTA TELA AINDA NÃO USA DADOS REAIS DO SUPABASE.
- * É um mock pra revisão visual antes de criar as migrations/tabelas.
- * O state vive só no client e some quando recarrega.
+ * Métricas (leads/CPL/verba) são preenchidas MANUALMENTE pelo head no modal
+ * de edição de plataforma (a editar nas próximas fases).
+ *
+ * Migrations: 043-controle-head-base.sql.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import type {
+  Cliente,
+  ClienteSaudePlataforma,
+  PlataformaTrafego,
+  Profile,
+  StatusPlanoAcao,
+  StatusSaudeConta,
+  VerificacaoConta,
+} from '@/types/database'
 import {
   Search,
   Activity,
@@ -41,6 +51,9 @@ import {
   UserPlus,
   Download,
   FileText,
+  Pencil,
+  Trash2,
+  PlusCircle,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -58,12 +71,12 @@ import {
 } from '@/components/trafego/ControleHeadPDF'
 
 // =========================================================
-// Tipos & mock data
+// Tipos (re-exporta dos types globais pra ergonomia local)
 // =========================================================
 
-type StatusConta = 'estavel' | 'instavel' | 'critico'
-type StatusPlano = 'aberto' | 'em_andamento' | 'concluido'
-type Plataforma = 'meta_ads' | 'google_ads' | 'tiktok_ads' | 'youtube_ads'
+type StatusConta = StatusSaudeConta
+type StatusPlano = StatusPlanoAcao
+type Plataforma = PlataformaTrafego
 
 const PLATAFORMAS: Plataforma[] = ['meta_ads', 'google_ads', 'tiktok_ads', 'youtube_ads']
 
@@ -157,6 +170,10 @@ const statusPlanoTone: Record<StatusPlano, 'danger' | 'warning' | 'success'> = {
   concluido: 'success',
 }
 
+/**
+ * Saúde + métricas de UMA plataforma do cliente (forma usada na UI).
+ * Idêntico a ClienteSaudePlataforma mas com nomes mais curtos pra UI.
+ */
 interface PlataformaSaude {
   plataforma: Plataforma
   status: StatusConta
@@ -165,34 +182,36 @@ interface PlataformaSaude {
   verba_gasta: number
   verba_orcamento: number
   tendencia_pct: number
+  observacao: string | null
 }
 
+/** Verificação na forma que a UI usa (campos planos pra render rápido). */
 interface Verificacao {
   id: string
-  data: string // ISO
-  plataforma: Plataforma // qual plataforma foi verificada
+  data: string // ISO created_at
+  plataforma: Plataforma
   problema: string
   plano_acao: string
   status_plano: StatusPlano
-  autor: string // mock: nome do head logado
+  autor: string // nome do autor (resolvido do profile)
+  autor_id: string
 }
 
-interface ContaMock {
+/**
+ * Forma agregada usada pela UI: 1 cliente com suas plataformas + verificações.
+ * Carregado por load() a partir de clientes + cliente_saude_plataforma +
+ * verificacoes_conta (migration 043).
+ */
+interface Conta {
   id: string
   nome: string
   nicho: string
   squad: string
   gestor: { nome: string; avatar_url?: string | null }
-  /** Saúde por plataforma — cliente pode ter 1 ou várias */
   plataformas: PlataformaSaude[]
-  /** Histórico completo de verificações (mais recente primeiro) */
+  /** Histórico de verificações ordenado mais recente primeiro */
   verificacoes: Verificacao[]
-  /**
-   * Data ISO de quando a conta entrou no status atual (geral).
-   * Usada pra detectar escalonamento automático (instável→crítica em 3 sem;
-   * crítica→diretoria em 2 sem).
-   * Quando virar dados reais: vira `status_desde` na tabela cliente_saude.
-   */
+  /** Quando a conta entrou no status_geral atual (pra detectar escalonamento) */
   status_geral_desde: string
 }
 
@@ -204,7 +223,7 @@ interface ContaMock {
 const ordemStatus: Record<StatusConta, number> = { critico: 3, instavel: 2, estavel: 1 }
 
 /** Pior status entre as plataformas (worst-case). */
-function statusGeral(c: ContaMock): StatusConta {
+function statusGeral(c: Conta): StatusConta {
   let pior: StatusConta = 'estavel'
   for (const p of c.plataformas) {
     if (ordemStatus[p.status] > ordemStatus[pior]) pior = p.status
@@ -227,12 +246,12 @@ function inicioDaSemana(): Date {
   return d
 }
 
-function verificacoesDaSemana(c: ContaMock): Verificacao[] {
+function verificacoesDaSemana(c: Conta): Verificacao[] {
   const seg = inicioDaSemana().getTime()
   return c.verificacoes.filter((v) => new Date(v.data).getTime() >= seg)
 }
 
-function ultimaVerificacao(c: ContaMock): Verificacao | null {
+function ultimaVerificacao(c: Conta): Verificacao | null {
   return c.verificacoes[0] ?? null
 }
 
@@ -262,7 +281,7 @@ function formatDataHora(iso: string): string {
   })
 }
 
-function estaAtrasada(c: ContaMock): boolean {
+function estaAtrasada(c: Conta): boolean {
   const meta = META_SEMANAL[statusGeral(c)]
   const feitas = verificacoesDaSemana(c).length
   if (feitas >= meta) return false
@@ -315,7 +334,7 @@ interface AvaliacaoSLA {
   escalonamento: 'nenhum' | 'sugere_critica' | 'notifica_diretoria'
 }
 
-function avaliarSLA(c: ContaMock): AvaliacaoSLA {
+function avaliarSLA(c: Conta): AvaliacaoSLA {
   const sg = statusGeral(c)
   const sla = SLA[sg]
 
@@ -386,295 +405,142 @@ function avaliarSLA(c: ContaMock): AvaliacaoSLA {
 }
 
 // =========================================================
-// Mock data
+// Carregamento do banco
 // =========================================================
 
-function mockPlat(
-  plataforma: Plataforma,
-  status: StatusConta,
-  leads: number,
-  cpl: number,
-  gasto: number,
-  orcamento: number,
-  tendencia: number,
-): PlataformaSaude {
+/** Mapeia ClienteSaudePlataforma (banco) → PlataformaSaude (UI). */
+function csptoUI(p: ClienteSaudePlataforma): PlataformaSaude {
   return {
-    plataforma,
-    status,
-    leads_30d: leads,
-    cpl,
-    verba_gasta: gasto,
-    verba_orcamento: orcamento,
-    tendencia_pct: tendencia,
+    plataforma: p.plataforma,
+    status: p.status_saude,
+    leads_30d: Number(p.leads_30d) || 0,
+    cpl: Number(p.cpl) || 0,
+    verba_gasta: Number(p.verba_gasta) || 0,
+    verba_orcamento: Number(p.verba_orcamento) || 0,
+    tendencia_pct: Number(p.tendencia_pct) || 0,
+    observacao: p.observacao,
   }
 }
 
-function mockVerif(
-  diasAtras: number,
-  plat: Plataforma,
-  problema: string,
-  plano: string,
-  status: StatusPlano = 'em_andamento',
-): Verificacao {
+/** Mapeia VerificacaoConta (banco) → Verificacao (UI), achatando autor. */
+function verifToUI(v: VerificacaoConta & { autor?: { nome?: string } | null }): Verificacao {
   return {
-    id: `v${Math.random().toString(36).slice(2, 9)}`,
-    data: daysAgo(diasAtras),
-    plataforma: plat,
-    problema,
-    plano_acao: plano,
-    status_plano: status,
-    autor: 'Lucas Antonio',
+    id: v.id,
+    data: v.created_at,
+    plataforma: v.plataforma,
+    problema: v.problema,
+    plano_acao: v.plano_acao,
+    status_plano: v.status_plano,
+    autor: v.autor?.nome ?? '—',
+    autor_id: v.autor_id,
   }
 }
 
-const MOCK_CONTAS: ContaMock[] = [
-  // Cliente com Meta crítica + Google estável → card vira "crítico" no geral
-  // Crítica há 15 dias → já caiu na regra "2 sem → notifica diretoria"
-  {
-    id: 'm1',
-    nome: 'Dra. Camila Estética',
-    nicho: 'Harmonização Facial',
-    squad: 'BlackOps',
-    gestor: { nome: 'Lucas Portilho' },
-    status_geral_desde: daysAgo(15),
-    plataformas: [
-      mockPlat('meta_ads', 'critico', 8, 240.5, 3800, 6000, -42),
-      mockPlat('google_ads', 'estavel', 14, 95, 1900, 2500, 5),
-    ],
-    verificacoes: [
-      mockVerif(
-        2,
-        'meta_ads',
-        'CPL Meta disparou de R$ 120 pra R$ 240 em 7 dias. Públicos parecidos perdendo performance.',
-        'Pausar conjuntos com CPL > R$ 200, testar 3 novos criativos com prova social e lookalike 1%.',
-        'em_andamento',
-      ),
-      mockVerif(
-        9,
-        'meta_ads',
-        'Queda de leads no fim de semana, anúncios em revisão pelo Meta.',
-        'Submeter recurso, criar campanha backup com criativos alternativos.',
-        'concluido',
-      ),
-      mockVerif(
-        5,
-        'google_ads',
-        'Search performando bem, mas Performance Max sem entregar.',
-        'Manter Search atual, refazer assets do PMax com criativos novos.',
-        'concluido',
-      ),
-    ],
-  },
-  // Cliente só com Meta crítica
-  {
-    id: 'm2',
-    nome: 'Dr. Henrique Cardio',
-    nicho: 'Cardiologia',
-    squad: 'BlackSkull',
-    gestor: { nome: 'Beatriz Barros' },
-    status_geral_desde: daysAgo(6),
-    plataformas: [mockPlat('meta_ads', 'critico', 14, 178.2, 4200, 5000, -18)],
-    verificacoes: [
-      mockVerif(
-        3,
-        'meta_ads',
-        'Conversão da LP caiu de 8% pra 4%, formulário com erro de submit em mobile.',
-        'Designer já notificado pra refazer LP. Pausar campanhas até fix.',
-        'aberto',
-      ),
-      mockVerif(
-        5,
-        'meta_ads',
-        'Volume bom mas qualidade dos leads ruim (no-show altíssimo).',
-        'Adicionar pergunta de qualificação no formulário + ajustar copy.',
-        'em_andamento',
-      ),
-    ],
-  },
+/** Linha cliente vinda da query (com joins). */
+interface ClienteRow {
+  id: string
+  nome: string
+  nicho: string | null
+  squad: string | null
+  status_saude_geral: StatusSaudeConta | null
+  status_geral_desde: string | null
+  gestor: { nome: string; avatar_url: string | null } | null
+  plataformas_saude: ClienteSaudePlataforma[] | null
+  verificacoes:
+    | (VerificacaoConta & { autor: { nome: string; avatar_url: string | null } | null })[]
+    | null
+}
 
-  // INSTÁVEIS (4) — variados em plataformas
-  {
-    id: 'm3',
-    nome: 'Clínica Sorrir Mais',
-    nicho: 'Odonto',
-    squad: 'BlackOps',
-    gestor: { nome: 'Lucas Portilho' },
-    status_geral_desde: daysAgo(10),
-    plataformas: [
-      mockPlat('meta_ads', 'instavel', 18, 92, 1400, 1800, -8),
-      mockPlat('google_ads', 'estavel', 14, 65, 900, 1200, 3),
-    ],
-    verificacoes: [
-      mockVerif(
-        2,
-        'meta_ads',
-        'Frequência alta em 2 conjuntos (>4), CTR começou a cair.',
-        'Subir 2 criativos novos esta semana, pausar os mais antigos.',
-        'em_andamento',
-      ),
-    ],
-  },
-  {
-    id: 'm4',
-    nome: 'Dra. Renata Derma',
-    nicho: 'Dermatologia',
-    squad: 'BlackSkull',
-    gestor: { nome: 'Igor Reis' },
-    // Instável há 24 dias (>3 sem) — já cai na regra "sugere virar crítica"
-    status_geral_desde: daysAgo(24),
-    plataformas: [
-      mockPlat('google_ads', 'instavel', 22, 120, 2600, 3500, 5),
-    ],
-    verificacoes: [
-      mockVerif(
-        4,
-        'google_ads',
-        'Sem otimização recente, conta no piloto automático.',
-        'Briefing com gestor pra revisar palavras-chave e copy. Trazer 2 novos ângulos.',
-        'aberto',
-      ),
-    ],
-  },
-  {
-    id: 'm5',
-    nome: 'Dr. Pedro Ortopedia',
-    nicho: 'Ortopedia',
-    squad: 'BlackOps',
-    gestor: { nome: 'Diego Assis' },
-    status_geral_desde: daysAgo(5),
-    plataformas: [
-      mockPlat('meta_ads', 'estavel', 12, 180, 2200, 2500, 2),
-      mockPlat('google_ads', 'instavel', 6, 320, 1300, 1500, -10),
-    ],
-    verificacoes: [
-      mockVerif(
-        1,
-        'google_ads',
-        'CPC subindo nos termos principais (ortopedia + cidade).',
-        'Adicionar negativas, testar lances manuais nos termos com CPC > R$ 8.',
-        'em_andamento',
-      ),
-    ],
-  },
-  {
-    id: 'm6',
-    nome: 'Espaço Bella Vita',
-    nicho: 'Estética',
-    squad: 'BlackSkull',
-    gestor: { nome: 'Beatriz Barros' },
-    status_geral_desde: daysAgo(8),
-    plataformas: [
-      mockPlat('meta_ads', 'instavel', 27, 88, 2200, 2800, 12),
-      mockPlat('tiktok_ads', 'instavel', 6, 145, 870, 1000, 25),
-    ],
-    verificacoes: [
-      mockVerif(
-        3,
-        'meta_ads',
-        'Cliente cobrando mais leads, verba não está sendo gasta toda.',
-        'Aumentar orçamento diário em 30% e ampliar segmentação geográfica.',
-        'em_andamento',
-      ),
-    ],
-  },
+/** Carrega clientes de tráfego com saúde + verificações em uma query. */
+async function carregarContas(): Promise<Conta[]> {
+  // Exclui churn/arquivados/onboarding (mesma regra das outras telas)
+  const { data, error } = await supabase
+    .from('clientes')
+    .select(
+      `id, nome, nicho, squad,
+       status_saude_geral, status_geral_desde,
+       gestor:profiles!gestor_id(nome, avatar_url),
+       plataformas_saude:cliente_saude_plataforma(
+         cliente_id, plataforma, status_saude, leads_30d, cpl,
+         verba_gasta, verba_orcamento, tendencia_pct, observacao,
+         updated_at, updated_by
+       ),
+       verificacoes:verificacoes_conta(
+         id, cliente_id, plataforma, autor_id, problema, plano_acao,
+         status_plano, created_at, updated_at,
+         autor:profiles!autor_id(nome, avatar_url)
+       )`,
+    )
+    .contains('modulos', ['trafego'])
+    .is('arquivado_em', null)
+    .neq('status', 'churn')
+    .neq('jornada', 'onboarding')
+    .order('nome')
 
-  // ESTÁVEIS (10)
-  ...Array.from({ length: 10 }).map((_, i) => {
-    const nomes = [
-      'Dra. Fernanda Ginecologia',
-      'Dr. Artur Coluna',
-      'Dr. Daniel Sadigursky',
-      'Clínica Vita Plena',
-      'Dr. Marcelo Plástica',
-      'Dra. Violeta Canejo',
-      'Clínica Bem Estar',
-      'Dr. Rafael Vascular',
-      'Dra. Leticia Fabiana',
-      'Espaço Saúde Total',
-    ]
-    const nichos = [
-      'Ginecologia',
-      'Ortopedia',
-      'Ortopedia',
-      'Multi',
-      'Cirurgia Plástica',
-      'Ginecologia',
-      'Multi',
-      'Vascular',
-      'Estética',
-      'Multi',
-    ]
-    const gestores = [
-      'Lucas Portilho',
-      'Beatriz Barros',
-      'Igor Reis',
-      'Diego Assis',
-      'Lucas Antonio',
-    ]
-    const squads = ['BlackOps', 'BlackSkull']
-    // Mix: 60% só Meta, 30% Meta+Google, 10% só Google
-    const r = Math.random()
-    const plats: PlataformaSaude[] =
-      r < 0.6
-        ? [mockPlat('meta_ads', 'estavel',
-            Math.floor(Math.random() * 40) + 20,
-            Math.floor(Math.random() * 60) + 50,
-            Math.floor(Math.random() * 2000) + 2000,
-            Math.floor(Math.random() * 1500) + 3500,
-            Math.floor(Math.random() * 30) - 5)]
-        : r < 0.9
-          ? [
-              mockPlat('meta_ads', 'estavel',
-                Math.floor(Math.random() * 30) + 18,
-                Math.floor(Math.random() * 50) + 55,
-                Math.floor(Math.random() * 1500) + 1500,
-                Math.floor(Math.random() * 1000) + 2500,
-                Math.floor(Math.random() * 20)),
-              mockPlat('google_ads', 'estavel',
-                Math.floor(Math.random() * 20) + 8,
-                Math.floor(Math.random() * 80) + 70,
-                Math.floor(Math.random() * 1200) + 1000,
-                Math.floor(Math.random() * 800) + 1800,
-                Math.floor(Math.random() * 25) - 5),
-            ]
-          : [mockPlat('google_ads', 'estavel',
-              Math.floor(Math.random() * 30) + 12,
-              Math.floor(Math.random() * 80) + 60,
-              Math.floor(Math.random() * 2000) + 2000,
-              Math.floor(Math.random() * 1500) + 3000,
-              Math.floor(Math.random() * 20))]
-    const feita = Math.random() > 0.3
-    const verifs: Verificacao[] = feita
-      ? [
-          mockVerif(
-            Math.floor(Math.random() * 4) + 1,
-            plats[Math.floor(Math.random() * plats.length)].plataforma,
-            'Performance dentro do esperado, CPL e CTR estáveis.',
-            'Manter setup atual, sem ação necessária essa semana.',
-            'concluido',
-          ),
-        ]
-      : []
-    return {
-      id: `m${i + 7}`,
-      nome: nomes[i],
-      nicho: nichos[i],
-      squad: squads[i % 2],
-      gestor: { nome: gestores[i % gestores.length] },
-      // Estáveis há tempos variados (sem regra de escalonamento ativando)
-      status_geral_desde: daysAgo(20 + Math.floor(Math.random() * 60)),
-      plataformas: plats,
-      verificacoes: verifs,
-    }
-  }),
-]
+  if (error) {
+    console.error('[ControleHead] erro ao carregar contas:', error)
+    return []
+  }
+
+  const rows = (data ?? []) as unknown as ClienteRow[]
+  return rows
+    // Só mostra contas que TEM pelo menos uma plataforma cadastrada
+    // (cliente novo sem plataforma cadastrada some até o head adicionar)
+    .filter((r) => (r.plataformas_saude ?? []).length > 0)
+    .map<Conta>((r) => {
+      const verifs = (r.verificacoes ?? [])
+        .map(verifToUI)
+        .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+      return {
+        id: r.id,
+        nome: r.nome,
+        nicho: r.nicho ?? '—',
+        squad: r.squad ?? '—',
+        gestor: {
+          nome: r.gestor?.nome ?? 'Sem gestor',
+          avatar_url: r.gestor?.avatar_url ?? null,
+        },
+        plataformas: (r.plataformas_saude ?? []).map(csptoUI),
+        verificacoes: verifs,
+        status_geral_desde: r.status_geral_desde ?? new Date().toISOString(),
+      }
+    })
+}
+
+/** Cliente simples (id+nome+nicho+squad) pro picker de adicionar ao radar. */
+interface ClienteSimples {
+  id: string
+  nome: string
+  nicho: string | null
+  squad: string | null
+}
+
+/** Lista todos os clientes de tráfego ativos (mesmo sem plataforma no radar). */
+async function carregarClientesTrafego(): Promise<ClienteSimples[]> {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, nicho, squad')
+    .contains('modulos', ['trafego'])
+    .is('arquivado_em', null)
+    .neq('status', 'churn')
+    .neq('jornada', 'onboarding')
+    .order('nome')
+  if (error) {
+    console.error('[ControleHead] erro ao listar clientes:', error)
+    return []
+  }
+  return (data ?? []) as ClienteSimples[]
+}
 
 // =========================================================
 // Página
 // =========================================================
 
 export default function ControleHead() {
-  const [contas, setContas] = useState<ContaMock[]>(MOCK_CONTAS)
+  const { profile } = useAuth()
+  const [contas, setContas] = useState<Conta[]>([])
+  const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [fSquad, setFSquad] = useState('')
   const [fGestor, setFGestor] = useState('')
@@ -686,10 +552,99 @@ export default function ControleHead() {
     instavel: false,
     estavel: true,
   })
-  const [registrarPara, setRegistrarPara] = useState<ContaMock | null>(null)
+  const [registrarPara, setRegistrarPara] = useState<Conta | null>(null)
   // Estado de geração de PDF: 'diario' | 'semanal' | null
   // Bloqueia ambos os botões enquanto um está gerando (pdf() é assíncrono)
   const [gerandoPdf, setGerandoPdf] = useState<'diario' | 'semanal' | null>(null)
+
+  // Fase 2B: gerenciamento de plataformas
+  const [clientesTrafego, setClientesTrafego] = useState<ClienteSimples[]>([])
+  /** Modal de editar/adicionar plataforma de UMA conta já no radar */
+  const [gerenciarPlat, setGerenciarPlat] = useState<{
+    contaId: string
+    contaNome: string
+    plataforma: PlataformaSaude | null // null = adicionar nova
+    usadas: Plataforma[]
+  } | null>(null)
+  /** Modal de adicionar conta nova ao radar (escolhe cliente + plataforma) */
+  const [adicionarConta, setAdicionarConta] = useState(false)
+
+  /** Pode editar métricas? (head/diretoria/admin) — espelha a RLS */
+  const podeEditar = useMemo(() => {
+    if (!profile) return false
+    if (profile.role === 'admin') return true
+    const cargos = [profile.cargo, ...(profile.cargos_extras ?? [])]
+    return cargos.includes('head') || cargos.includes('diretoria')
+  }, [profile])
+
+  async function load(silent = false) {
+    if (!silent) setLoading(true)
+    setErro(null)
+    try {
+      const [arr, cli] = await Promise.all([carregarContas(), carregarClientesTrafego()])
+      setContas(arr)
+      setClientesTrafego(cli)
+    } catch (e) {
+      console.error(e)
+      setErro('Erro ao carregar contas. Tente recarregar a página.')
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // Refresh ao voltar pra aba (mantém em dia com mudanças de outros usuários)
+    const onFocus = () => load(true)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+
+  /** Upsert de uma plataforma (status + métricas). Trigger no banco recalcula o geral. */
+  async function salvarPlataforma(
+    clienteId: string,
+    plataforma: Plataforma,
+    dados: {
+      status_saude: StatusConta
+      leads_30d: number
+      cpl: number
+      verba_gasta: number
+      verba_orcamento: number
+      tendencia_pct: number
+      observacao: string | null
+    },
+  ) {
+    const { error } = await supabase.from('cliente_saude_plataforma').upsert(
+      {
+        cliente_id: clienteId,
+        plataforma,
+        ...dados,
+        updated_by: profile?.id ?? null,
+      },
+      { onConflict: 'cliente_id,plataforma' },
+    )
+    if (error) {
+      alert(`Erro ao salvar plataforma: ${error.message}`)
+      return
+    }
+    setGerenciarPlat(null)
+    setAdicionarConta(false)
+    await load(true)
+  }
+
+  async function removerPlataforma(clienteId: string, plataforma: Plataforma) {
+    if (!confirm(`Remover ${plataformaLabel[plataforma]} do radar dessa conta?`)) return
+    const { error } = await supabase
+      .from('cliente_saude_plataforma')
+      .delete()
+      .eq('cliente_id', clienteId)
+      .eq('plataforma', plataforma)
+    if (error) {
+      alert(`Erro ao remover: ${error.message}`)
+      return
+    }
+    await load(true)
+  }
 
   const squads = useMemo(() => Array.from(new Set(contas.map((c) => c.squad))).sort(), [contas])
   const gestores = useMemo(
@@ -723,7 +678,7 @@ export default function ControleHead() {
   }, [contas, q, fSquad, fGestor, fPlataforma, fSla, slaPorConta])
 
   const grupos = useMemo(() => {
-    const m: Record<StatusConta, ContaMock[]> = { critico: [], instavel: [], estavel: [] }
+    const m: Record<StatusConta, Conta[]> = { critico: [], instavel: [], estavel: [] }
     for (const c of filtered) m[statusGeral(c)].push(c)
     return m
   }, [filtered])
@@ -757,66 +712,60 @@ export default function ControleHead() {
     return out
   }, [filtered, slaPorConta])
 
-  function registrarVerificacao(
+  async function registrarVerificacao(
     contaId: string,
     plataforma: Plataforma,
     problema: string,
     plano: string,
   ) {
-    setContas((arr) =>
-      arr.map((c) =>
-        c.id === contaId
-          ? {
-              ...c,
-              verificacoes: [
-                {
-                  id: `v${Math.random().toString(36).slice(2, 9)}`,
-                  data: new Date().toISOString(),
-                  plataforma,
-                  problema,
-                  plano_acao: plano,
-                  status_plano: 'aberto' as StatusPlano,
-                  autor: 'Você (mock)',
-                },
-                ...c.verificacoes,
-              ],
-            }
-          : c,
-      ),
-    )
+    if (!profile?.id) return
+    const { error } = await supabase.from('verificacoes_conta').insert({
+      cliente_id: contaId,
+      plataforma,
+      autor_id: profile.id,
+      problema,
+      plano_acao: plano,
+      status_plano: 'aberto',
+    })
+    if (error) {
+      alert(`Erro ao registrar verificação: ${error.message}`)
+      return
+    }
+    await load(true)
   }
 
-  function mudarStatusPlataforma(contaId: string, plat: Plataforma, novo: StatusConta) {
-    setContas((arr) =>
-      arr.map((c) => {
-        if (c.id !== contaId) return c
-        const plataformasAtualizadas = c.plataformas.map((p) =>
-          p.plataforma === plat ? { ...p, status: novo } : p,
-        )
-        // Reavalia status geral: se mudou, reseta o status_geral_desde
-        const statusAntes = statusGeral(c)
-        const novaCard = { ...c, plataformas: plataformasAtualizadas }
-        const statusDepois = statusGeral(novaCard)
-        return statusAntes !== statusDepois
-          ? { ...novaCard, status_geral_desde: new Date().toISOString() }
-          : novaCard
-      }),
-    )
+  async function mudarStatusPlataforma(
+    contaId: string,
+    plat: Plataforma,
+    novo: StatusConta,
+  ) {
+    // Trigger no banco recalcula status_saude_geral + reseta status_geral_desde
+    const { error } = await supabase
+      .from('cliente_saude_plataforma')
+      .update({ status_saude: novo, updated_by: profile?.id ?? null })
+      .eq('cliente_id', contaId)
+      .eq('plataforma', plat)
+    if (error) {
+      alert(`Erro ao mudar status: ${error.message}`)
+      return
+    }
+    await load(true)
   }
 
-  function mudarStatusPlano(contaId: string, verifId: string, novo: StatusPlano) {
-    setContas((arr) =>
-      arr.map((c) =>
-        c.id === contaId
-          ? {
-              ...c,
-              verificacoes: c.verificacoes.map((v) =>
-                v.id === verifId ? { ...v, status_plano: novo } : v,
-              ),
-            }
-          : c,
-      ),
-    )
+  async function mudarStatusPlano(
+    _contaId: string,
+    verifId: string,
+    novo: StatusPlano,
+  ) {
+    const { error } = await supabase
+      .from('verificacoes_conta')
+      .update({ status_plano: novo })
+      .eq('id', verifId)
+    if (error) {
+      alert(`Erro ao mudar status do plano: ${error.message}`)
+      return
+    }
+    await load(true)
   }
 
   return (
@@ -852,27 +801,36 @@ export default function ControleHead() {
               <FileText size={13} />
               {gerandoPdf === 'semanal' ? 'Gerando…' : 'Relatório semanal'}
             </button>
+            {podeEditar && (
+              <button
+                type="button"
+                onClick={() => setAdicionarConta(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-brand-500/50 bg-brand-500/15 px-3 py-1.5 text-xs font-medium text-brand-200 transition-colors hover:bg-brand-500/25"
+                title="Colocar um cliente de tráfego no radar adicionando uma plataforma"
+              >
+                <PlusCircle size={13} />
+                Adicionar ao radar
+              </button>
+            )}
             <Link
               to="/clientes"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300"
+              title="Cadastrar um cliente NOVO (que ainda não existe na base)"
             >
               <UserPlus size={13} />
-              Cadastrar nova conta
+              Cadastrar cliente
             </Link>
           </div>
         }
       />
 
-      {/* Aviso de mock */}
-      <div className="mb-4 flex items-start gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        <div>
-          <strong>Versão de revisão · dados fictícios.</strong> Esta tela ainda
-          não consulta o banco — é um mock pra você validar o layout, fluxo de
-          verificação e os filtros. Quando aprovar, conecto com a base real
-          (clientes + tabela de verificações) e ativo o registro persistente.
+      {/* Erro de carga */}
+      {erro && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <div>{erro}</div>
         </div>
-      </div>
+      )}
 
       {/* Explicação do cadastro */}
       <div className="mb-4 flex items-start gap-2 rounded-lg border border-border bg-bg-soft/60 px-3 py-2 text-xs text-zinc-300">
@@ -1013,7 +971,38 @@ export default function ControleHead() {
         </CardBody>
       </Card>
 
+      {/* Loading global */}
+      {loading && (
+        <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
+          Carregando contas...
+        </div>
+      )}
+
+      {/* Nenhuma conta com plataforma cadastrada ainda */}
+      {!loading && contas.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-bg-soft/40 p-12 text-center">
+          <Users size={28} className="mx-auto mb-2 text-muted" />
+          <p className="text-sm text-zinc-200">Nenhuma conta de tráfego no radar ainda.</p>
+          <p className="mt-1 text-xs text-muted">
+            Os clientes só aparecem aqui depois que voc&ecirc; cadastra pelo menos uma{' '}
+            <strong>plataforma</strong> (Meta, Google, TikTok ou YouTube) com a saúde inicial.
+          </p>
+          <p className="mt-2 text-xs text-muted">
+            Pra adicionar uma plataforma: na pr&oacute;xima fase (2B) habilitamos um modal{' '}
+            <em>"Adicionar plataforma"</em> em cada card de cliente. Por ora voc&ecirc;
+            pode rodar o SQL abaixo no Supabase como ensaio:
+          </p>
+          <pre className="mt-3 mx-auto inline-block max-w-xl text-left text-[10px] text-muted bg-bg-soft p-3 rounded border border-border">
+{`INSERT INTO cliente_saude_plataforma
+  (cliente_id, plataforma, status_saude)
+VALUES
+  ('<uuid_do_cliente>', 'meta_ads', 'estavel');`}
+          </pre>
+        </div>
+      )}
+
       {/* Seções por status */}
+      {!loading && contas.length > 0 && (
       <div className="space-y-5">
         {(['critico', 'instavel', 'estavel'] as StatusConta[]).map((s) => {
           const items = grupos[s]
@@ -1046,6 +1035,7 @@ export default function ControleHead() {
                       key={c.id}
                       conta={c}
                       sla={slaPorConta.get(c.id)!}
+                      podeEditar={podeEditar}
                       onRegistrar={() => setRegistrarPara(c)}
                       onMudarStatusPlataforma={(plat, novo) =>
                         mudarStatusPlataforma(c.id, plat, novo)
@@ -1053,6 +1043,23 @@ export default function ControleHead() {
                       onMudarStatusPlano={(verifId, novo) =>
                         mudarStatusPlano(c.id, verifId, novo)
                       }
+                      onEditarPlataforma={(plat) =>
+                        setGerenciarPlat({
+                          contaId: c.id,
+                          contaNome: c.nome,
+                          plataforma: plat,
+                          usadas: c.plataformas.map((p) => p.plataforma),
+                        })
+                      }
+                      onAdicionarPlataforma={() =>
+                        setGerenciarPlat({
+                          contaId: c.id,
+                          contaNome: c.nome,
+                          plataforma: null,
+                          usadas: c.plataformas.map((p) => p.plataforma),
+                        })
+                      }
+                      onRemoverPlataforma={(plat) => removerPlataforma(c.id, plat)}
                     />
                   ))}
                 </div>
@@ -1068,8 +1075,9 @@ export default function ControleHead() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Modal */}
+      {/* Modal: registrar verificação */}
       <RegistrarVerificacaoModal
         conta={registrarPara}
         onClose={() => setRegistrarPara(null)}
@@ -1079,7 +1087,346 @@ export default function ControleHead() {
           setRegistrarPara(null)
         }}
       />
+
+      {/* Modal: editar / adicionar plataforma de uma conta existente */}
+      {gerenciarPlat && (
+        <PlataformaModal
+          open
+          contaNome={gerenciarPlat.contaNome}
+          plataformaAtual={gerenciarPlat.plataforma}
+          plataformasUsadas={gerenciarPlat.usadas}
+          onClose={() => setGerenciarPlat(null)}
+          onSalvar={(plat, dados) =>
+            salvarPlataforma(gerenciarPlat.contaId, plat, dados)
+          }
+        />
+      )}
+
+      {/* Modal: adicionar conta nova ao radar (escolhe cliente) */}
+      {adicionarConta && (
+        <AdicionarContaModal
+          clientes={clientesTrafego}
+          contasNoRadar={contas}
+          onClose={() => setAdicionarConta(false)}
+          onSalvar={(clienteId, plat, dados) =>
+            salvarPlataforma(clienteId, plat, dados)
+          }
+        />
+      )}
     </div>
+  )
+}
+
+// =========================================================
+// Modal: Plataforma (editar / adicionar) — dados manuais
+// =========================================================
+
+interface PlataformaFormDados {
+  status_saude: StatusConta
+  leads_30d: number
+  cpl: number
+  verba_gasta: number
+  verba_orcamento: number
+  tendencia_pct: number
+  observacao: string | null
+}
+
+/** Campos compartilhados entre os dois modais (plataforma + adicionar conta). */
+function CamposPlataforma({
+  dados,
+  setDados,
+}: {
+  dados: PlataformaFormDados
+  setDados: (d: PlataformaFormDados) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <Field label="Saúde da plataforma *">
+        <Select
+          value={dados.status_saude}
+          onChange={(e) =>
+            setDados({ ...dados, status_saude: e.target.value as StatusConta })
+          }
+        >
+          <option value="estavel">Estável (1x/semana)</option>
+          <option value="instavel">Instável (2x/semana)</option>
+          <option value="critico">Crítica (3x/semana)</option>
+        </Select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Leads (30 dias)">
+          <Input
+            type="number"
+            value={String(dados.leads_30d)}
+            onChange={(e) =>
+              setDados({ ...dados, leads_30d: Number(e.target.value) || 0 })
+            }
+          />
+        </Field>
+        <Field label="CPL (R$)">
+          <Input
+            type="number"
+            step="0.01"
+            value={String(dados.cpl)}
+            onChange={(e) => setDados({ ...dados, cpl: Number(e.target.value) || 0 })}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Verba gasta (R$)">
+          <Input
+            type="number"
+            step="0.01"
+            value={String(dados.verba_gasta)}
+            onChange={(e) =>
+              setDados({ ...dados, verba_gasta: Number(e.target.value) || 0 })
+            }
+          />
+        </Field>
+        <Field label="Verba orçamento (R$)">
+          <Input
+            type="number"
+            step="0.01"
+            value={String(dados.verba_orcamento)}
+            onChange={(e) =>
+              setDados({ ...dados, verba_orcamento: Number(e.target.value) || 0 })
+            }
+          />
+        </Field>
+      </div>
+
+      <Field
+        label="Tendência de leads (%)"
+        hint="Variação vs. período anterior. Positivo = melhorou, negativo = piorou."
+      >
+        <Input
+          type="number"
+          value={String(dados.tendencia_pct)}
+          onChange={(e) =>
+            setDados({ ...dados, tendencia_pct: Number(e.target.value) || 0 })
+          }
+        />
+      </Field>
+
+      <Field label="Observação (opcional)">
+        <Textarea
+          value={dados.observacao ?? ''}
+          onChange={(e) =>
+            setDados({ ...dados, observacao: e.target.value || null })
+          }
+          placeholder="Contexto rápido sobre essa plataforma..."
+          className="min-h-[60px]"
+        />
+      </Field>
+    </div>
+  )
+}
+
+const DADOS_VAZIOS: PlataformaFormDados = {
+  status_saude: 'estavel',
+  leads_30d: 0,
+  cpl: 0,
+  verba_gasta: 0,
+  verba_orcamento: 0,
+  tendencia_pct: 0,
+  observacao: null,
+}
+
+function PlataformaModal({
+  open,
+  contaNome,
+  plataformaAtual,
+  plataformasUsadas,
+  onClose,
+  onSalvar,
+}: {
+  open: boolean
+  contaNome: string
+  /** null = adicionar nova; preenchido = editar existente */
+  plataformaAtual: PlataformaSaude | null
+  plataformasUsadas: Plataforma[]
+  onClose: () => void
+  onSalvar: (plat: Plataforma, dados: PlataformaFormDados) => void
+}) {
+  const editando = !!plataformaAtual
+  const disponiveis = PLATAFORMAS.filter(
+    (p) => editando || !plataformasUsadas.includes(p),
+  )
+  const [plataforma, setPlataforma] = useState<Plataforma | ''>(
+    plataformaAtual?.plataforma ?? disponiveis[0] ?? '',
+  )
+  const [dados, setDados] = useState<PlataformaFormDados>(
+    plataformaAtual
+      ? {
+          status_saude: plataformaAtual.status,
+          leads_30d: plataformaAtual.leads_30d,
+          cpl: plataformaAtual.cpl,
+          verba_gasta: plataformaAtual.verba_gasta,
+          verba_orcamento: plataformaAtual.verba_orcamento,
+          tendencia_pct: plataformaAtual.tendencia_pct,
+          observacao: plataformaAtual.observacao,
+        }
+      : DADOS_VAZIOS,
+  )
+
+  function handleSalvar() {
+    if (!plataforma) return
+    onSalvar(plataforma as Plataforma, dados)
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`${editando ? 'Editar' : 'Adicionar'} plataforma — ${contaNome}`}
+      className="max-w-lg"
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-200"
+          >
+            <X size={12} /> Cancelar
+          </button>
+          <Button onClick={handleSalvar} disabled={!plataforma}>
+            <CheckCircle2 size={13} /> Salvar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Plataforma *">
+          <Select
+            value={plataforma}
+            onChange={(e) => setPlataforma(e.target.value as Plataforma | '')}
+            disabled={editando}
+          >
+            {disponiveis.length === 0 && <option value="">— todas já cadastradas —</option>}
+            {disponiveis.map((p) => (
+              <option key={p} value={p}>
+                {plataformaLabel[p]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <CamposPlataforma dados={dados} setDados={setDados} />
+      </div>
+    </Modal>
+  )
+}
+
+// =========================================================
+// Modal: Adicionar conta ao radar (escolhe cliente + plataforma)
+// =========================================================
+
+function AdicionarContaModal({
+  clientes,
+  contasNoRadar,
+  onClose,
+  onSalvar,
+}: {
+  clientes: ClienteSimples[]
+  contasNoRadar: Conta[]
+  onClose: () => void
+  onSalvar: (clienteId: string, plat: Plataforma, dados: PlataformaFormDados) => void
+}) {
+  const [clienteId, setClienteId] = useState('')
+  const [plataforma, setPlataforma] = useState<Plataforma | ''>('meta_ads')
+  const [dados, setDados] = useState<PlataformaFormDados>(DADOS_VAZIOS)
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Plataformas já cadastradas pro cliente escolhido (pra não duplicar)
+  const usadas = useMemo(() => {
+    const conta = contasNoRadar.find((c) => c.id === clienteId)
+    return conta?.plataformas.map((p) => p.plataforma) ?? []
+  }, [clienteId, contasNoRadar])
+  const disponiveis = PLATAFORMAS.filter((p) => !usadas.includes(p))
+
+  // Se a plataforma selecionada virou indisponível, troca pra primeira livre
+  useEffect(() => {
+    if (plataforma && usadas.includes(plataforma as Plataforma)) {
+      setPlataforma(disponiveis[0] ?? '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId])
+
+  function handleSalvar() {
+    if (!clienteId) {
+      setErro('Escolha o cliente.')
+      return
+    }
+    if (!plataforma) {
+      setErro('Escolha a plataforma.')
+      return
+    }
+    onSalvar(clienteId, plataforma as Plataforma, dados)
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Adicionar conta ao radar"
+      className="max-w-lg"
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-200"
+          >
+            <X size={12} /> Cancelar
+          </button>
+          <Button onClick={handleSalvar}>
+            <CheckCircle2 size={13} /> Adicionar ao radar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-muted">
+          Escolha um cliente de tráfego e cadastre a primeira plataforma com a
+          saúde inicial. Ele passa a aparecer no radar.
+        </p>
+        {erro && (
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {erro}
+          </div>
+        )}
+        <Field label="Cliente *">
+          <Select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            <option value="">— selecione —</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+                {c.squad ? ` · ${c.squad}` : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Plataforma *">
+          <Select
+            value={plataforma}
+            onChange={(e) => setPlataforma(e.target.value as Plataforma | '')}
+            disabled={!clienteId}
+          >
+            {disponiveis.length === 0 ? (
+              <option value="">— todas já cadastradas —</option>
+            ) : (
+              disponiveis.map((p) => (
+                <option key={p} value={p}>
+                  {plataformaLabel[p]}
+                </option>
+              ))
+            )}
+          </Select>
+        </Field>
+        <CamposPlataforma dados={dados} setDados={setDados} />
+      </div>
+    </Modal>
   )
 }
 
@@ -1120,15 +1467,23 @@ function KpiCard({
 function ContaCard({
   conta,
   sla,
+  podeEditar,
   onRegistrar,
   onMudarStatusPlataforma,
   onMudarStatusPlano,
+  onEditarPlataforma,
+  onAdicionarPlataforma,
+  onRemoverPlataforma,
 }: {
-  conta: ContaMock
+  conta: Conta
   sla: AvaliacaoSLA
+  podeEditar: boolean
   onRegistrar: () => void
   onMudarStatusPlataforma: (plat: Plataforma, novo: StatusConta) => void
   onMudarStatusPlano: (verifId: string, novo: StatusPlano) => void
+  onEditarPlataforma: (plat: PlataformaSaude) => void
+  onAdicionarPlataforma: () => void
+  onRemoverPlataforma: (plat: Plataforma) => void
 }) {
   const [historicoAberto, setHistoricoAberto] = useState(false)
   const sGeral = statusGeral(conta)
@@ -1230,9 +1585,22 @@ function ContaCard({
               <PlataformaRow
                 key={p.plataforma}
                 plat={p}
+                podeEditar={podeEditar}
                 onMudar={(novo) => onMudarStatusPlataforma(p.plataforma, novo)}
+                onEditar={() => onEditarPlataforma(p)}
+                onRemover={() => onRemoverPlataforma(p.plataforma)}
               />
             ))}
+            {/* Adicionar outra plataforma (se ainda não usa todas as 4) */}
+            {podeEditar && conta.plataformas.length < 4 && (
+              <button
+                onClick={onAdicionarPlataforma}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-1.5 text-[11px] text-muted transition-colors hover:border-brand-500/40 hover:text-brand-300"
+              >
+                <PlusCircle size={12} />
+                Adicionar plataforma
+              </button>
+            )}
           </div>
 
           {/* Cadência semanal */}
@@ -1313,14 +1681,23 @@ function ContaCard({
 
 function PlataformaRow({
   plat,
+  podeEditar,
   onMudar,
+  onEditar,
+  onRemover,
 }: {
   plat: PlataformaSaude
+  podeEditar: boolean
   onMudar: (novo: StatusConta) => void
+  onEditar: () => void
+  onRemover: () => void
 }) {
   const cor = statusCor[plat.status]
   const cplFmt = `R$ ${plat.cpl.toFixed(2).replace('.', ',')}`
-  const verbaPct = Math.round((plat.verba_gasta / plat.verba_orcamento) * 100)
+  const verbaPct =
+    plat.verba_orcamento > 0
+      ? Math.round((plat.verba_gasta / plat.verba_orcamento) * 100)
+      : 0
   const positivo = plat.tendencia_pct > 0
   const Trend = positivo ? TrendingUp : TrendingDown
   return (
@@ -1335,16 +1712,37 @@ function PlataformaRow({
             {statusLabel[plat.status]}
           </span>
         </div>
-        <Select
-          value={plat.status}
-          onChange={(e) => onMudar(e.target.value as StatusConta)}
-          className="h-6 w-28 text-[10px]"
-          title="Mudar saúde desta plataforma"
-        >
-          <option value="estavel">Estável</option>
-          <option value="instavel">Instável</option>
-          <option value="critico">Crítica</option>
-        </Select>
+        <div className="flex items-center gap-1">
+          <Select
+            value={plat.status}
+            onChange={(e) => onMudar(e.target.value as StatusConta)}
+            className="h-6 w-24 text-[10px]"
+            title="Mudar saúde desta plataforma"
+            disabled={!podeEditar}
+          >
+            <option value="estavel">Estável</option>
+            <option value="instavel">Instável</option>
+            <option value="critico">Crítica</option>
+          </Select>
+          {podeEditar && (
+            <>
+              <button
+                onClick={onEditar}
+                className="grid h-6 w-6 place-items-center rounded-md border border-border text-muted transition-colors hover:border-brand-500/40 hover:text-brand-300"
+                title="Editar métricas desta plataforma"
+              >
+                <Pencil size={11} />
+              </button>
+              <button
+                onClick={onRemover}
+                className="grid h-6 w-6 place-items-center rounded-md border border-border text-muted transition-colors hover:border-red-500/40 hover:text-red-400"
+                title="Remover plataforma do radar"
+              >
+                <Trash2 size={11} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <MicroMetric
@@ -1474,7 +1872,7 @@ function RegistrarVerificacaoModal({
   onClose,
   onSalvar,
 }: {
-  conta: ContaMock | null
+  conta: Conta | null
   onClose: () => void
   onSalvar: (plataforma: Plataforma, problema: string, plano: string) => void
 }) {
