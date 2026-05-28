@@ -691,3 +691,23 @@ export interface VerificacaoConta {
   cliente?: Cliente | null
   autor?: Profile | null
 }
+
+/** Destinatário do email de escalonamento (configurável no Admin, migration 044). */
+export interface EscalonamentoDestinatario {
+  id: string
+  nome: string
+  email: string
+  ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Log de notificação de escalonamento enviada (migration 044). */
+export interface EscalonamentoNotificacao {
+  id: string
+  cliente_id: string
+  tipo: 'diretoria' | 'reclassificar'
+  destinatarios: string[]
+  enviado_em: string
+  cliente?: Cliente | null
+}
