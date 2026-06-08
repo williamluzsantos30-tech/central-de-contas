@@ -1333,25 +1333,18 @@ function AdicionarContaModal({
   onClose: () => void
   onSalvar: (clienteId: string, plat: Plataforma, dados: PlataformaFormDados) => void
 }) {
+  // Só permite escolher clientes que AINDA NÃO estão no radar.
+  // Pra adicionar outra plataforma a um cliente que já está, o head usa o
+  // "+ Adicionar plataforma" no próprio card (evita confusão de "sumiu Meta").
+  const clientesDisponiveis = useMemo(() => {
+    const idsNoRadar = new Set(contasNoRadar.map((c) => c.id))
+    return clientes.filter((c) => !idsNoRadar.has(c.id))
+  }, [clientes, contasNoRadar])
+
   const [clienteId, setClienteId] = useState('')
   const [plataforma, setPlataforma] = useState<Plataforma | ''>('meta_ads')
   const [dados, setDados] = useState<PlataformaFormDados>(DADOS_VAZIOS)
   const [erro, setErro] = useState<string | null>(null)
-
-  // Plataformas já cadastradas pro cliente escolhido (pra não duplicar)
-  const usadas = useMemo(() => {
-    const conta = contasNoRadar.find((c) => c.id === clienteId)
-    return conta?.plataformas.map((p) => p.plataforma) ?? []
-  }, [clienteId, contasNoRadar])
-  const disponiveis = PLATAFORMAS.filter((p) => !usadas.includes(p))
-
-  // Se a plataforma selecionada virou indisponível, troca pra primeira livre
-  useEffect(() => {
-    if (plataforma && usadas.includes(plataforma as Plataforma)) {
-      setPlataforma(disponiveis[0] ?? '')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clienteId])
 
   function handleSalvar() {
     if (!clienteId) {
@@ -1380,7 +1373,7 @@ function AdicionarContaModal({
           >
             <X size={12} /> Cancelar
           </button>
-          <Button onClick={handleSalvar}>
+          <Button onClick={handleSalvar} disabled={clientesDisponiveis.length === 0}>
             <CheckCircle2 size={13} /> Adicionar ao radar
           </Button>
         </div>
@@ -1388,43 +1381,56 @@ function AdicionarContaModal({
     >
       <div className="space-y-4">
         <p className="text-xs text-muted">
-          Escolha um cliente de tráfego e cadastre a primeira plataforma com a
-          saúde inicial. Ele passa a aparecer no radar.
+          Escolha um cliente de tráfego que ainda <strong>não está no radar</strong> e
+          cadastre a primeira plataforma com a saúde inicial.
         </p>
+        <div className="flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-200">
+          <Info size={12} className="mt-0.5 shrink-0" />
+          <span>
+            Pra adicionar outra plataforma (Meta, Google, TikTok ou YouTube) a um
+            cliente que <strong>já está no radar</strong>, use o botão{' '}
+            <strong>"+ Adicionar plataforma"</strong> dentro do card dele.
+          </span>
+        </div>
         {erro && (
           <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
             {erro}
           </div>
         )}
-        <Field label="Cliente *">
-          <Select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            <option value="">— selecione —</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-                {c.squad ? ` · ${c.squad}` : ''}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Plataforma *">
-          <Select
-            value={plataforma}
-            onChange={(e) => setPlataforma(e.target.value as Plataforma | '')}
-            disabled={!clienteId}
-          >
-            {disponiveis.length === 0 ? (
-              <option value="">— todas já cadastradas —</option>
-            ) : (
-              disponiveis.map((p) => (
-                <option key={p} value={p}>
-                  {plataformaLabel[p]}
-                </option>
-              ))
-            )}
-          </Select>
-        </Field>
-        <CamposPlataforma dados={dados} setDados={setDados} />
+        {clientesDisponiveis.length === 0 ? (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            Todos os clientes de tráfego já estão no radar. Pra adicionar outra
+            plataforma a algum deles, use o "+ Adicionar plataforma" no card.
+          </div>
+        ) : (
+          <>
+            <Field label="Cliente *">
+              <Select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+                <option value="">— selecione —</option>
+                {clientesDisponiveis.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                    {c.squad ? ` · ${c.squad}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Plataforma *">
+              <Select
+                value={plataforma}
+                onChange={(e) => setPlataforma(e.target.value as Plataforma | '')}
+                disabled={!clienteId}
+              >
+                {PLATAFORMAS.map((p) => (
+                  <option key={p} value={p}>
+                    {plataformaLabel[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <CamposPlataforma dados={dados} setDados={setDados} />
+          </>
+        )}
       </div>
     </Modal>
   )
