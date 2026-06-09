@@ -19,7 +19,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { AtivoHealth } from '@/components/clientes/AtivoHealth'
+import { AtivoHealth, AtivoHealthLegenda } from '@/components/clientes/AtivoHealth'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency, isOverdue, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
@@ -390,6 +390,12 @@ function DashboardCliente({
             </div>
           </CardHeader>
           <CardBody className="space-y-2">
+            {/* Legenda dos ativos — explica o que cada cápsula colorida significa */}
+            {!loading && listaVisivel.length > 0 && (
+              <div className="mb-2 rounded-md border border-border bg-bg-soft/60 px-3 py-2">
+                <AtivoHealthLegenda />
+              </div>
+            )}
             {loading ? (
               <p className="text-sm text-muted">Carregando...</p>
             ) : listaVisivel.length === 0 ? (
@@ -417,7 +423,9 @@ function DashboardCliente({
                           <Badge tone="danger">{c.tarefasAtrasadas} atrasada(s)</Badge>
                         )}
                         {c.ativosProblema > 0 && (
-                          <Badge tone="warning">{c.ativosProblema} ativo(s)</Badge>
+                          <Badge tone="warning">
+                            {c.ativosProblema} ativo(s) com problema
+                          </Badge>
                         )}
                       </div>
                     </div>
