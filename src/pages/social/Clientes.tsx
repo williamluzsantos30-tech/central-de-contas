@@ -43,9 +43,22 @@ interface ClienteSocialStats {
   cliente: Cliente
   postagensMes: number
   concluidasMes: number
-  atrasadas: number
-  /** Dias do mês com post programado, ex.: [{ dia: 5, status: 'conclusao' }, ...] */
-  diasDoMes: Array<{ dia: number; status: ItemSocialMedia['status']; titulo: string; formato: ItemSocialMedia['formato'] }>
+  /** Atrasadas DO MÊS CORRENTE (prazo passou e não publicou) */
+  atrasadasMes: number
+  /** Em produção pra publicar no FUTURO neste mês (não publicadas ainda, prazo no futuro) */
+  emProducaoFuturoMes: number
+  /**
+   * Dias do mês relevantes pra coluna "publicação": só inclui posts que
+   * já tiveram um desfecho (publicado ou prazo passou sem publicação).
+   * Futuras ainda não publicadas não entram aqui — viram contador separado.
+   */
+  diasDoMes: Array<{
+    dia: number
+    publicada: boolean
+    status: ItemSocialMedia['status']
+    titulo: string
+    formato: ItemSocialMedia['formato']
+  }>
 }
 
 export default function SocialClientes() {
@@ -118,12 +131,14 @@ export default function SocialClientes() {
     load()
   }, [])
 
-  // Stats por cliente: artes do mês corrente, concluídas, atrasadas
-  // e a lista de dias com post programado (pra render visual da coluna).
+  // Stats por cliente, escopadas ao MÊS CORRENTE.
+  // diasDoMes agora reflete EXCLUSIVAMENTE o desfecho de publicação:
+  //   - publicada (status=conclusao) → entra como ✓
+  //   - prazo passou e não publicou → entra como ✗
+  //   - futura ainda em produção → NÃO entra (vira contador separado)
   const statsByCliente = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const todayStr = today.toISOString().slice(0, 10)
     const monthStart = startOfMonth(today)
     const monthEnd = endOfMonth(today)
     const planById = new Map(planejamentos.map((p) => [p.id, p]))
@@ -133,7 +148,8 @@ export default function SocialClientes() {
         cliente: c,
         postagensMes: 0,
         concluidasMes: 0,
-        atrasadas: 0,
+        atrasadasMes: 0,
+        emProducaoFuturoMes: 0,
         diasDoMes: [],
       })
 
@@ -142,23 +158,36 @@ export default function SocialClientes() {
       if (!plan) continue
       const stat = map.get(plan.cliente_id)
       if (!stat) continue
-      // Vencimento dentro do mês corrente
-      if (it.prazo) {
-        const d = parseLocalDate(it.prazo)
-        if (d && d >= monthStart && d <= monthEnd) {
-          stat.postagensMes++
-          if (it.status === 'conclusao') stat.concluidasMes++
-          stat.diasDoMes.push({
-            dia: d.getDate(),
-            status: it.status,
-            titulo: it.titulo,
-            formato: it.formato,
-          })
-        }
-      }
-      // Atrasada (independente do mês)
-      if (it.status !== 'conclusao' && it.prazo && it.prazo.slice(0, 10) < todayStr) {
-        stat.atrasadas++
+      if (!it.prazo) continue
+      const d = parseLocalDate(it.prazo)
+      if (!d || d < monthStart || d > monthEnd) continue
+
+      stat.postagensMes++
+      const publicada = it.status === 'conclusao'
+      if (publicada) stat.concluidasMes++
+
+      if (publicada) {
+        // Publicou (independente da data)
+        stat.diasDoMes.push({
+          dia: d.getDate(),
+          publicada: true,
+          status: it.status,
+          titulo: it.titulo,
+          formato: it.formato,
+        })
+      } else if (d < today) {
+        // Prazo passou e não publicou → atrasada do mês
+        stat.atrasadasMes++
+        stat.diasDoMes.push({
+          dia: d.getDate(),
+          publicada: false,
+          status: it.status,
+          titulo: it.titulo,
+          formato: it.formato,
+        })
+      } else {
+        // Prazo futuro e ainda não publicou → em produção
+        stat.emProducaoFuturoMes++
       }
     }
     // Ordena os dias por número
@@ -347,7 +376,7 @@ export default function SocialClientes() {
                   <th className="px-3 py-2.5">Squad</th>
                   <th className="px-3 py-2.5">Account Manager</th>
                   <th className="px-3 py-2.5">Social Media</th>
-                  <th className="px-3 py-2.5">Dias do mês</th>
+                  <th className="px-3 py-2.5">Publicações do mês</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
                   <th className="px-3 py-2.5">Última atualização</th>
@@ -460,8 +489,18 @@ export default function SocialClientes() {
   )
 }
 
+/**
+ * Coluna "Publicações do mês": só fala de DESFECHO de publicação.
+ *   - Cápsula verde com ✓ = post publicado no dia X
+ *   - Cápsula vermelha com ✗ = dia X tinha post programado e não foi publicado
+ *   - Posts ainda em produção (prazo futuro) NÃO aparecem como cápsula,
+ *     viram um contador discreto "N em produção"
+ */
 function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
-  if (!stats || stats.postagensMes === 0) {
+  if (
+    !stats ||
+    (stats.diasDoMes.length === 0 && stats.emProducaoFuturoMes === 0)
+  ) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-muted">
         <Sparkles size={11} className="opacity-50" />
@@ -470,19 +509,7 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
     )
   }
 
-  const today = new Date()
-  const hojeNum = today.getDate()
-
-  // Dia → cor por status
-  const dayColor = (status: ItemSocialMedia['status'], dia: number) => {
-    if (status === 'conclusao') return 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
-    // Se já passou e não foi concluído, é atraso
-    if (dia < hojeNum) return 'border-red-500/50 bg-red-500/15 text-red-200'
-    if (dia === hojeNum) return 'border-amber-400/60 bg-amber-400/15 text-amber-200'
-    return 'border-pink-500/40 bg-pink-500/10 text-pink-200'
-  }
-
-  // Mostra até 8 dias inline; se tiver mais, indica "+N"
+  // Mostra até 8 dias inline; se tiver mais, "+N"
   const visiveis = stats.diasDoMes.slice(0, 8)
   const restantes = stats.diasDoMes.length - visiveis.length
 
@@ -492,32 +519,58 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
         {visiveis.map((d, i) => (
           <span
             key={`${d.dia}-${i}`}
-            title={`Dia ${d.dia} · ${d.formato} · ${d.titulo} (${d.status})`}
+            title={
+              d.publicada
+                ? `Dia ${d.dia} · ${d.formato} · ${d.titulo} — Publicada ✓`
+                : `Dia ${d.dia} · ${d.formato} · ${d.titulo} — Não publicada (prazo passou)`
+            }
             className={cn(
-              'inline-grid h-5 min-w-[1.25rem] place-items-center rounded border px-1 text-[10px] font-semibold tabular-nums',
-              dayColor(d.status, d.dia),
+              'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
+              d.publicada
+                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
+                : 'border-red-500/50 bg-red-500/15 text-red-200',
             )}
           >
+            {d.publicada ? (
+              <CheckCircle2 size={9} className="shrink-0" />
+            ) : (
+              <AlertCircle size={9} className="shrink-0" />
+            )}
             {d.dia}
           </span>
         ))}
         {restantes > 0 && (
           <span className="text-[10px] text-muted tabular-nums">+{restantes}</span>
         )}
+        {/* Nenhum desfecho ainda neste mês */}
+        {stats.diasDoMes.length === 0 && (
+          <span className="text-[11px] text-muted">sem publicações ainda</span>
+        )}
       </div>
       <div className="flex items-center gap-2 text-[10px] text-muted">
-        <span className="inline-flex items-center gap-0.5">
-          <ImageIcon size={9} />
-          {stats.postagensMes}
-        </span>
-        <span className="inline-flex items-center gap-0.5 text-emerald-300/80">
+        <span
+          className="inline-flex items-center gap-0.5 text-emerald-300/90"
+          title="Publicadas neste mês"
+        >
           <CheckCircle2 size={9} />
           {stats.concluidasMes}
         </span>
-        {stats.atrasadas > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-red-300">
+        {stats.atrasadasMes > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5 text-red-300"
+            title="Não publicadas (prazo passou)"
+          >
             <AlertCircle size={9} />
-            {stats.atrasadas}
+            {stats.atrasadasMes}
+          </span>
+        )}
+        {stats.emProducaoFuturoMes > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5"
+            title="Em produção (prazo ainda no futuro)"
+          >
+            <Sparkles size={9} />
+            {stats.emProducaoFuturoMes} em produção
           </span>
         )}
       </div>
