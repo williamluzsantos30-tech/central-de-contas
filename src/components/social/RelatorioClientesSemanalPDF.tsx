@@ -304,7 +304,10 @@ function calcular({ clientes, items, planejamentos }: DocProps) {
       titulo: it.titulo,
       formato: it.formato,
     }
-    if (it.status === 'conclusao') {
+    // ⚠️ Fonte da verdade pra "publicada" é publicado_em (timestamp real),
+    // NÃO status='conclusao' (que é só "arte pronta").
+    const publicada = !!it.publicado_em
+    if (publicada) {
       stat.publicadasNaSemana.push(detalhe)
     } else if (d < today) {
       stat.atrasadasNaSemana.push(detalhe)

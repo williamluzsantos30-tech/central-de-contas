@@ -135,10 +135,14 @@ export default function SocialClientes() {
   }, [])
 
   // Stats por cliente, escopadas ao MÊS CORRENTE.
-  // diasDoMes agora reflete EXCLUSIVAMENTE o desfecho de publicação:
-  //   - publicada (status=conclusao) → entra como ✓
-  //   - prazo passou e não publicou → entra como ✗
-  //   - futura ainda em produção → NÃO entra (vira contador separado)
+  // diasDoMes reflete EXCLUSIVAMENTE o desfecho de publicação:
+  //   - publicada (publicado_em != null) → ✓
+  //   - prazo passou e não publicou → ✗
+  //   - futura ainda em produção → contador separado
+  //
+  // ⚠️ A fonte da verdade pra "publicada" é o campo publicado_em (timestamp
+  // real de publicação), NÃO o status='conclusao' — esse último é só
+  // "arte pronta", não significa que o post foi pro ar.
   const statsByCliente = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -166,11 +170,11 @@ export default function SocialClientes() {
       if (!d || d < monthStart || d > monthEnd) continue
 
       stat.postagensMes++
-      const publicada = it.status === 'conclusao'
+      const publicada = !!it.publicado_em
       if (publicada) stat.concluidasMes++
 
       if (publicada) {
-        // Publicou (independente da data)
+        // Publicou de verdade (independente da data do prazo)
         stat.diasDoMes.push({
           dia: d.getDate(),
           publicada: true,
@@ -189,7 +193,8 @@ export default function SocialClientes() {
           formato: it.formato,
         })
       } else {
-        // Prazo futuro e ainda não publicou → em produção
+        // Prazo futuro e ainda não publicou → em produção (inclui artes
+        // com status=conclusao que ainda não foram pro ar)
         stat.emProducaoFuturoMes++
       }
     }
