@@ -9,6 +9,7 @@ import {
   Sparkles,
   Plus,
   Pencil,
+  FileText,
 } from 'lucide-react'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { Button } from '@/components/ui/Button'
@@ -19,6 +20,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
+import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
 import { temCargo, temAlgumCargo } from '@/lib/cargos'
@@ -80,6 +82,7 @@ export default function SocialClientes() {
   const [editing, setEditing] = useState<Cliente | null>(null)
   // Toggle pra mostrar SOMENTE arquivados (churn). Só admin/diretoria/head veem.
   const [mostrarArquivados, setMostrarArquivados] = useState(false)
+  const [gerandoPdf, setGerandoPdf] = useState(false)
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
@@ -226,14 +229,33 @@ export default function SocialClientes() {
             : `${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`
         }
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus size={14} /> Novo cliente
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setGerandoPdf(true)
+                downloadRelatorioSemanalSocialPDF({
+                  clientes: filtered,
+                  items,
+                  planejamentos,
+                }).finally(() => setGerandoPdf(false))
+              }}
+              disabled={gerandoPdf || loading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300 disabled:opacity-50"
+              title="Baixar PDF com publicadas, atrasadas e em produção desta semana"
+            >
+              <FileText size={13} />
+              {gerandoPdf ? 'Gerando…' : 'Relatório semanal'}
+            </button>
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              <Plus size={14} /> Novo cliente
+            </Button>
+          </div>
         }
       />
 
