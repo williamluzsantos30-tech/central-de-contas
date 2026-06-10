@@ -96,7 +96,7 @@ export function CallAlinhamentoCell({
         : dias < 0
           ? 'border-red-500/50 bg-red-500/15 text-red-200'
           : dias <= 3
-            ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+            ? 'border-brand-500/50 bg-brand-500/15 text-brand-200'
             : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
 
   async function salvarData() {
