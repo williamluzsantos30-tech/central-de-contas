@@ -181,6 +181,12 @@ export interface Cliente {
   status_saude_geral: StatusSaudeConta
   /** Timestamp de quando o cliente entrou no status_saude_geral atual. Reseta no trigger. */
   status_geral_desde: string
+  /**
+   * Call de alinhamento mensal (migration 045). Cobre Tráfego + Social Media
+   * (1 call por cliente, não 1 por módulo).
+   */
+  proxima_call_alinhamento: string | null
+  ultima_call_alinhamento: string | null
   verba_mensal: number | null
   verba_google: number | null
   verba_meta: number | null

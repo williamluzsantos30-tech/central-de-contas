@@ -20,6 +20,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
+import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
@@ -86,6 +87,9 @@ export default function SocialClientes() {
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
+  // Quem pode editar a data da call de alinhamento (espelha a RPC do banco)
+  const podeEditarCall =
+    isAdmin || temAlgumCargo(profile, ['head', 'diretoria', 'account_manager'])
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const [orfaos, setOrfaos] = useState<Cliente[]>([])
@@ -406,6 +410,7 @@ export default function SocialClientes() {
                   <th className="px-3 py-2.5">Publicações do mês</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
+                  <th className="px-3 py-2.5">Call alinhamento</th>
                   <th className="px-3 py-2.5">Última atualização</th>
                   <th className="px-3 py-2.5 text-right">&nbsp;</th>
                 </tr>
@@ -413,13 +418,13 @@ export default function SocialClientes() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Carregando...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Nenhum cliente encontrado.
                     </td>
                   </tr>
@@ -478,6 +483,15 @@ export default function SocialClientes() {
                           ) : (
                             <span className="text-muted text-xs">—</span>
                           )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <CallAlinhamentoCell
+                            clienteId={c.id}
+                            proxima={c.proxima_call_alinhamento}
+                            ultima={c.ultima_call_alinhamento}
+                            podeEditar={podeEditarCall}
+                            onChanged={load}
+                          />
                         </td>
                         <td className="px-3 py-3 text-xs text-muted whitespace-nowrap">
                           {formatDate(c.updated_at)}

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
+import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { supabase } from '@/lib/supabase'
 import { temAlgumCargo } from '@/lib/cargos'
 import {
@@ -39,6 +40,10 @@ export default function Clientes() {
 
   // Cargos operacionais começam vendo só "os meus". Diretoria/head/admin veem todos.
   const cargoOperacional = temAlgumCargo(profile, ['gestor_trafego', 'account_manager'])
+  // Quem pode editar a data da call de alinhamento (espelha a RPC do banco)
+  const podeEditarCall =
+    profile?.role === 'admin' ||
+    temAlgumCargo(profile, ['head', 'diretoria', 'account_manager'])
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
@@ -225,6 +230,7 @@ export default function Clientes() {
                   <th className="px-3 py-2.5">Verba</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
+                  <th className="px-3 py-2.5">Call alinhamento</th>
                   <th className="px-3 py-2.5">Última atualização</th>
                   <th className="px-3 py-2.5 text-right">&nbsp;</th>
                 </tr>
@@ -232,13 +238,13 @@ export default function Clientes() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Carregando...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Nenhum cliente encontrado.
                     </td>
                   </tr>
@@ -278,6 +284,15 @@ export default function Clientes() {
                       </td>
                       <td className="px-3 py-3 text-sm whitespace-nowrap">
                         {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <CallAlinhamentoCell
+                          clienteId={c.id}
+                          proxima={c.proxima_call_alinhamento}
+                          ultima={c.ultima_call_alinhamento}
+                          podeEditar={podeEditarCall}
+                          onChanged={load}
+                        />
                       </td>
                       <td className="px-3 py-3 text-xs text-muted whitespace-nowrap">
                         {formatDate(c.updated_at)}
