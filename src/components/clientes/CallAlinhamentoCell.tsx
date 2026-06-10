@@ -42,6 +42,9 @@ function formatBR(iso: string | null): string {
 function diasUntil(iso: string | null): number | null {
   const d = parseDate(iso)
   if (!d) return null
+  // Normaliza AMBAS as datas pra meia-noite local. Senao a diferenca vira
+  // 12h (0.5 dia) quando e o mesmo dia, e Math.round(0.5) arredonda pra 1.
+  d.setHours(0, 0, 0, 0)
   const hoje = new Date()
   hoje.setHours(0, 0, 0, 0)
   return Math.round((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
