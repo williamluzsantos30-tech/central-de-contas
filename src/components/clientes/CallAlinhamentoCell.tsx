@@ -50,6 +50,30 @@ function diasUntil(iso: string | null): number | null {
   return Math.round((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 }
 
+/** Dia da semana da data ISO (0=dom .. 6=sab) */
+function diaSemanaIso(iso: string): number | null {
+  const d = parseDate(iso)
+  return d ? d.getDay() : null
+}
+
+/**
+ * Espelha proximo_dia_util() do banco: se a data cai em sabado/domingo,
+ * empurra pra segunda. Usado pra exibir a data corrigida no front antes
+ * de salvar (o trigger no banco tambem ajusta, mas assim o usuario ja
+ * ve o resultado correto sem precisar recarregar).
+ */
+function proximoDiaUtil(iso: string): string {
+  const d = parseDate(iso)
+  if (!d) return iso
+  const dow = d.getDay()
+  if (dow === 6) d.setDate(d.getDate() + 2) // sab → seg
+  else if (dow === 0) d.setDate(d.getDate() + 1) // dom → seg
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function labelRelativo(dias: number | null): string {
   if (dias === null) return ''
   if (dias === 0) return 'hoje'
@@ -101,9 +125,17 @@ export function CallAlinhamentoCell({
               ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
               : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
 
+  // Se a data escolhida cai em fim de semana, a versão que vai pro banco
+  // é a próxima segunda. Exibe o aviso pro usuário ver o resultado real.
+  const dowEscolhido = novaData ? diaSemanaIso(novaData) : null
+  const ehFimDeSemana = dowEscolhido === 0 || dowEscolhido === 6
+  const dataAjustada = novaData ? proximoDiaUtil(novaData) : ''
+
   async function salvarData() {
     setSaving(true)
-    const valor = novaData || null
+    // Manda já ajustada (o trigger no banco tambem ajusta, mas assim a UI
+    // ja reflete a data correta sem precisar recarregar).
+    const valor = novaData ? proximoDiaUtil(novaData) : null
     const { error } = await supabase
       .from('clientes')
       .update({ proxima_call_alinhamento: valor })
@@ -199,13 +231,21 @@ export function CallAlinhamentoCell({
             value={novaData}
             onChange={(e) => setNovaData(e.target.value)}
             disabled={saving}
-            className="mb-2 w-full rounded-md border border-border bg-bg-soft px-2 py-1.5 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            className="mb-1 w-full rounded-md border border-border bg-bg-soft px-2 py-1.5 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
           />
+          {ehFimDeSemana && (
+            <p className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
+              {dowEscolhido === 6 ? 'Sábado' : 'Domingo'} — vai ser ajustada pra{' '}
+              <strong>segunda ({formatBR(dataAjustada)})</strong>. Call só em dia útil.
+            </p>
+          )}
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={salvarData}
-              disabled={saving || novaData === (proxima ?? '')}
+              disabled={
+                saving || (novaData ? proximoDiaUtil(novaData) : '') === (proxima ?? '')
+              }
               className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-soft px-2 py-1 text-[11px] text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300 disabled:opacity-50"
             >
               {saving ? 'Salvando…' : 'Salvar data'}
