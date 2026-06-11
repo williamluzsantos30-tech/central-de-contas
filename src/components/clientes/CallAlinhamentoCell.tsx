@@ -14,11 +14,15 @@ import { useEffect, useRef, useState } from 'react'
 import { CalendarClock, CheckCircle2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/contexts/AuthContext'
+import { agendarCallNoGCal, gcalEstaConfigurado } from '@/lib/gcal'
 
 interface Props {
   clienteId: string
+  clienteNome: string
   proxima: string | null
   ultima: string | null
+  gcalEventId: string | null
   podeEditar: boolean
   onChanged: () => void
 }
@@ -85,11 +89,14 @@ function labelRelativo(dias: number | null): string {
 
 export function CallAlinhamentoCell({
   clienteId,
+  clienteNome,
   proxima,
   ultima,
+  gcalEventId,
   podeEditar,
   onChanged,
 }: Props) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [novaData, setNovaData] = useState(proxima ?? '')
   const [saving, setSaving] = useState(false)
@@ -131,6 +138,23 @@ export function CallAlinhamentoCell({
   const ehFimDeSemana = dowEscolhido === 0 || dowEscolhido === 6
   const dataAjustada = novaData ? proximoDiaUtil(novaData) : ''
 
+  /** Best-effort: cria/atualiza o evento no Google Calendar via webhook n8n.
+   *  Se VITE_GCAL_WEBHOOK_URL não está setada, vira no-op. Se o webhook
+   *  falhar (rede, n8n offline, etc), só loga e continua — não desfaz o
+   *  save da data. */
+  async function disparaGCal(dataFinal: string) {
+    if (!gcalEstaConfigurado()) return
+    if (!profile?.email) return
+    await agendarCallNoGCal({
+      clienteId,
+      clienteNome,
+      data: dataFinal,
+      autorEmail: profile.email,
+      autorNome: profile.nome,
+      eventoExistente: gcalEventId,
+    })
+  }
+
   async function salvarData() {
     setSaving(true)
     // Manda já ajustada (o trigger no banco tambem ajusta, mas assim a UI
@@ -140,25 +164,32 @@ export function CallAlinhamentoCell({
       .from('clientes')
       .update({ proxima_call_alinhamento: valor })
       .eq('id', clienteId)
-    setSaving(false)
     if (error) {
+      setSaving(false)
       alert(`Erro ao salvar: ${error.message}`)
       return
     }
+    if (valor) await disparaGCal(valor)
+    setSaving(false)
     setOpen(false)
     onChanged()
   }
 
   async function marcarRealizada() {
     setSaving(true)
-    const { error } = await supabase.rpc('marcar_call_alinhamento_realizada', {
-      p_cliente_id: clienteId,
-    })
-    setSaving(false)
+    const { data, error } = await supabase.rpc(
+      'marcar_call_alinhamento_realizada',
+      { p_cliente_id: clienteId },
+    )
     if (error) {
+      setSaving(false)
       alert(`Erro ao marcar realizada: ${error.message}`)
       return
     }
+    // RPC retorna [{ultima, proxima}] — pega a proxima pra disparar GCal
+    const proxima = Array.isArray(data) && data[0]?.proxima ? data[0].proxima : null
+    if (proxima) await disparaGCal(proxima)
+    setSaving(false)
     setOpen(false)
     onChanged()
   }

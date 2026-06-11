@@ -187,6 +187,12 @@ export interface Cliente {
    */
   proxima_call_alinhamento: string | null
   ultima_call_alinhamento: string | null
+  /**
+   * ID do evento no Google Calendar (migration 047). Retornado pelo n8n
+   * após criar o evento. Usado pra atualizar/cancelar o mesmo evento
+   * quando a data muda, em vez de criar duplicatas.
+   */
+  gcal_event_id: string | null
   verba_mensal: number | null
   verba_google: number | null
   verba_meta: number | null

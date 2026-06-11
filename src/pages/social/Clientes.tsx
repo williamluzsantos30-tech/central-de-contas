@@ -487,8 +487,10 @@ export default function SocialClientes() {
                         <td className="px-3 py-3 whitespace-nowrap">
                           <CallAlinhamentoCell
                             clienteId={c.id}
+                            clienteNome={c.nome}
                             proxima={c.proxima_call_alinhamento}
                             ultima={c.ultima_call_alinhamento}
+                            gcalEventId={c.gcal_event_id}
                             podeEditar={podeEditarCall}
                             onChanged={load}
                           />
