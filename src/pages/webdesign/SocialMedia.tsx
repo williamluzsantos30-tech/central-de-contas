@@ -179,6 +179,11 @@ export default function SocialMedia() {
           .from('producoes_social_media_items')
           .select('*, responsavel:profiles!responsavel_id(*)')
           .in('producao_id', idsAprovados)
+          // Ordena pela DATA DE POSTAGEM (campo `prazo`) — quando o post
+          // vai pro Instagram. NAO confundir com `prazo_producao` (deadline
+          // do designer pra entregar a arte). Itens sem data de postagem
+          // vao pro fim, com `ordem` de desempate.
+          .order('prazo', { ascending: true, nullsFirst: false })
           .order('ordem', { ascending: true })
       : { data: [] as ItemSocialMedia[] }
     setPlanejamentos(planejamentosAprovados)
@@ -770,14 +775,29 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items */}
+          {/* Lista de items — sort defensivo por DATA DE POSTAGEM (campo
+              `prazo`). Garante a ordem mesmo se a query do banco vier
+              diferente (cache, edicao inline, etc). O badge visual continua
+              mostrando `prazo_producao` (entrega da arte) — info que importa
+              pro designer — mas a SEQUENCIA da lista segue a ordem de
+              postagem pra producao priorizar o que vai pro ar primeiro. */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
                 Nenhuma arte adicionada.
               </p>
             ) : (
-              items.map((it) => (
+              [...items]
+                .sort((a, b) => {
+                  // Items sem data de postagem vao pro fim
+                  if (!a.prazo && !b.prazo) return (a.ordem ?? 0) - (b.ordem ?? 0)
+                  if (!a.prazo) return 1
+                  if (!b.prazo) return -1
+                  const cmp = a.prazo.localeCompare(b.prazo)
+                  if (cmp !== 0) return cmp
+                  return (a.ordem ?? 0) - (b.ordem ?? 0)
+                })
+                .map((it) => (
                 <ItemRow
                   key={it.id}
                   item={it}
