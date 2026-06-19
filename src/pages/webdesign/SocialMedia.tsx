@@ -179,6 +179,12 @@ export default function SocialMedia() {
           .from('producoes_social_media_items')
           .select('*, responsavel:profiles!responsavel_id(*)')
           .in('producao_id', idsAprovados)
+          // Ordena cronologicamente pelo PRAZO de postagem (nao pelo `ordem`,
+          // que vinha agrupando por formato — carrossel, estatico, reel —
+          // porque foi atribuido em lotes na criacao do planejamento).
+          // Items sem prazo (nulos) vao pro fim, mantendo o `ordem` como
+          // criterio de desempate.
+          .order('prazo', { ascending: true, nullsFirst: false })
           .order('ordem', { ascending: true })
       : { data: [] as ItemSocialMedia[] }
     setPlanejamentos(planejamentosAprovados)
