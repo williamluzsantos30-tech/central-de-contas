@@ -776,14 +776,27 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items */}
+          {/* Lista de items — sort defensivo por prazo asc, ordem asc como
+              desempate. Garante a ordem cronológica de postagem mesmo se a
+              query do banco vier diferente (cache, edição inline, etc). */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
                 Nenhuma arte adicionada.
               </p>
             ) : (
-              items.map((it) => (
+              [...items]
+                .sort((a, b) => {
+                  // Items sem prazo vão pro fim (mantém ordem entre si pelo `ordem`)
+                  if (!a.prazo && !b.prazo) return (a.ordem ?? 0) - (b.ordem ?? 0)
+                  if (!a.prazo) return 1
+                  if (!b.prazo) return -1
+                  // prazo é date YYYY-MM-DD: string compare bate com cronológico
+                  const cmp = a.prazo.localeCompare(b.prazo)
+                  if (cmp !== 0) return cmp
+                  return (a.ordem ?? 0) - (b.ordem ?? 0)
+                })
+                .map((it) => (
                 <ItemRow
                   key={it.id}
                   item={it}
