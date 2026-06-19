@@ -179,10 +179,8 @@ export default function SocialMedia() {
           .from('producoes_social_media_items')
           .select('*, responsavel:profiles!responsavel_id(*)')
           .in('producao_id', idsAprovados)
-          // Ordena pela MESMA DATA QUE APARECE NO BADGE (prazo_producao =
-          // entrega da arte). Se nao tiver, cai no `prazo` (postagem) como
-          // fallback. `ordem` como ultimo desempate.
-          .order('prazo_producao', { ascending: true, nullsFirst: false })
+          // Ordena pela DATA DE POSTAGEM (`prazo`). Bate com o que o badge
+          // visual mostra — produzir na sequencia que os posts vao pro ar.
           .order('prazo', { ascending: true, nullsFirst: false })
           .order('ordem', { ascending: true })
       : { data: [] as ItemSocialMedia[] }
@@ -775,9 +773,8 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items — sort defensivo pela mesma data que aparece
-              no badge (prazo_producao = entrega da arte). Cai no `prazo`
-              (postagem) se nao tiver, `ordem` como ultimo desempate. */}
+          {/* Lista de items — sort defensivo pela DATA DE POSTAGEM (prazo),
+              que e o mesmo campo agora exibido no badge. */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
@@ -786,14 +783,10 @@ function PlanejamentoCard({
             ) : (
               [...items]
                 .sort((a, b) => {
-                  // Compara pelo prazo_producao (que e o que aparece no badge),
-                  // com fallback pro prazo (postagem) quando nao houver
-                  const da = a.prazo_producao ?? a.prazo
-                  const db = b.prazo_producao ?? b.prazo
-                  if (!da && !db) return (a.ordem ?? 0) - (b.ordem ?? 0)
-                  if (!da) return 1
-                  if (!db) return -1
-                  const cmp = da.localeCompare(db)
+                  if (!a.prazo && !b.prazo) return (a.ordem ?? 0) - (b.ordem ?? 0)
+                  if (!a.prazo) return 1
+                  if (!b.prazo) return -1
+                  const cmp = a.prazo.localeCompare(b.prazo)
                   if (cmp !== 0) return cmp
                   return (a.ordem ?? 0) - (b.ordem ?? 0)
                 })
@@ -1815,9 +1808,9 @@ function PrazoInlineItem({
     onUpdated()
   }
 
-  // O que conta como "atrasado" pra produção é o prazo_producao (deadline do
-  // designer). Se ainda não foi aprovado, cai no prazo de postagem como fallback.
-  const dataAlvo = item.prazo_producao ?? item.prazo
+  // "Atrasado" agora calcula em cima do mesmo campo do badge (prazo =
+  // data de postagem). Mantem fallback pro prazo_producao se postagem nula.
+  const dataAlvo = item.prazo ?? item.prazo_producao
   const overdue = isDateOverdue(dataAlvo) && item.status !== 'conclusao'
 
   if (editing) {
@@ -1838,11 +1831,10 @@ function PrazoInlineItem({
     )
   }
 
-  // Na PRODUÇÃO, o que importa é o deadline da arte (prazo_producao).
-  // A data de postagem é editada no Planejamento Mensal, não aqui.
-  // Fallback raríssimo: se ainda não calculou (planejamento recém-criado
-  // antes do trigger rodar), cai no prazo (editável) pra não deixar vazio.
-  if (item.prazo_producao) {
+  // Mostra DATA DE POSTAGEM (prazo) no badge — bate com a ordem da lista
+  // que e ordenada pelo mesmo campo. A entrega da arte (prazo_producao)
+  // fica no tooltip pro designer ver quando precisa entregar.
+  if (item.prazo) {
     return (
       <span
         className={cn(
@@ -1852,14 +1844,14 @@ function PrazoInlineItem({
             : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
         )}
         title={
-          `Entrega da arte — ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}` +
-          (item.prazo
-            ? `\nData de postagem: ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}`
+          `Data de postagem — ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}` +
+          (item.prazo_producao
+            ? `\nEntrega da arte: ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}`
             : '')
         }
       >
         <Clock size={10} />
-        {formatDateBR(item.prazo_producao)}
+        {formatDateBR(item.prazo)}
       </span>
     )
   }
