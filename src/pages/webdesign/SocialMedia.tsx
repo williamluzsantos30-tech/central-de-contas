@@ -179,10 +179,10 @@ export default function SocialMedia() {
           .from('producoes_social_media_items')
           .select('*, responsavel:profiles!responsavel_id(*)')
           .in('producao_id', idsAprovados)
-          // Ordena pela DATA DE POSTAGEM (campo `prazo`) — quando o post
-          // vai pro Instagram. NAO confundir com `prazo_producao` (deadline
-          // do designer pra entregar a arte). Itens sem data de postagem
-          // vao pro fim, com `ordem` de desempate.
+          // Ordena pela MESMA DATA QUE APARECE NO BADGE (prazo_producao =
+          // entrega da arte). Se nao tiver, cai no `prazo` (postagem) como
+          // fallback. `ordem` como ultimo desempate.
+          .order('prazo_producao', { ascending: true, nullsFirst: false })
           .order('prazo', { ascending: true, nullsFirst: false })
           .order('ordem', { ascending: true })
       : { data: [] as ItemSocialMedia[] }
@@ -775,12 +775,9 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items — sort defensivo por DATA DE POSTAGEM (campo
-              `prazo`). Garante a ordem mesmo se a query do banco vier
-              diferente (cache, edicao inline, etc). O badge visual continua
-              mostrando `prazo_producao` (entrega da arte) — info que importa
-              pro designer — mas a SEQUENCIA da lista segue a ordem de
-              postagem pra producao priorizar o que vai pro ar primeiro. */}
+          {/* Lista de items — sort defensivo pela mesma data que aparece
+              no badge (prazo_producao = entrega da arte). Cai no `prazo`
+              (postagem) se nao tiver, `ordem` como ultimo desempate. */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
@@ -789,11 +786,14 @@ function PlanejamentoCard({
             ) : (
               [...items]
                 .sort((a, b) => {
-                  // Items sem data de postagem vao pro fim
-                  if (!a.prazo && !b.prazo) return (a.ordem ?? 0) - (b.ordem ?? 0)
-                  if (!a.prazo) return 1
-                  if (!b.prazo) return -1
-                  const cmp = a.prazo.localeCompare(b.prazo)
+                  // Compara pelo prazo_producao (que e o que aparece no badge),
+                  // com fallback pro prazo (postagem) quando nao houver
+                  const da = a.prazo_producao ?? a.prazo
+                  const db = b.prazo_producao ?? b.prazo
+                  if (!da && !db) return (a.ordem ?? 0) - (b.ordem ?? 0)
+                  if (!da) return 1
+                  if (!db) return -1
+                  const cmp = da.localeCompare(db)
                   if (cmp !== 0) return cmp
                   return (a.ordem ?? 0) - (b.ordem ?? 0)
                 })
