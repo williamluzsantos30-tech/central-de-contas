@@ -770,14 +770,30 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items */}
+          {/* Lista de items — agrupados visualmente pelo prazo_producao
+              (data do badge). Migration 048 garante que items com o mesmo
+              prazo_producao formam um "lote" (3 posts × 3 dias úteis), e
+              esse sort os mantem juntos na tela. */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
                 Nenhuma arte adicionada.
               </p>
             ) : (
-              items.map((it) => (
+              [...items]
+                .sort((a, b) => {
+                  // Compara pelo prazo_producao (que aparece no badge).
+                  // Items sem prazo_producao vao pro fim.
+                  const da = a.prazo_producao
+                  const db = b.prazo_producao
+                  if (!da && !db) return (a.ordem ?? 0) - (b.ordem ?? 0)
+                  if (!da) return 1
+                  if (!db) return -1
+                  const cmp = da.localeCompare(db)
+                  if (cmp !== 0) return cmp
+                  return (a.ordem ?? 0) - (b.ordem ?? 0)
+                })
+                .map((it) => (
                 <ItemRow
                   key={it.id}
                   item={it}
