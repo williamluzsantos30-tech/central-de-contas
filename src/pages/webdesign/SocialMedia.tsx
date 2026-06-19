@@ -179,9 +179,6 @@ export default function SocialMedia() {
           .from('producoes_social_media_items')
           .select('*, responsavel:profiles!responsavel_id(*)')
           .in('producao_id', idsAprovados)
-          // Ordena pela DATA DE POSTAGEM (`prazo`). Bate com o que o badge
-          // visual mostra — produzir na sequencia que os posts vao pro ar.
-          .order('prazo', { ascending: true, nullsFirst: false })
           .order('ordem', { ascending: true })
       : { data: [] as ItemSocialMedia[] }
     setPlanejamentos(planejamentosAprovados)
@@ -773,24 +770,14 @@ function PlanejamentoCard({
           {/* Fotos / Referências do planejamento (compartilhadas entre todas as artes) */}
           <ReferenciasPanel planejamento={planejamento} onChanged={onChanged} />
 
-          {/* Lista de items — sort defensivo pela DATA DE POSTAGEM (prazo),
-              que e o mesmo campo agora exibido no badge. */}
+          {/* Lista de items */}
           <div className="divide-y divide-border">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted italic">
                 Nenhuma arte adicionada.
               </p>
             ) : (
-              [...items]
-                .sort((a, b) => {
-                  if (!a.prazo && !b.prazo) return (a.ordem ?? 0) - (b.ordem ?? 0)
-                  if (!a.prazo) return 1
-                  if (!b.prazo) return -1
-                  const cmp = a.prazo.localeCompare(b.prazo)
-                  if (cmp !== 0) return cmp
-                  return (a.ordem ?? 0) - (b.ordem ?? 0)
-                })
-                .map((it) => (
+              items.map((it) => (
                 <ItemRow
                   key={it.id}
                   item={it}
@@ -1808,9 +1795,9 @@ function PrazoInlineItem({
     onUpdated()
   }
 
-  // "Atrasado" agora calcula em cima do mesmo campo do badge (prazo =
-  // data de postagem). Mantem fallback pro prazo_producao se postagem nula.
-  const dataAlvo = item.prazo ?? item.prazo_producao
+  // O que conta como "atrasado" pra produção é o prazo_producao (deadline do
+  // designer). Se ainda não foi aprovado, cai no prazo de postagem como fallback.
+  const dataAlvo = item.prazo_producao ?? item.prazo
   const overdue = isDateOverdue(dataAlvo) && item.status !== 'conclusao'
 
   if (editing) {
@@ -1831,10 +1818,11 @@ function PrazoInlineItem({
     )
   }
 
-  // Mostra DATA DE POSTAGEM (prazo) no badge — bate com a ordem da lista
-  // que e ordenada pelo mesmo campo. A entrega da arte (prazo_producao)
-  // fica no tooltip pro designer ver quando precisa entregar.
-  if (item.prazo) {
+  // Na PRODUÇÃO, o que importa é o deadline da arte (prazo_producao).
+  // A data de postagem é editada no Planejamento Mensal, não aqui.
+  // Fallback raríssimo: se ainda não calculou (planejamento recém-criado
+  // antes do trigger rodar), cai no prazo (editável) pra não deixar vazio.
+  if (item.prazo_producao) {
     return (
       <span
         className={cn(
@@ -1844,14 +1832,14 @@ function PrazoInlineItem({
             : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
         )}
         title={
-          `Data de postagem — ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}` +
-          (item.prazo_producao
-            ? `\nEntrega da arte: ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}`
+          `Entrega da arte — ${formatDateBR(item.prazo_producao, { weekday: 'long', day: '2-digit', month: '2-digit' })}` +
+          (item.prazo
+            ? `\nData de postagem: ${formatDateBR(item.prazo, { weekday: 'long', day: '2-digit', month: '2-digit' })}`
             : '')
         }
       >
         <Clock size={10} />
-        {formatDateBR(item.prazo)}
+        {formatDateBR(item.prazo_producao)}
       </span>
     )
   }
