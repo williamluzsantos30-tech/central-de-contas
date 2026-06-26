@@ -764,6 +764,32 @@ function HistoricoTable({
     })
   }, [historico])
 
+  /**
+   * Média dos meses do histórico. Cada métrica é calculada SÓ sobre os
+   * meses que têm aquele dado preenchido (não conta os "—" como zero).
+   * Investimento conta zero como ausente também (mes só investido sem
+   * resultado não polui a média de faturamento mas é incluído em
+   * investimento se > 0).
+   */
+  const medias = useMemo(() => {
+    function avg(valores: (number | null | undefined)[]): number | null {
+      const validos = valores.filter(
+        (v): v is number => typeof v === 'number' && !isNaN(v) && v > 0,
+      )
+      if (validos.length === 0) return null
+      return validos.reduce((a, b) => a + b, 0) / validos.length
+    }
+    return {
+      investimento: avg(rows.map((r) => r.investimento)),
+      faturamento: avg(rows.map((r) => r.faturamento)),
+      roas: avg(rows.map((r) => r.roas)),
+      leads: avg(rows.map((r) => r.leads)),
+      consultas: avg(rows.map((r) => r.consultas)),
+      vendas: avg(rows.map((r) => r.vendas)),
+      totalMeses: rows.length,
+    }
+  }, [rows])
+
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
@@ -853,6 +879,56 @@ function HistoricoTable({
               )
             })}
           </tbody>
+          {medias.totalMeses > 0 && (
+            <tfoot className="border-t-2 border-border bg-bg-soft/40">
+              <tr>
+                <td className="px-4 py-3 text-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">
+                    Média
+                  </span>
+                  <span className="ml-1.5 text-[10px] text-muted">
+                    ({medias.totalMeses}m)
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-right text-sm font-semibold text-zinc-100">
+                  {medias.investimento !== null
+                    ? formatCurrency(medias.investimento)
+                    : '—'}
+                </td>
+                <td className="px-3 py-3 text-right text-sm font-semibold text-zinc-100">
+                  {medias.faturamento !== null
+                    ? formatCurrency(medias.faturamento)
+                    : '—'}
+                </td>
+                <td className="px-3 py-3 text-center">
+                  {medias.roas !== null ? (
+                    <Badge tone="success">
+                      {medias.roas.toFixed(2).replace('.', ',')}x
+                    </Badge>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-center text-sm font-semibold text-zinc-100">
+                  {medias.leads !== null
+                    ? medias.leads.toFixed(1).replace('.', ',')
+                    : '—'}
+                </td>
+                <td className="px-3 py-3 text-center text-sm font-semibold text-zinc-100">
+                  {medias.consultas !== null
+                    ? medias.consultas.toFixed(1).replace('.', ',')
+                    : '—'}
+                </td>
+                <td className="px-3 py-3 text-center text-sm font-semibold text-zinc-100">
+                  {medias.vendas !== null
+                    ? medias.vendas.toFixed(1).replace('.', ',')
+                    : '—'}
+                </td>
+                <td className="px-3 py-3 text-center text-muted">—</td>
+                <td className="px-3 py-3" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </Card>
