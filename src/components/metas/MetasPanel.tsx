@@ -15,8 +15,6 @@ import {
   Stethoscope,
   Activity,
   Trophy,
-  BarChart3,
-  LineChart,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -103,7 +101,6 @@ export function MetasPanel({ clienteId }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(monthKey())
   const [todosMeses, setTodosMeses] = useState<Meta[]>([])
   const [loading, setLoading] = useState(true)
-  const [historicoView, setHistoricoView] = useState<'tabela' | 'grafico'>('tabela')
 
   // Refs das 4 planilhas para forçar flush antes de operações destrutivas
   const planMetaGoogleRef = useRef<PlanilhaHandle>(null)
@@ -247,18 +244,6 @@ export function MetasPanel({ clienteId }: Props) {
         </div>
       </div>
 
-      {/* Gráfico de contexto histórico — fica antes das Planilhas pra mostrar
-          o desempenho dos meses anteriores enquanto o usuário define as metas
-          do mês corrente. Só renderiza se houver pelo menos 1 mês cadastrado. */}
-      {todosMeses.length > 0 && (
-        <div className="mb-6">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Resultados dos últimos meses · contexto pra definir as metas
-          </h3>
-          <HistoricoChart historico={todosMeses} />
-        </div>
-      )}
-
       {/* Google Ads */}
       <PlatformSection title="Google Ads — Captação de Leads" color="blue">
         <Planilha
@@ -298,49 +283,15 @@ export function MetasPanel({ clienteId }: Props) {
       {/* Histórico agregado */}
       {todosMeses.length > 0 && (
         <div className="mt-6">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Evolução mensal · Resultados (Google + Meta somados)
-            </h3>
-            <div className="inline-flex rounded-md border border-border bg-bg-soft p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setHistoricoView('tabela')}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
-                  historicoView === 'tabela'
-                    ? 'bg-bg-elev text-zinc-100'
-                    : 'text-muted hover:text-zinc-200',
-                )}
-              >
-                <BarChart3 size={12} />
-                Tabela
-              </button>
-              <button
-                type="button"
-                onClick={() => setHistoricoView('grafico')}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
-                  historicoView === 'grafico'
-                    ? 'bg-bg-elev text-zinc-100'
-                    : 'text-muted hover:text-zinc-200',
-                )}
-              >
-                <LineChart size={12} />
-                Gráfico
-              </button>
-            </div>
-          </div>
-          {historicoView === 'tabela' ? (
-            <HistoricoTable
-              historico={todosMeses}
-              selectedMonth={selectedMonth}
-              onDelete={excluirMeta}
-              onSelect={selectMonth}
-            />
-          ) : (
-            <HistoricoChart historico={todosMeses} />
-          )}
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
+            Evolução mensal · Resultados (Google + Meta somados)
+          </h3>
+          <HistoricoTable
+            historico={todosMeses}
+            selectedMonth={selectedMonth}
+            onDelete={excluirMeta}
+            onSelect={selectMonth}
+          />
         </div>
       )}
     </div>
@@ -984,327 +935,6 @@ function HistoricoTable({
   )
 }
 
-/* =========================================================
-   HistoricoChart — gráfico SVG nativo de Faturamento + ROAS
-   ========================================================= */
-
-function HistoricoChart({ historico }: { historico: Meta[] }) {
-  // Inverte pra ordem cronológica (mais antigo → mais recente)
-  const pontos = useMemo(() => {
-    const arr = [...historico].reverse().map((m) => {
-      const ag = combinaMes(m)
-      return {
-        mes: m.mes_ano,
-        faturamento: ag.faturamento,
-        roas: ag.roas,
-      }
-    })
-    return arr
-  }, [historico])
-
-  // Escalas — só com base nos pontos (médias removidas do visual)
-  const fatMax = Math.max(...pontos.map((p) => p.faturamento ?? 0), 1)
-  const roasMax = Math.max(...pontos.map((p) => p.roas ?? 0), 1)
-
-  // Dimensões do SVG
-  const W = 800
-  const H = 280
-  const margin = { top: 24, right: 64, bottom: 36, left: 64 }
-  const innerW = W - margin.left - margin.right
-  const innerH = H - margin.top - margin.bottom
-
-  function x(i: number): number {
-    if (pontos.length <= 1) return margin.left + innerW / 2
-    return margin.left + (i / (pontos.length - 1)) * innerW
-  }
-  function yFat(v: number | null): number | null {
-    if (v === null) return null
-    return margin.top + innerH - (v / fatMax) * innerH
-  }
-  function yRoas(v: number | null): number | null {
-    if (v === null) return null
-    return margin.top + innerH - (v / roasMax) * innerH
-  }
-
-  /**
-   * Constrói o `d` de um path com CURVAS SUAVES (Catmull-Rom convertido pra
-   * cubic Bezier). Conecta só pontos válidos (≠ null) — se um valor é null,
-   * a curva quebra e retoma no próximo válido.
-   *
-   * Fórmula Catmull-Rom → Bezier:
-   *   Pra cada par de pontos consecutivos (P1, P2), os controles vêm dos
-   *   vizinhos P0 e P3:
-   *     C1 = P1 + (P2 - P0) / 6
-   *     C2 = P2 - (P3 - P1) / 6
-   *   Nas pontas (sem P0 ou P3), reflete o ponto disponível.
-   */
-  function smoothPath(
-    values: (number | null)[],
-    yFn: (v: number | null) => number | null,
-  ): string {
-    // Agrupa em "segmentos contíguos" — sempre que aparece um null, fecha o
-    // segmento atual e abre um novo no próximo válido.
-    const segments: Array<Array<{ x: number; y: number }>> = []
-    let current: Array<{ x: number; y: number }> = []
-    values.forEach((v, i) => {
-      const yv = yFn(v)
-      if (yv === null) {
-        if (current.length > 0) segments.push(current)
-        current = []
-        return
-      }
-      current.push({ x: x(i), y: yv })
-    })
-    if (current.length > 0) segments.push(current)
-
-    const out: string[] = []
-    for (const seg of segments) {
-      if (seg.length === 0) continue
-      if (seg.length === 1) {
-        // Ponto isolado — só um Move (renderiza como circle separadamente)
-        out.push(`M${seg[0].x.toFixed(2)},${seg[0].y.toFixed(2)}`)
-        continue
-      }
-      out.push(`M${seg[0].x.toFixed(2)},${seg[0].y.toFixed(2)}`)
-      for (let i = 0; i < seg.length - 1; i++) {
-        const p0 = seg[i - 1] ?? seg[i]
-        const p1 = seg[i]
-        const p2 = seg[i + 1]
-        const p3 = seg[i + 2] ?? p2
-        const c1x = p1.x + (p2.x - p0.x) / 6
-        const c1y = p1.y + (p2.y - p0.y) / 6
-        const c2x = p2.x - (p3.x - p1.x) / 6
-        const c2y = p2.y - (p3.y - p1.y) / 6
-        out.push(
-          `C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`,
-        )
-      }
-    }
-    return out.join(' ')
-  }
-
-  const dFat = smoothPath(
-    pontos.map((p) => p.faturamento),
-    yFat,
-  )
-  const dRoas = smoothPath(
-    pontos.map((p) => p.roas),
-    yRoas,
-  )
-
-  const COR_FAT = '#f97316' // laranja brand
-  const COR_ROAS = '#10b981' // verde
-  const COR_BORDA = 'var(--color-border, #404040)'
-
-  // Ticks Y — 3 linhas horizontais (25%, 50%, 75%) só pra dar contexto
-  const yTicks = [0.25, 0.5, 0.75]
-
-  if (pontos.length === 0) {
-    return (
-      <Card className="p-8 text-center text-sm text-muted">
-        Sem dados pra exibir no gráfico.
-      </Card>
-    )
-  }
-
-  return (
-    <Card className="overflow-hidden p-4">
-      {/* Legenda */}
-      <div className="mb-2 flex items-center justify-center gap-4 text-[11px] text-zinc-300">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_FAT }} />
-          Faturamento
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_ROAS }} />
-          ROAS
-        </span>
-      </div>
-
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto"
-        preserveAspectRatio="xMidYMid meet"
-      >
-        {/* Linhas de grade horizontais */}
-        {yTicks.map((t) => {
-          const y = margin.top + innerH * (1 - t)
-          return (
-            <line
-              key={t}
-              x1={margin.left}
-              x2={margin.left + innerW}
-              y1={y}
-              y2={y}
-              stroke={COR_BORDA}
-              strokeWidth="0.5"
-              strokeDasharray="2 4"
-              opacity="0.4"
-            />
-          )
-        })}
-
-        {/* Eixo X linha de base */}
-        <line
-          x1={margin.left}
-          x2={margin.left + innerW}
-          y1={margin.top + innerH}
-          y2={margin.top + innerH}
-          stroke={COR_BORDA}
-          strokeWidth="1"
-        />
-
-        {/* Eixo Y esquerdo — Faturamento (R$) */}
-        <text
-          x={margin.left - 8}
-          y={margin.top + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-          textAnchor="end"
-        >
-          {formatShort(fatMax)}
-        </text>
-        <text
-          x={margin.left - 8}
-          y={margin.top + innerH * 0.5 + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-          textAnchor="end"
-        >
-          {formatShort(fatMax * 0.5)}
-        </text>
-        <text
-          x={margin.left - 8}
-          y={margin.top + innerH + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-          textAnchor="end"
-        >
-          0
-        </text>
-
-        {/* Eixo Y direito — ROAS (x) */}
-        <text
-          x={margin.left + innerW + 8}
-          y={margin.top + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-        >
-          {roasMax.toFixed(1)}x
-        </text>
-        <text
-          x={margin.left + innerW + 8}
-          y={margin.top + innerH * 0.5 + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-        >
-          {(roasMax * 0.5).toFixed(1)}x
-        </text>
-        <text
-          x={margin.left + innerW + 8}
-          y={margin.top + innerH + 4}
-          fill="rgb(115 115 115)"
-          fontSize="10"
-        >
-          0x
-        </text>
-
-        {/* Linha Faturamento */}
-        {dFat && (
-          <path
-            d={dFat}
-            fill="none"
-            stroke={COR_FAT}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        {/* Pontos Faturamento */}
-        {pontos.map((p, i) => {
-          const yv = yFat(p.faturamento)
-          if (yv === null) return null
-          return (
-            <circle
-              key={`fat-${i}`}
-              cx={x(i)}
-              cy={yv}
-              r="3.5"
-              fill={COR_FAT}
-              stroke="#0a0a0a"
-              strokeWidth="1.5"
-            >
-              <title>{`${shortMonth(p.mes)}: ${formatCurrency(p.faturamento ?? 0)}`}</title>
-            </circle>
-          )
-        })}
-
-        {/* Linha ROAS */}
-        {dRoas && (
-          <path
-            d={dRoas}
-            fill="none"
-            stroke={COR_ROAS}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        {/* Pontos ROAS */}
-        {pontos.map((p, i) => {
-          const yv = yRoas(p.roas)
-          if (yv === null) return null
-          return (
-            <circle
-              key={`roas-${i}`}
-              cx={x(i)}
-              cy={yv}
-              r="3.5"
-              fill={COR_ROAS}
-              stroke="#0a0a0a"
-              strokeWidth="1.5"
-            >
-              <title>{`${shortMonth(p.mes)}: ${(p.roas ?? 0).toFixed(2)}x`}</title>
-            </circle>
-          )
-        })}
-
-        {/* Labels eixo X (meses) */}
-        {pontos.map((p, i) => (
-          <text
-            key={`lbl-${i}`}
-            x={x(i)}
-            y={margin.top + innerH + 18}
-            fill="rgb(115 115 115)"
-            fontSize="10"
-            textAnchor="middle"
-          >
-            {shortMonth(p.mes)}
-          </text>
-        ))}
-      </svg>
-    </Card>
-  )
-}
-
-/** Formata número em "R$ X.XXXk" ou "R$ XM" pra economizar espaço no eixo. */
-function formatShort(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
-  if (n >= 1_000) return `${Math.round(n / 1000)}k`
-  return n.toFixed(0)
-}
-
-/** "2026-02-01" → "fev/26" */
-function shortMonth(mesAno: string): string {
-  try {
-    const d = parseISO(mesAno)
-    const mes = format(d, 'LLL', { locale: ptBR }).replace('.', '')
-    const ano = format(d, 'yy')
-    return `${mes}/${ano}`
-  } catch {
-    return mesAno
-  }
-}
 
 function SaveIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
   if (state === 'idle') {
