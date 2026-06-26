@@ -15,6 +15,8 @@ import {
   Stethoscope,
   Activity,
   Trophy,
+  BarChart3,
+  LineChart,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -101,6 +103,7 @@ export function MetasPanel({ clienteId }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(monthKey())
   const [todosMeses, setTodosMeses] = useState<Meta[]>([])
   const [loading, setLoading] = useState(true)
+  const [historicoView, setHistoricoView] = useState<'tabela' | 'grafico'>('tabela')
 
   // Refs das 4 planilhas para forçar flush antes de operações destrutivas
   const planMetaGoogleRef = useRef<PlanilhaHandle>(null)
@@ -283,15 +286,49 @@ export function MetasPanel({ clienteId }: Props) {
       {/* Histórico agregado */}
       {todosMeses.length > 0 && (
         <div className="mt-6">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Evolução mensal · Resultados (Google + Meta somados)
-          </h3>
-          <HistoricoTable
-            historico={todosMeses}
-            selectedMonth={selectedMonth}
-            onDelete={excluirMeta}
-            onSelect={selectMonth}
-          />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+              Evolução mensal · Resultados (Google + Meta somados)
+            </h3>
+            <div className="inline-flex rounded-md border border-border bg-bg-soft p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setHistoricoView('tabela')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
+                  historicoView === 'tabela'
+                    ? 'bg-bg-elev text-zinc-100'
+                    : 'text-muted hover:text-zinc-200',
+                )}
+              >
+                <BarChart3 size={12} />
+                Tabela
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoricoView('grafico')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
+                  historicoView === 'grafico'
+                    ? 'bg-bg-elev text-zinc-100'
+                    : 'text-muted hover:text-zinc-200',
+                )}
+              >
+                <LineChart size={12} />
+                Gráfico
+              </button>
+            </div>
+          </div>
+          {historicoView === 'tabela' ? (
+            <HistoricoTable
+              historico={todosMeses}
+              selectedMonth={selectedMonth}
+              onDelete={excluirMeta}
+              onSelect={selectMonth}
+            />
+          ) : (
+            <HistoricoChart historico={todosMeses} />
+          )}
         </div>
       )}
     </div>
@@ -933,6 +970,362 @@ function HistoricoTable({
       </div>
     </Card>
   )
+}
+
+/* =========================================================
+   HistoricoChart — gráfico SVG nativo de Faturamento + ROAS
+   ========================================================= */
+
+function HistoricoChart({ historico }: { historico: Meta[] }) {
+  // Inverte pra ordem cronológica (mais antigo → mais recente)
+  const pontos = useMemo(() => {
+    const arr = [...historico].reverse().map((m) => {
+      const ag = combinaMes(m)
+      return {
+        mes: m.mes_ano,
+        faturamento: ag.faturamento,
+        roas: ag.roas,
+      }
+    })
+    return arr
+  }, [historico])
+
+  // Médias (ignora null/0 igual à tabela)
+  const mediaFat = useMemo(() => {
+    const v = pontos.map((p) => p.faturamento).filter((n): n is number => !!n)
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
+  }, [pontos])
+  const mediaRoas = useMemo(() => {
+    const v = pontos.map((p) => p.roas).filter((n): n is number => !!n)
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
+  }, [pontos])
+
+  // Escalas
+  const fatMax = Math.max(
+    ...pontos.map((p) => p.faturamento ?? 0),
+    mediaFat ?? 0,
+    1,
+  )
+  const roasMax = Math.max(...pontos.map((p) => p.roas ?? 0), mediaRoas ?? 0, 1)
+
+  // Dimensões do SVG
+  const W = 800
+  const H = 280
+  const margin = { top: 24, right: 64, bottom: 36, left: 64 }
+  const innerW = W - margin.left - margin.right
+  const innerH = H - margin.top - margin.bottom
+
+  function x(i: number): number {
+    if (pontos.length <= 1) return margin.left + innerW / 2
+    return margin.left + (i / (pontos.length - 1)) * innerW
+  }
+  function yFat(v: number | null): number | null {
+    if (v === null) return null
+    return margin.top + innerH - (v / fatMax) * innerH
+  }
+  function yRoas(v: number | null): number | null {
+    if (v === null) return null
+    return margin.top + innerH - (v / roasMax) * innerH
+  }
+
+  /** Constrói o `d` de um path conectando só pontos válidos (≠ null). */
+  function path(values: (number | null)[], yFn: (v: number | null) => number | null): string {
+    const segs: string[] = []
+    let started = false
+    values.forEach((v, i) => {
+      const yv = yFn(v)
+      if (yv === null) {
+        started = false
+        return
+      }
+      segs.push(`${started ? 'L' : 'M'}${x(i).toFixed(2)},${yv.toFixed(2)}`)
+      started = true
+    })
+    return segs.join(' ')
+  }
+
+  const dFat = path(
+    pontos.map((p) => p.faturamento),
+    yFat,
+  )
+  const dRoas = path(
+    pontos.map((p) => p.roas),
+    yRoas,
+  )
+
+  // Linhas tracejadas de média
+  const yMediaFat = mediaFat !== null ? yFat(mediaFat) : null
+  const yMediaRoas = mediaRoas !== null ? yRoas(mediaRoas) : null
+
+  const COR_FAT = '#f97316' // laranja brand
+  const COR_ROAS = '#10b981' // verde
+  const COR_BORDA = 'var(--color-border, #404040)'
+
+  // Ticks Y — 3 linhas horizontais (25%, 50%, 75%) só pra dar contexto
+  const yTicks = [0.25, 0.5, 0.75]
+
+  if (pontos.length === 0) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted">
+        Sem dados pra exibir no gráfico.
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="overflow-hidden p-4">
+      {/* Legenda */}
+      <div className="mb-2 flex items-center justify-center gap-4 text-[11px] text-zinc-300">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_FAT }} />
+          Faturamento
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_ROAS }} />
+          ROAS
+        </span>
+        {(mediaFat !== null || mediaRoas !== null) && (
+          <span className="inline-flex items-center gap-1.5 text-muted">
+            <svg width="22" height="6" className="overflow-visible">
+              <line x1="0" y1="3" x2="22" y2="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
+            </svg>
+            Média
+          </span>
+        )}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* Linhas de grade horizontais */}
+        {yTicks.map((t) => {
+          const y = margin.top + innerH * (1 - t)
+          return (
+            <line
+              key={t}
+              x1={margin.left}
+              x2={margin.left + innerW}
+              y1={y}
+              y2={y}
+              stroke={COR_BORDA}
+              strokeWidth="0.5"
+              strokeDasharray="2 4"
+              opacity="0.4"
+            />
+          )
+        })}
+
+        {/* Eixo X linha de base */}
+        <line
+          x1={margin.left}
+          x2={margin.left + innerW}
+          y1={margin.top + innerH}
+          y2={margin.top + innerH}
+          stroke={COR_BORDA}
+          strokeWidth="1"
+        />
+
+        {/* Eixo Y esquerdo — Faturamento (R$) */}
+        <text
+          x={margin.left - 8}
+          y={margin.top + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+          textAnchor="end"
+        >
+          {formatShort(fatMax)}
+        </text>
+        <text
+          x={margin.left - 8}
+          y={margin.top + innerH * 0.5 + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+          textAnchor="end"
+        >
+          {formatShort(fatMax * 0.5)}
+        </text>
+        <text
+          x={margin.left - 8}
+          y={margin.top + innerH + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+          textAnchor="end"
+        >
+          0
+        </text>
+
+        {/* Eixo Y direito — ROAS (x) */}
+        <text
+          x={margin.left + innerW + 8}
+          y={margin.top + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+        >
+          {roasMax.toFixed(1)}x
+        </text>
+        <text
+          x={margin.left + innerW + 8}
+          y={margin.top + innerH * 0.5 + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+        >
+          {(roasMax * 0.5).toFixed(1)}x
+        </text>
+        <text
+          x={margin.left + innerW + 8}
+          y={margin.top + innerH + 4}
+          fill="rgb(115 115 115)"
+          fontSize="10"
+        >
+          0x
+        </text>
+
+        {/* Linhas tracejadas de média */}
+        {yMediaFat !== null && (
+          <g>
+            <line
+              x1={margin.left}
+              x2={margin.left + innerW}
+              y1={yMediaFat}
+              y2={yMediaFat}
+              stroke={COR_FAT}
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+              opacity="0.6"
+            />
+            <text
+              x={margin.left + 6}
+              y={yMediaFat - 4}
+              fill={COR_FAT}
+              fontSize="9"
+              opacity="0.85"
+            >
+              média {formatShort(mediaFat!)}
+            </text>
+          </g>
+        )}
+        {yMediaRoas !== null && (
+          <g>
+            <line
+              x1={margin.left}
+              x2={margin.left + innerW}
+              y1={yMediaRoas}
+              y2={yMediaRoas}
+              stroke={COR_ROAS}
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+              opacity="0.6"
+            />
+            <text
+              x={margin.left + innerW - 6}
+              y={yMediaRoas - 4}
+              fill={COR_ROAS}
+              fontSize="9"
+              textAnchor="end"
+              opacity="0.85"
+            >
+              média {mediaRoas!.toFixed(2)}x
+            </text>
+          </g>
+        )}
+
+        {/* Linha Faturamento */}
+        {dFat && (
+          <path
+            d={dFat}
+            fill="none"
+            stroke={COR_FAT}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        {/* Pontos Faturamento */}
+        {pontos.map((p, i) => {
+          const yv = yFat(p.faturamento)
+          if (yv === null) return null
+          return (
+            <circle
+              key={`fat-${i}`}
+              cx={x(i)}
+              cy={yv}
+              r="3.5"
+              fill={COR_FAT}
+              stroke="#0a0a0a"
+              strokeWidth="1.5"
+            >
+              <title>{`${shortMonth(p.mes)}: ${formatCurrency(p.faturamento ?? 0)}`}</title>
+            </circle>
+          )
+        })}
+
+        {/* Linha ROAS */}
+        {dRoas && (
+          <path
+            d={dRoas}
+            fill="none"
+            stroke={COR_ROAS}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        {/* Pontos ROAS */}
+        {pontos.map((p, i) => {
+          const yv = yRoas(p.roas)
+          if (yv === null) return null
+          return (
+            <circle
+              key={`roas-${i}`}
+              cx={x(i)}
+              cy={yv}
+              r="3.5"
+              fill={COR_ROAS}
+              stroke="#0a0a0a"
+              strokeWidth="1.5"
+            >
+              <title>{`${shortMonth(p.mes)}: ${(p.roas ?? 0).toFixed(2)}x`}</title>
+            </circle>
+          )
+        })}
+
+        {/* Labels eixo X (meses) */}
+        {pontos.map((p, i) => (
+          <text
+            key={`lbl-${i}`}
+            x={x(i)}
+            y={margin.top + innerH + 18}
+            fill="rgb(115 115 115)"
+            fontSize="10"
+            textAnchor="middle"
+          >
+            {shortMonth(p.mes)}
+          </text>
+        ))}
+      </svg>
+    </Card>
+  )
+}
+
+/** Formata número em "R$ X.XXXk" ou "R$ XM" pra economizar espaço no eixo. */
+function formatShort(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
+  if (n >= 1_000) return `${Math.round(n / 1000)}k`
+  return n.toFixed(0)
+}
+
+/** "2026-02-01" → "fev/26" */
+function shortMonth(mesAno: string): string {
+  try {
+    const d = parseISO(mesAno)
+    const mes = format(d, 'LLL', { locale: ptBR }).replace('.', '')
+    const ano = format(d, 'yy')
+    return `${mes}/${ano}`
+  } catch {
+    return mesAno
+  }
 }
 
 function SaveIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
