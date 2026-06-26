@@ -1002,23 +1002,9 @@ function HistoricoChart({ historico }: { historico: Meta[] }) {
     return arr
   }, [historico])
 
-  // Médias (ignora null/0 igual à tabela)
-  const mediaFat = useMemo(() => {
-    const v = pontos.map((p) => p.faturamento).filter((n): n is number => !!n)
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
-  }, [pontos])
-  const mediaRoas = useMemo(() => {
-    const v = pontos.map((p) => p.roas).filter((n): n is number => !!n)
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
-  }, [pontos])
-
-  // Escalas
-  const fatMax = Math.max(
-    ...pontos.map((p) => p.faturamento ?? 0),
-    mediaFat ?? 0,
-    1,
-  )
-  const roasMax = Math.max(...pontos.map((p) => p.roas ?? 0), mediaRoas ?? 0, 1)
+  // Escalas — só com base nos pontos (médias removidas do visual)
+  const fatMax = Math.max(...pontos.map((p) => p.faturamento ?? 0), 1)
+  const roasMax = Math.max(...pontos.map((p) => p.roas ?? 0), 1)
 
   // Dimensões do SVG
   const W = 800
@@ -1040,34 +1026,71 @@ function HistoricoChart({ historico }: { historico: Meta[] }) {
     return margin.top + innerH - (v / roasMax) * innerH
   }
 
-  /** Constrói o `d` de um path conectando só pontos válidos (≠ null). */
-  function path(values: (number | null)[], yFn: (v: number | null) => number | null): string {
-    const segs: string[] = []
-    let started = false
+  /**
+   * Constrói o `d` de um path com CURVAS SUAVES (Catmull-Rom convertido pra
+   * cubic Bezier). Conecta só pontos válidos (≠ null) — se um valor é null,
+   * a curva quebra e retoma no próximo válido.
+   *
+   * Fórmula Catmull-Rom → Bezier:
+   *   Pra cada par de pontos consecutivos (P1, P2), os controles vêm dos
+   *   vizinhos P0 e P3:
+   *     C1 = P1 + (P2 - P0) / 6
+   *     C2 = P2 - (P3 - P1) / 6
+   *   Nas pontas (sem P0 ou P3), reflete o ponto disponível.
+   */
+  function smoothPath(
+    values: (number | null)[],
+    yFn: (v: number | null) => number | null,
+  ): string {
+    // Agrupa em "segmentos contíguos" — sempre que aparece um null, fecha o
+    // segmento atual e abre um novo no próximo válido.
+    const segments: Array<Array<{ x: number; y: number }>> = []
+    let current: Array<{ x: number; y: number }> = []
     values.forEach((v, i) => {
       const yv = yFn(v)
       if (yv === null) {
-        started = false
+        if (current.length > 0) segments.push(current)
+        current = []
         return
       }
-      segs.push(`${started ? 'L' : 'M'}${x(i).toFixed(2)},${yv.toFixed(2)}`)
-      started = true
+      current.push({ x: x(i), y: yv })
     })
-    return segs.join(' ')
+    if (current.length > 0) segments.push(current)
+
+    const out: string[] = []
+    for (const seg of segments) {
+      if (seg.length === 0) continue
+      if (seg.length === 1) {
+        // Ponto isolado — só um Move (renderiza como circle separadamente)
+        out.push(`M${seg[0].x.toFixed(2)},${seg[0].y.toFixed(2)}`)
+        continue
+      }
+      out.push(`M${seg[0].x.toFixed(2)},${seg[0].y.toFixed(2)}`)
+      for (let i = 0; i < seg.length - 1; i++) {
+        const p0 = seg[i - 1] ?? seg[i]
+        const p1 = seg[i]
+        const p2 = seg[i + 1]
+        const p3 = seg[i + 2] ?? p2
+        const c1x = p1.x + (p2.x - p0.x) / 6
+        const c1y = p1.y + (p2.y - p0.y) / 6
+        const c2x = p2.x - (p3.x - p1.x) / 6
+        const c2y = p2.y - (p3.y - p1.y) / 6
+        out.push(
+          `C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`,
+        )
+      }
+    }
+    return out.join(' ')
   }
 
-  const dFat = path(
+  const dFat = smoothPath(
     pontos.map((p) => p.faturamento),
     yFat,
   )
-  const dRoas = path(
+  const dRoas = smoothPath(
     pontos.map((p) => p.roas),
     yRoas,
   )
-
-  // Linhas tracejadas de média
-  const yMediaFat = mediaFat !== null ? yFat(mediaFat) : null
-  const yMediaRoas = mediaRoas !== null ? yRoas(mediaRoas) : null
 
   const COR_FAT = '#f97316' // laranja brand
   const COR_ROAS = '#10b981' // verde
@@ -1096,14 +1119,6 @@ function HistoricoChart({ historico }: { historico: Meta[] }) {
           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_ROAS }} />
           ROAS
         </span>
-        {(mediaFat !== null || mediaRoas !== null) && (
-          <span className="inline-flex items-center gap-1.5 text-muted">
-            <svg width="22" height="6" className="overflow-visible">
-              <line x1="0" y1="3" x2="22" y2="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
-            </svg>
-            Média
-          </span>
-        )}
       </div>
 
       <svg
@@ -1193,55 +1208,6 @@ function HistoricoChart({ historico }: { historico: Meta[] }) {
         >
           0x
         </text>
-
-        {/* Linhas tracejadas de média */}
-        {yMediaFat !== null && (
-          <g>
-            <line
-              x1={margin.left}
-              x2={margin.left + innerW}
-              y1={yMediaFat}
-              y2={yMediaFat}
-              stroke={COR_FAT}
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              opacity="0.6"
-            />
-            <text
-              x={margin.left + 6}
-              y={yMediaFat - 4}
-              fill={COR_FAT}
-              fontSize="9"
-              opacity="0.85"
-            >
-              média {formatShort(mediaFat!)}
-            </text>
-          </g>
-        )}
-        {yMediaRoas !== null && (
-          <g>
-            <line
-              x1={margin.left}
-              x2={margin.left + innerW}
-              y1={yMediaRoas}
-              y2={yMediaRoas}
-              stroke={COR_ROAS}
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              opacity="0.6"
-            />
-            <text
-              x={margin.left + innerW - 6}
-              y={yMediaRoas - 4}
-              fill={COR_ROAS}
-              fontSize="9"
-              textAnchor="end"
-              opacity="0.85"
-            >
-              média {mediaRoas!.toFixed(2)}x
-            </text>
-          </g>
-        )}
 
         {/* Linha Faturamento */}
         {dFat && (
