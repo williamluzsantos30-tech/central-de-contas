@@ -247,6 +247,18 @@ export function MetasPanel({ clienteId }: Props) {
         </div>
       </div>
 
+      {/* Gráfico de contexto histórico — fica antes das Planilhas pra mostrar
+          o desempenho dos meses anteriores enquanto o usuário define as metas
+          do mês corrente. Só renderiza se houver pelo menos 1 mês cadastrado. */}
+      {todosMeses.length > 0 && (
+        <div className="mb-6">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
+            Resultados dos últimos meses · contexto pra definir as metas
+          </h3>
+          <HistoricoChart historico={todosMeses} />
+        </div>
+      )}
+
       {/* Google Ads */}
       <PlatformSection title="Google Ads — Captação de Leads" color="blue">
         <Planilha
