@@ -16,6 +16,7 @@ import AgendaSocialMedia from '@/pages/social/Agenda'
 import SocialClientes from '@/pages/social/Clientes'
 import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
+import PublicoCalendario from '@/pages/PublicoCalendario'
 import PreviewCriacoesPanel from '@/pages/PreviewCriacoesPanel'
 import PreviewEdicaoVideo from '@/pages/PreviewEdicaoVideo'
 
@@ -43,6 +44,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* Calendário público do cliente — link compartilhável, sem login */}
+          <Route path="/publico/calendario/:token" element={<PublicoCalendario />} />
           <Route path="/preview/criacao-pdf" element={<PreviewCriacaoPDF />} />
           <Route path="/preview/criacoes-panel" element={<PreviewCriacoesPanel />} />
           <Route path="/preview/edicao-video" element={<PreviewEdicaoVideo />} />

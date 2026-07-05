@@ -202,6 +202,13 @@ export interface Cliente {
   crm_sheets_token: string
   /** URL da planilha do Google Sheets — só pra referência (não é usado pelo Apps Script). */
   crm_sheets_url: string | null
+  /**
+   * Token do link público do calendário de postagens (migration 050).
+   * Gerado sob demanda via RPC `gerar_token_calendario_publico`.
+   * O link fica em `/publico/calendario/{token}` — read-only pro cliente.
+   * Gerar novo token invalida o link anterior.
+   */
+  calendario_publico_token: string | null
   link_grupo: string | null
   observacoes: string | null
   // Campos de Social Media

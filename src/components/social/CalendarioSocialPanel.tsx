@@ -9,11 +9,14 @@ import {
   LayoutGrid,
   X,
   Calendar as CalendarIcon,
+  Share2,
+  RefreshCw,
 } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
 import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
@@ -56,6 +59,43 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
   })
   const [filtroFormato, setFiltroFormato] = useState<FormatoSocialMedia | 'todos'>('todos')
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
+  const [compartilharAberto, setCompartilharAberto] = useState(false)
+  const [tokenAtual, setTokenAtual] = useState<string | null>(
+    cliente.calendario_publico_token ?? null,
+  )
+  const [gerandoToken, setGerandoToken] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+
+  const linkPublico = tokenAtual
+    ? `${window.location.origin}/publico/calendario/${tokenAtual}`
+    : null
+
+  /** Gera (ou regenera) o token público. Invalida qualquer link anterior. */
+  async function gerarToken() {
+    setGerandoToken(true)
+    const { data, error } = await supabase.rpc('gerar_token_calendario_publico', {
+      p_cliente_id: cliente.id,
+    })
+    setGerandoToken(false)
+    if (error) {
+      alert(`Erro ao gerar link: ${error.message}`)
+      return
+    }
+    setTokenAtual(data as string)
+    setCopiado(false)
+    onChanged()
+  }
+
+  async function copiarLink() {
+    if (!linkPublico) return
+    try {
+      await navigator.clipboard.writeText(linkPublico)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {
+      alert('Não foi possível copiar. Copie manualmente do campo acima.')
+    }
+  }
 
   // Items filtrados ao mês corrente
   const itemsDoMes = useMemo(() => {
@@ -128,6 +168,15 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
             </button>
             <Button size="sm" variant="ghost" onClick={irPraHoje}>
               hoje
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCompartilharAberto(true)}
+              title="Gerar link público pro cliente acompanhar o calendário"
+            >
+              <Share2 size={12} />
+              Compartilhar
             </Button>
           </div>
 
@@ -235,6 +284,73 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
             ))}
           </ul>
         )}
+      </Modal>
+
+      {/* Modal: gerar/copiar link público */}
+      <Modal
+        open={compartilharAberto}
+        onClose={() => setCompartilharAberto(false)}
+        title="Link público do calendário"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted">
+            Compartilhe esse link com o cliente pra ele acompanhar as postagens
+            do calendário — só leitura, sem precisar de login. Só quem tem o
+            link certo consegue ver.
+          </p>
+          {linkPublico ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={linkPublico}
+                  onFocus={(e) => e.target.select()}
+                  className="flex-1 rounded-md border border-border bg-bg-soft px-2 py-1.5 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+                />
+                <Button size="sm" onClick={copiarLink}>
+                  {copiado ? (
+                    <>
+                      <CheckCircle2 size={12} /> Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Share2 size={12} /> Copiar
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                <span>
+                  Perdeu o controle do link? Gera um novo — invalida o antigo.
+                </span>
+                <button
+                  onClick={gerarToken}
+                  disabled={gerandoToken}
+                  className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={gerandoToken ? 'animate-spin' : ''} />
+                  {gerandoToken ? 'Gerando...' : 'Gerar novo link'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md border border-dashed border-border bg-bg-soft/40 p-4 text-center">
+              <p className="text-xs text-muted">
+                Ainda não existe link público pra esse cliente.
+              </p>
+              <Button
+                size="sm"
+                onClick={gerarToken}
+                disabled={gerandoToken}
+                className="mt-3"
+              >
+                <Share2 size={12} />
+                {gerandoToken ? 'Gerando...' : 'Gerar link público'}
+              </Button>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )
