@@ -373,6 +373,7 @@ function DiaModal({
           {posts.map((p) => {
             const publicado = !!p.publicado_em
             const concluido = p.status === 'conclusao'
+            const emAprovacao = p.status === 'em_aprovacao'
             const Icon = formatoIcon[p.formato] ?? ImageIcon
             const artes = p.artes_prontas ?? []
             return (
@@ -394,6 +395,10 @@ function DiaModal({
                   ) : concluido ? (
                     <span className="inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-sky-200">
                       <CheckCircle2 size={9} /> Arte pronta
+                    </span>
+                  ) : emAprovacao ? (
+                    <span className="inline-flex items-center gap-1 rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-200">
+                      <Clock size={9} /> Em aprovação
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-200">
