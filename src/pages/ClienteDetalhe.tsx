@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { ChevronLeft, Pencil, Plus } from 'lucide-react'
+import { ChevronLeft, Pencil, Plus, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -99,6 +99,7 @@ export default function ClienteDetalhe() {
   const [drawerTarefa, setDrawerTarefa] = useState<Tarefa | null>(null)
   const [novaOtimOpen, setNovaOtimOpen] = useState(false)
   const [filtroPlatform, setFiltroPlatform] = useState('')
+  const [restaurandoTarefas, setRestaurandoTarefas] = useState(false)
 
   // Dados específicos de Social Media
   const [perfilSetup, setPerfilSetup] = useState<ClientePerfilSetup | null>(null)
@@ -163,6 +164,32 @@ export default function ClienteDetalhe() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  async function restaurarTarefasPadrao() {
+    if (!id) return
+    if (
+      !confirm(
+        'Restaurar tarefas padrão: vai criar as tarefas dos templates ativos que estão faltando pra esse cliente. Não duplica tarefas em aberto. Continuar?',
+      )
+    )
+      return
+    setRestaurandoTarefas(true)
+    const { data, error } = await supabase.rpc('sync_tarefas_faltantes', {
+      p_cliente_id: id,
+    })
+    setRestaurandoTarefas(false)
+    if (error) {
+      alert('Erro ao restaurar: ' + error.message)
+      return
+    }
+    const n = Array.isArray(data) ? data.length : 0
+    if (n === 0) {
+      alert('Nenhuma tarefa faltando — as tarefas padrão desse cliente já estão todas em aberto.')
+    } else {
+      alert(`${n} tarefa(s) restaurada(s) a partir dos templates.`)
+      await load()
+    }
+  }
 
   const grouped = useMemo(() => {
     const groups: Record<FrequenciaTarefa, Tarefa[]> = {
@@ -403,6 +430,18 @@ export default function ClienteDetalhe() {
 
       {modo === 'trafego' && tab === 'tarefas' && (
         <div className="space-y-5">
+          <div className="flex items-center justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={restaurarTarefasPadrao}
+              disabled={restaurandoTarefas}
+              title="Cria as tarefas dos templates que estão faltando pra esse cliente. Não duplica tarefas em aberto."
+            >
+              <RefreshCw size={12} className={restaurandoTarefas ? 'animate-spin' : ''} />
+              {restaurandoTarefas ? 'Restaurando...' : 'Restaurar padrões'}
+            </Button>
+          </div>
           {(['diaria', 'semanal', 'mensal', 'esporadica'] as FrequenciaTarefa[]).map((freq) => {
             const style = freqStyle[freq]
             return (
