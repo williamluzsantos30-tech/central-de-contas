@@ -17,7 +17,11 @@
 -- =========================================================
 begin;
 
-create or replace function get_calendario_publico(p_token text)
+-- Precisa dropar antes: adicionar coluna no RETURNS TABLE muda a assinatura
+-- e o Postgres não deixa CREATE OR REPLACE alterar retorno de função existente.
+drop function if exists get_calendario_publico(text);
+
+create function get_calendario_publico(p_token text)
 returns table (
   cliente_nome        text,
   cliente_id          uuid,
