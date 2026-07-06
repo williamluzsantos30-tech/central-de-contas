@@ -34,6 +34,12 @@ interface PostPublico {
   prazo: string
   publicado_em: string | null
   publicado_url: string | null
+  /**
+   * Array de URLs das artes prontas — só vem preenchido quando
+   * status = 'conclusao' ou publicado_em está setado. Rascunho fica []
+   * (regra na RPC pra não vazar arte incompleta).
+   */
+  artes_prontas: string[]
 }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -363,13 +369,15 @@ function DiaModal({
             Fechar
           </button>
         </div>
-        <div className="divide-y divide-border">
+        <div className="max-h-[70vh] overflow-y-auto divide-y divide-border">
           {posts.map((p) => {
             const publicado = !!p.publicado_em
+            const concluido = p.status === 'conclusao'
             const Icon = formatoIcon[p.formato] ?? ImageIcon
+            const artes = p.artes_prontas ?? []
             return (
               <div key={p.item_id} className="p-4">
-                <div className="mb-2 flex items-center gap-2">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span
                     className={cn(
                       'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide',
@@ -383,6 +391,10 @@ function DiaModal({
                     <span className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-200">
                       <CheckCircle2 size={9} /> Publicado
                     </span>
+                  ) : concluido ? (
+                    <span className="inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-sky-200">
+                      <CheckCircle2 size={9} /> Arte pronta
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-200">
                       <Clock size={9} /> Programado
@@ -393,19 +405,27 @@ function DiaModal({
                   {p.titulo || 'Sem título'}
                 </p>
                 {p.ideia_conteudo && (
-                  <p className="mt-1 text-xs text-muted line-clamp-3">
+                  <p className="mt-1 text-xs text-muted whitespace-pre-wrap">
                     {p.ideia_conteudo}
                   </p>
                 )}
+
+                {/* Galeria de artes — só aparece quando concluído ou publicado
+                    (backend controla isso na RPC; artes_prontas vem [] pra
+                    rascunho). */}
+                {artes.length > 0 && (
+                  <GaleriaArtes artes={artes} formato={p.formato} />
+                )}
+
                 {publicado && p.publicado_url && (
                   <a
                     href={p.publicado_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-brand-300 hover:underline"
+                    className="mt-3 inline-flex items-center gap-1 text-xs text-brand-300 hover:underline"
                   >
                     <ExternalLink size={11} />
-                    Ver publicação
+                    Ver publicação no Instagram
                   </a>
                 )}
                 {publicado && p.publicado_em && (
@@ -419,6 +439,64 @@ function DiaModal({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Renderiza a galeria de artes prontas — imagens em grid, vídeos com
+ * <video controls>. Click em imagem abre em nova aba. Formato "carrossel"
+ * exibe todas com contagem.
+ */
+function GaleriaArtes({ artes, formato }: { artes: string[]; formato: string }) {
+  return (
+    <div className="mt-3">
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-muted">
+        {formato === 'carrossel' && artes.length > 1
+          ? `Arte final · ${artes.length} slides`
+          : 'Arte final'}
+      </p>
+      <div
+        className={cn(
+          'grid gap-2',
+          artes.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3',
+        )}
+      >
+        {artes.map((url, i) => (
+          <ArteThumb key={`${url}-${i}`} url={url} index={i} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ArteThumb({ url, index }: { url: string; index: number }) {
+  const ehVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
+  if (ehVideo) {
+    return (
+      <video
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+        className="w-full aspect-square rounded-md border border-border object-cover bg-black"
+      />
+    )
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="group block overflow-hidden rounded-md border border-border bg-bg-soft"
+      title={`Abrir arte ${index + 1} em nova aba`}
+    >
+      <img
+        src={url}
+        alt={`Arte ${index + 1}`}
+        loading="lazy"
+        className="w-full aspect-square object-cover transition-transform group-hover:scale-105"
+      />
+    </a>
   )
 }
 
