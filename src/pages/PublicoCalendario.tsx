@@ -225,6 +225,32 @@ export default function PublicoCalendario() {
               </div>
             </div>
 
+            {/* Legenda das bolinhas de status */}
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2 text-[10px] text-muted">
+              <span className="font-semibold uppercase tracking-wider text-zinc-300">
+                Legenda:
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-amber-400/50" />
+                Programado
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.7)]" />
+                Em aprovação
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_5px_rgba(56,189,248,0.7)]" />
+                Arte pronta
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
+                Publicado
+              </span>
+              <span className="ml-auto italic">
+                Clique num dia pra ver detalhes e artes
+              </span>
+            </div>
+
             {/* Grid do calendário */}
             <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
               {/* Header dos dias */}
@@ -321,16 +347,43 @@ export default function PublicoCalendario() {
 
 function PostPill({ post }: { post: PostPublico }) {
   const publicado = !!post.publicado_em
+  const concluido = post.status === 'conclusao'
+  const emAprovacao = post.status === 'em_aprovacao'
   const Icon = formatoIcon[post.formato] ?? ImageIcon
   const cls = formatoBg[post.formato] ?? formatoBg.outro
+
+  // Bolinha de status na esquerda do pill — permite ver de relance o
+  // que precisa de atenção sem abrir o modal.
+  //   emerald+glow = publicado
+  //   sky+glow     = arte pronta (conclusao)
+  //   violet+glow  = em aprovação (cliente precisa aprovar)
+  //   amber suave  = programado (rascunho)
+  const statusDot = publicado
+    ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]'
+    : concluido
+      ? 'bg-sky-400 shadow-[0_0_5px_rgba(56,189,248,0.7)]'
+      : emAprovacao
+        ? 'bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.7)]'
+        : 'bg-amber-400/50'
+
   return (
     <div
       className={cn(
         'flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]',
         publicado ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : cls,
       )}
+      title={
+        publicado
+          ? 'Publicado'
+          : concluido
+            ? 'Arte pronta'
+            : emAprovacao
+              ? 'Em aprovação'
+              : 'Programado'
+      }
     >
-      {publicado ? <CheckCircle2 size={9} /> : <Icon size={9} />}
+      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDot)} />
+      <Icon size={9} />
       <span className="truncate">{post.titulo || 'Sem título'}</span>
     </div>
   )
