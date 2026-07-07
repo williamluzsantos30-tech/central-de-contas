@@ -40,10 +40,9 @@ export default function Clientes() {
 
   // Cargos operacionais começam vendo só "os meus". Diretoria/head/admin veem todos.
   const cargoOperacional = temAlgumCargo(profile, ['gestor_trafego', 'account_manager'])
-  // Quem pode editar a data da call de alinhamento (espelha a RPC do banco)
-  const podeEditarCall =
-    profile?.role === 'admin' ||
-    temAlgumCargo(profile, ['head', 'diretoria', 'account_manager'])
+  // Qualquer usuario aprovado edita a call de alinhamento (migration 057).
+  // Quem faz a call sabe melhor quando ela foi/quando remarcar.
+  const podeEditarCall = !!profile
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])

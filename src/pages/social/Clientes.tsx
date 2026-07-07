@@ -87,9 +87,9 @@ export default function SocialClientes() {
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
-  // Quem pode editar a data da call de alinhamento (espelha a RPC do banco)
-  const podeEditarCall =
-    isAdmin || temAlgumCargo(profile, ['head', 'diretoria', 'account_manager'])
+  // Qualquer usuario aprovado edita a call de alinhamento (migration 057).
+  // Quem faz a call sabe melhor quando ela foi/quando remarcar.
+  const podeEditarCall = !!profile
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const [orfaos, setOrfaos] = useState<Cliente[]>([])
