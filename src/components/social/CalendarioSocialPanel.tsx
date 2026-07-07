@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   X,
   Calendar as CalendarIcon,
+  CalendarClock,
   Share2,
   RefreshCw,
 } from 'lucide-react'
@@ -280,6 +281,10 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
                 cliente={cliente}
                 planejamentos={planejamentos}
                 onChanged={onChanged}
+                onDataAlterada={() => {
+                  onChanged()
+                  setDiaSelecionado(null)
+                }}
               />
             ))}
           </ul>
@@ -482,15 +487,39 @@ function ItemDoDia({
   cliente: _cliente,
   planejamentos,
   onChanged,
+  onDataAlterada,
 }: {
   item: ItemSocialMedia
   cliente: Cliente
   planejamentos: PlanejamentoSocialMedia[]
   onChanged: () => void
+  onDataAlterada: () => void
 }) {
   const meta = formatoMeta[item.formato]
   const plano = planejamentos.find((p) => p.id === item.producao_id)
   const atrasada = isAtrasada(item)
+  const [editandoData, setEditandoData] = useState(false)
+  const [novaData, setNovaData] = useState(item.prazo?.slice(0, 10) ?? '')
+  const [salvandoData, setSalvandoData] = useState(false)
+
+  async function salvarNovaData() {
+    if (!novaData || novaData === item.prazo?.slice(0, 10)) {
+      setEditandoData(false)
+      return
+    }
+    setSalvandoData(true)
+    const { error } = await supabase
+      .from('producoes_social_media_items')
+      .update({ prazo: novaData })
+      .eq('id', item.id)
+    setSalvandoData(false)
+    if (error) {
+      alert('Erro ao alterar data: ' + error.message)
+      return
+    }
+    setEditandoData(false)
+    onDataAlterada()
+  }
 
   return (
     <li
@@ -535,6 +564,43 @@ function ItemDoDia({
             )}
           </div>
           <PublicacaoInfo item={item} />
+
+          {/* Alterar data do post */}
+          {editandoData ? (
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-pink-500/30 bg-pink-500/5 p-2">
+              <CalendarClock size={12} className="text-pink-300 flex-shrink-0" />
+              <input
+                type="date"
+                value={novaData}
+                onChange={(e) => setNovaData(e.target.value)}
+                disabled={salvandoData}
+                className="flex-1 rounded border border-border bg-bg-soft px-2 py-1 text-xs text-zinc-100 focus:border-pink-500/60 focus:outline-none"
+              />
+              <Button size="sm" onClick={salvarNovaData} disabled={salvandoData || !novaData}>
+                {salvandoData ? 'Salvando...' : 'Salvar'}
+              </Button>
+              <button
+                onClick={() => {
+                  setEditandoData(false)
+                  setNovaData(item.prazo?.slice(0, 10) ?? '')
+                }}
+                disabled={salvandoData}
+                className="grid h-6 w-6 place-items-center rounded text-muted hover:text-zinc-200"
+                title="Cancelar"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditandoData(true)}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted hover:text-pink-200"
+              title="Mover esse post pra outra data"
+            >
+              <CalendarClock size={11} />
+              Alterar data
+            </button>
+          )}
         </div>
       </div>
     </li>
