@@ -1504,23 +1504,26 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
           }
         }
 
-        // -------- ACCOUNT MANAGER: 3 componentes (20/50/30) --------
+        // -------- ACCOUNT MANAGER / GESTOR DE TRAFEGO: 3 componentes (20/50/30) --------
         // Score = 20% calls + 50% tarefas diretas no prazo + 30% saude do portfolio
-        // Motivacao: AM nao entrega deliverable "de produto" — o trabalho dela e'
-        // supervisao + rotina operacional propria + retencao. As tarefas
-        // herdadas via cliente.account_manager_id inflam o denominador com
-        // trabalho do gestor de trafego, entao AQUI a gente conta SO tarefas
-        // com responsavel_id = AM (nao herda).
-        if (u.cargo === 'account_manager') {
-          // 1) Calls no prazo — quantos clientes ativos sob o AM tiveram
+        // Motivacao: gestor de trafego e AM sao a MESMA pessoa nessa operacao —
+        // a pessoa supervisiona o cliente + faz otimizacao de trafego +
+        // rotina operacional propria + zela pela retencao. As tarefas
+        // herdadas via cliente inflam o denominador com trabalho do gestor,
+        // entao AQUI a gente conta SO tarefas com responsavel_id = user
+        // (nao herda). Vale pros dois cargos.
+        if (u.cargo === 'account_manager' || u.cargo === 'gestor_trafego') {
+          // 1) Calls no prazo — quantos clientes ativos sob a pessoa tiveram
           //    call realizada nos ultimos 30 dias
+          //    Consideramos "sob a pessoa" = account_manager_id OU gestor_id
+          //    (ja que sao o mesmo cargo na pratica)
           const cutoff30d = (() => {
             const d = new Date(today)
             d.setDate(d.getDate() - 30)
             return d.toISOString().slice(0, 10)
           })()
           const clientesSobAm = Object.values(clientesMap).filter(
-            (c) => c.account_manager_id === u.id,
+            (c) => c.account_manager_id === u.id || c.gestor_id === u.id,
           )
           const clientesAtivosSobAm = clientesSobAm.filter(
             (c) => c.status !== 'churn' && !c.arquivado_em,
@@ -1705,7 +1708,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         <p className="text-xs text-muted">
           <span className="text-zinc-300">Score</span> = 60% conclusão + 30% pontualidade − 10% atraso ·{' '}
           <span className="text-pink-300">Social Media</span> = publicações no prazo ÷ avaliáveis ·{' '}
-          <span className="text-sky-300">Account Manager</span> = 50% tarefas + 30% saúde do portfolio + 20% calls.
+          <span className="text-sky-300">AM / Gestor</span> = 50% tarefas + 30% saúde do portfolio + 20% calls.
         </p>
         <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
           {(['7d', '30d', '90d', 'all'] as Periodo[]).map((p) => (
@@ -1832,7 +1835,7 @@ function CargoBreakdown({ stats }: { stats: ColaboradorStats[] }) {
 function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats[] }) {
   const accent = cargoAccent[cargo]
   const ehSocialMedia = cargo === 'social_media'
-  const ehAM = cargo === 'account_manager'
+  const ehAM = cargo === 'account_manager' || cargo === 'gestor_trafego'
   const totalTarefas = pessoas.reduce((s, p) => s + p.total, 0)
   const totalConcluidas = pessoas.reduce((s, p) => s + p.concluidas, 0)
   const totalAtrasadas = pessoas.reduce((s, p) => s + p.atrasadas, 0)
@@ -1909,7 +1912,8 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
 function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, atrasadas, score, taxaPontualidade } = stats
   const ehSocialMedia = user.cargo === 'social_media'
-  const ehAM = user.cargo === 'account_manager'
+  const ehAM =
+    user.cargo === 'account_manager' || user.cargo === 'gestor_trafego'
   const ehTaxaSimples = ehSocialMedia || ehAM
 
   const scoreColor =
@@ -1974,7 +1978,8 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
   const { user, total, concluidas, pendentes, atrasadas, noPrazo, score, taxaPontualidade, porFrequencia } =
     stats
   const ehSocialMedia = user.cargo === 'social_media'
-  const ehAM = user.cargo === 'account_manager'
+  const ehAM =
+    user.cargo === 'account_manager' || user.cargo === 'gestor_trafego'
   const ehTaxaSimples = ehSocialMedia || ehAM
   const barraTitulo = ehSocialMedia
     ? 'Publicações no prazo'
