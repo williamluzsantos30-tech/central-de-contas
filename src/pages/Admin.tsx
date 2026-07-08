@@ -1245,6 +1245,9 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
       account_manager_id: string | null
       gestor_id: string | null
       social_media_id: string | null
+      status: string | null
+      arquivado_em: string | null
+      ultima_call_alinhamento: string | null
     }>
   >({})
   const [loading, setLoading] = useState(true)
@@ -1272,7 +1275,9 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         .select('id, status, prazo, publicado_em, responsavel_id, producao_id, updated_at'),
       supabase
         .from('clientes')
-        .select('id, account_manager_id, gestor_id, social_media_id'),
+        .select(
+          'id, account_manager_id, gestor_id, social_media_id, status, arquivado_em, ultima_call_alinhamento',
+        ),
       supabase
         .from('producoes_social_media')
         .select('id, cliente_id, responsavel_id'),
@@ -1334,17 +1339,24 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
     mapDesign((evRes.data ?? []) as Parameters<typeof mapDesign>[0], 'edicao_video')
 
     // Constroi o mapa de clientes primeiro pra usar na cascata de social media
+    // e nos calculos de saude/calls do AM
     const map: typeof clientesMap = {}
     for (const c of (cRes.data ?? []) as Array<{
       id: string
       account_manager_id: string | null
       gestor_id: string | null
       social_media_id: string | null
+      status: string | null
+      arquivado_em: string | null
+      ultima_call_alinhamento: string | null
     }>) {
       map[c.id] = {
         account_manager_id: c.account_manager_id,
         gestor_id: c.gestor_id,
         social_media_id: c.social_media_id,
+        status: c.status,
+        arquivado_em: c.arquivado_em,
+        ultima_call_alinhamento: c.ultima_call_alinhamento,
       }
     }
 
@@ -1492,6 +1504,101 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
           }
         }
 
+        // -------- ACCOUNT MANAGER: 3 componentes (20/50/30) --------
+        // Score = 20% calls + 50% tarefas diretas no prazo + 30% saude do portfolio
+        // Motivacao: AM nao entrega deliverable "de produto" — o trabalho dela e'
+        // supervisao + rotina operacional propria + retencao. As tarefas
+        // herdadas via cliente.account_manager_id inflam o denominador com
+        // trabalho do gestor de trafego, entao AQUI a gente conta SO tarefas
+        // com responsavel_id = AM (nao herda).
+        if (u.cargo === 'account_manager') {
+          // 1) Calls no prazo — quantos clientes ativos sob o AM tiveram
+          //    call realizada nos ultimos 30 dias
+          const cutoff30d = (() => {
+            const d = new Date(today)
+            d.setDate(d.getDate() - 30)
+            return d.toISOString().slice(0, 10)
+          })()
+          const clientesSobAm = Object.values(clientesMap).filter(
+            (c) => c.account_manager_id === u.id,
+          )
+          const clientesAtivosSobAm = clientesSobAm.filter(
+            (c) => c.status !== 'churn' && !c.arquivado_em,
+          )
+          const clientesComCallRecente = clientesAtivosSobAm.filter(
+            (c) =>
+              c.ultima_call_alinhamento &&
+              c.ultima_call_alinhamento >= cutoff30d,
+          )
+          const taxaCalls =
+            clientesAtivosSobAm.length > 0
+              ? (clientesComCallRecente.length / clientesAtivosSobAm.length) *
+                100
+              : 0
+
+          // 2) Tarefas diretas no prazo — SO tarefas com responsavel_id = AM
+          //    (nao herda via cliente.account_manager_id). Mesma logica do
+          //    social media: avaliaveis = concluidas + pendentes ja vencidas.
+          const tarefasDiretas = itemsFiltrados.filter(
+            (it) => it.origem === 'tarefa' && it.responsavel_id === u.id,
+          )
+          const avaliaveisTarefas = tarefasDiretas.filter((it) => {
+            if (!it.prazo) return false
+            if (it.concluida) return true
+            return it.prazo < todayStr
+          })
+          const tarefasNoPrazoCount = avaliaveisTarefas.filter(
+            (it) =>
+              it.concluida &&
+              (it.data_conclusao ?? '').slice(0, 10) <= (it.prazo ?? ''),
+          ).length
+          const taxaTarefas =
+            avaliaveisTarefas.length > 0
+              ? (tarefasNoPrazoCount / avaliaveisTarefas.length) * 100
+              : 0
+
+          // 3) Saude do portfolio — clientes ativo ÷ (ativo + atencao + pausado + churn_recente)
+          //    churn_recente = arquivado_em nos ultimos 30 dias (churn antigo nao pesa)
+          const numeradorSaude = clientesSobAm.filter(
+            (c) => c.status === 'ativo' && !c.arquivado_em,
+          ).length
+          const denomSaude = clientesSobAm.filter(
+            (c) =>
+              c.status === 'ativo' ||
+              c.status === 'atencao' ||
+              c.status === 'pausado' ||
+              (c.status === 'churn' &&
+                c.arquivado_em &&
+                c.arquivado_em.slice(0, 10) >= cutoff30d),
+          ).length
+          const taxaSaude =
+            denomSaude > 0 ? (numeradorSaude / denomSaude) * 100 : 0
+
+          const scoreAm = Math.max(
+            0,
+            Math.round(taxaCalls * 0.2 + taxaTarefas * 0.5 + taxaSaude * 0.3),
+          )
+
+          // Repurpose dos campos: total = tarefas avaliaveis, concluidas =
+          // tarefas no prazo (o principal), atrasadas = tarefas fora do prazo.
+          // Pontualidade exibida = a taxa de tarefas (componente principal).
+          const atrasadasTarefas = avaliaveisTarefas.length - tarefasNoPrazoCount
+
+          return {
+            user: u,
+            total: avaliaveisTarefas.length,
+            concluidas: tarefasNoPrazoCount,
+            pendentes: 0,
+            atrasadas: atrasadasTarefas,
+            noPrazo: tarefasNoPrazoCount,
+            forada: atrasadasTarefas,
+            taxaConclusao: taxaTarefas,
+            taxaPontualidade: taxaTarefas,
+            score: scoreAm,
+            porFrequencia: { diaria: 0, semanal: 0, mensal: 0, esporadica: 0 },
+          }
+        }
+
         // -------- DEMAIS CARGOS: formula original (60/30/-10) --------
         // Conta um item de trabalho pro colaborador se ELE é:
         //  • Responsável direto (responsavel_id), OU
@@ -1597,7 +1704,8 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted">
           <span className="text-zinc-300">Score</span> = 60% conclusão + 30% pontualidade − 10% atraso ·{' '}
-          <span className="text-pink-300">Social Media</span> = publicações no prazo ÷ publicações avaliáveis.
+          <span className="text-pink-300">Social Media</span> = publicações no prazo ÷ avaliáveis ·{' '}
+          <span className="text-sky-300">Account Manager</span> = 50% tarefas + 30% saúde do portfolio + 20% calls.
         </p>
         <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
           {(['7d', '30d', '90d', 'all'] as Periodo[]).map((p) => (
@@ -1724,6 +1832,7 @@ function CargoBreakdown({ stats }: { stats: ColaboradorStats[] }) {
 function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats[] }) {
   const accent = cargoAccent[cargo]
   const ehSocialMedia = cargo === 'social_media'
+  const ehAM = cargo === 'account_manager'
   const totalTarefas = pessoas.reduce((s, p) => s + p.total, 0)
   const totalConcluidas = pessoas.reduce((s, p) => s + p.concluidas, 0)
   const totalAtrasadas = pessoas.reduce((s, p) => s + p.atrasadas, 0)
@@ -1731,10 +1840,16 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
     pessoas.length > 0
       ? Math.round(pessoas.reduce((s, p) => s + p.score, 0) / pessoas.length)
       : 0
-  const labelSubtotal = ehSocialMedia ? 'no prazo' : 'concluídas'
+  const labelSubtotal = ehSocialMedia
+    ? 'no prazo'
+    : ehAM
+      ? 'tarefas próprias no prazo'
+      : 'concluídas'
   const labelAtraso = ehSocialMedia
     ? `${totalAtrasadas} publicação(ões) fora do prazo no cargo`
-    : `${totalAtrasadas} tarefa(s) atrasada(s) no cargo`
+    : ehAM
+      ? `${totalAtrasadas} tarefa(s) própria(s) fora do prazo no cargo`
+      : `${totalAtrasadas} tarefa(s) atrasada(s) no cargo`
 
   return (
     <Card className="overflow-hidden">
@@ -1794,6 +1909,8 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
 function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, atrasadas, score, taxaPontualidade } = stats
   const ehSocialMedia = user.cargo === 'social_media'
+  const ehAM = user.cargo === 'account_manager'
+  const ehTaxaSimples = ehSocialMedia || ehAM
 
   const scoreColor =
     score >= 80
@@ -1838,11 +1955,11 @@ function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number
         </div>
         <div className="mt-1 flex items-center gap-3 text-[10px]">
           <span className="text-emerald-400/80">
-            ✓ {Math.round(taxaPontualidade)}% {ehSocialMedia ? 'no prazo' : 'pontualidade'}
+            ✓ {Math.round(taxaPontualidade)}% {ehTaxaSimples ? 'no prazo' : 'pontualidade'}
           </span>
           {atrasadas > 0 ? (
             <span className="text-red-400/80">
-              ⚠ {atrasadas} {ehSocialMedia ? 'fora do prazo' : 'atrasada(s)'}
+              ⚠ {atrasadas} {ehTaxaSimples ? 'fora do prazo' : 'atrasada(s)'}
             </span>
           ) : (
             <span className="text-muted">— sem atrasos</span>
@@ -1857,6 +1974,13 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
   const { user, total, concluidas, pendentes, atrasadas, noPrazo, score, taxaPontualidade, porFrequencia } =
     stats
   const ehSocialMedia = user.cargo === 'social_media'
+  const ehAM = user.cargo === 'account_manager'
+  const ehTaxaSimples = ehSocialMedia || ehAM
+  const barraTitulo = ehSocialMedia
+    ? 'Publicações no prazo'
+    : ehAM
+      ? 'Tarefas próprias no prazo'
+      : 'Tarefas concluídas'
 
   const scoreColor =
     score >= 80
@@ -1929,7 +2053,7 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
       {/* Barra de progresso */}
       <div className="mt-3">
         <div className="flex items-center justify-between text-[10px] text-muted mb-1">
-          <span>{ehSocialMedia ? 'Publicações no prazo' : 'Tarefas concluídas'}</span>
+          <span>{barraTitulo}</span>
           <span className="tabular-nums">
             {concluidas}/{total}
           </span>
@@ -1943,13 +2067,13 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
       </div>
 
       {/* Mini-stats */}
-      <div className={cn('mt-3 grid gap-2', ehSocialMedia ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4')}>
+      <div className={cn('mt-3 grid gap-2', ehTaxaSimples ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4')}>
         <Pill
           icon={<CheckCircle2 size={11} className="text-emerald-400" />}
           label="No prazo"
           value={noPrazo}
         />
-        {!ehSocialMedia && (
+        {!ehTaxaSimples && (
           <Pill
             icon={<CircleDot size={11} className="text-zinc-400" />}
             label="Pendentes"
@@ -1958,7 +2082,7 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
         )}
         <Pill
           icon={<AlertCircle size={11} className="text-red-400" />}
-          label={ehSocialMedia ? 'Fora do prazo' : 'Atrasadas'}
+          label={ehTaxaSimples ? 'Fora do prazo' : 'Atrasadas'}
           value={atrasadas}
           highlight={atrasadas > 0 ? 'danger' : undefined}
         />
