@@ -1223,8 +1223,23 @@ interface WorkItem {
   frequencia?: string
 }
 
+/**
+ * Item de publicação pro cálculo de social_media. Um item pertence a UM
+ * social media (cascata: item.responsavel_id > planejamento.responsavel_id
+ * > cliente.social_media_id). Só interessa: prazo (data marcada) e
+ * publicado_em (data real). Se prazo já venceu e não publicou, tambem
+ * conta como avaliavel (atraso puro).
+ */
+interface PubItem {
+  id: string
+  responsavel_id: string | null
+  prazo: string | null
+  publicado_em: string | null
+}
+
 function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
   const [items, setItems] = useState<WorkItem[]>([])
+  const [pubItems, setPubItems] = useState<PubItem[]>([])
   const [clientesMap, setClientesMap] = useState<
     Record<string, {
       account_manager_id: string | null
@@ -1237,8 +1252,9 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
 
   async function load() {
     setLoading(true)
-    // Carrega tarefas + os 4 tipos de "trabalho" do design + clientes
-    const [tRes, pRes, crRes, evRes, smRes, cRes] = await Promise.all([
+    // Carrega tarefas + os 4 tipos de "trabalho" do design + clientes +
+    // planejamentos SM (pra cascata de atribuicao no calculo do social media)
+    const [tRes, pRes, crRes, evRes, smRes, cRes, planRes] = await Promise.all([
       supabase
         .from('tarefas')
         .select('id, status, data_vencimento, data_conclusao, responsavel_id, cliente_id, frequencia'),
@@ -1253,10 +1269,13 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         .select('id, status, prazo, responsavel_id, cliente_id, updated_at'),
       supabase
         .from('producoes_social_media_items')
-        .select('id, status, prazo, responsavel_id, producao_id, updated_at'),
+        .select('id, status, prazo, publicado_em, responsavel_id, producao_id, updated_at'),
       supabase
         .from('clientes')
         .select('id, account_manager_id, gestor_id, social_media_id'),
+      supabase
+        .from('producoes_social_media')
+        .select('id, cliente_id, responsavel_id'),
     ])
 
     const unified: WorkItem[] = []
@@ -1314,12 +1333,47 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
     mapDesign((crRes.data ?? []) as Parameters<typeof mapDesign>[0], 'criativo')
     mapDesign((evRes.data ?? []) as Parameters<typeof mapDesign>[0], 'edicao_video')
 
-    // social_item: usa producao_id como referência (não tem cliente direto;
-    // pra performance não precisa do cliente exato)
+    // Constroi o mapa de clientes primeiro pra usar na cascata de social media
+    const map: typeof clientesMap = {}
+    for (const c of (cRes.data ?? []) as Array<{
+      id: string
+      account_manager_id: string | null
+      gestor_id: string | null
+      social_media_id: string | null
+    }>) {
+      map[c.id] = {
+        account_manager_id: c.account_manager_id,
+        gestor_id: c.gestor_id,
+        social_media_id: c.social_media_id,
+      }
+    }
+
+    // Planejamentos SM: producao_id -> {cliente_id, responsavel_id} pra
+    // resolver a cascata de atribuicao dos items
+    const planoMap = new Map<
+      string,
+      { cliente_id: string | null; responsavel_id: string | null }
+    >()
+    for (const p of (planRes.data ?? []) as Array<{
+      id: string
+      cliente_id: string | null
+      responsavel_id: string | null
+    }>) {
+      planoMap.set(p.id, {
+        cliente_id: p.cliente_id,
+        responsavel_id: p.responsavel_id,
+      })
+    }
+
+    // social_item: alimenta AMBOS unified (calc antigo) e pubItems (calc
+    // novo pro cargo social_media). Cascata de atribuicao pra pubItems:
+    // item.responsavel_id > planejamento.responsavel_id > cliente.social_media_id
+    const pubs: PubItem[] = []
     for (const i of (smRes.data ?? []) as Array<{
       id: string
       status: string
       prazo: string | null
+      publicado_em: string | null
       responsavel_id: string | null
       producao_id: string
       updated_at: string | null
@@ -1334,22 +1388,26 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         prazo: i.prazo,
         data_conclusao: concluida ? i.updated_at : null,
       })
+
+      // Cascata: item -> planejamento -> cliente.social_media_id
+      const plano = planoMap.get(i.producao_id)
+      const clienteId = plano?.cliente_id ?? null
+      const cliente = clienteId ? map[clienteId] : null
+      const responsavel =
+        i.responsavel_id ??
+        plano?.responsavel_id ??
+        cliente?.social_media_id ??
+        null
+      pubs.push({
+        id: i.id,
+        responsavel_id: responsavel,
+        prazo: i.prazo,
+        publicado_em: i.publicado_em,
+      })
     }
 
     setItems(unified)
-    const map: typeof clientesMap = {}
-    for (const c of (cRes.data ?? []) as Array<{
-      id: string
-      account_manager_id: string | null
-      gestor_id: string | null
-      social_media_id: string | null
-    }>) {
-      map[c.id] = {
-        account_manager_id: c.account_manager_id,
-        gestor_id: c.gestor_id,
-        social_media_id: c.social_media_id,
-      }
-    }
+    setPubItems(pubs)
     setClientesMap(map)
     setLoading(false)
   }
@@ -1381,8 +1439,60 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
 
     const todayStr = today.toISOString().slice(0, 10)
 
+    // Items de publicacao filtrados por periodo (usados so pra cargo=social_media).
+    // Filtro: prazo dentro do periodo OU publicado_em no periodo.
+    const pubsFiltrados = cutoff
+      ? pubItems.filter((it) => {
+          if (it.publicado_em && it.publicado_em.slice(0, 10) >= cutoff) return true
+          if (it.prazo && it.prazo >= cutoff) return true
+          return false
+        })
+      : pubItems
+
     return usuarios
       .map<ColaboradorStats>((u) => {
+        // -------- SOCIAL MEDIA: metrica so de pontualidade de publicacao --------
+        // Social media nao produz o post (isso e' o designer). O que a gente
+        // mede e' se ela publicou na data marcada.
+        //   • no prazo  = publicado_em::date <= prazo
+        //   • atrasado  = publicou depois OU nunca publicou apesar do prazo ja ter vencido
+        //   • ignora    = item com prazo futuro sem publicacao (ainda nao da pra medir)
+        if (u.cargo === 'social_media') {
+          const meus = pubsFiltrados.filter((it) => it.responsavel_id === u.id)
+          const avaliaveis = meus.filter((it) => {
+            if (!it.prazo) return false
+            // Ja publicado → sempre da pra avaliar
+            if (it.publicado_em) return true
+            // Nao publicado → so avalia se o prazo ja passou (perdeu)
+            return it.prazo < todayStr
+          })
+          const noPrazoCount = avaliaveis.filter(
+            (it) =>
+              !!it.publicado_em &&
+              it.publicado_em.slice(0, 10) <= (it.prazo ?? ''),
+          ).length
+          const atrasadasCount = avaliaveis.length - noPrazoCount
+
+          const taxa =
+            avaliaveis.length > 0 ? (noPrazoCount / avaliaveis.length) * 100 : 0
+          const scoreSm = Math.round(taxa)
+
+          return {
+            user: u,
+            total: avaliaveis.length,          // "denominador" — publicacoes com prazo ja avaliavel
+            concluidas: noPrazoCount,           // publicadas no prazo
+            pendentes: 0,
+            atrasadas: atrasadasCount,          // publicou tarde OU nao publicou apos prazo
+            noPrazo: noPrazoCount,
+            forada: atrasadasCount,
+            taxaConclusao: taxa,
+            taxaPontualidade: taxa,
+            score: scoreSm,
+            porFrequencia: { diaria: 0, semanal: 0, mensal: 0, esporadica: 0 },
+          }
+        }
+
+        // -------- DEMAIS CARGOS: formula original (60/30/-10) --------
         // Conta um item de trabalho pro colaborador se ELE é:
         //  • Responsável direto (responsavel_id), OU
         //  • AM / Gestor / Social Media do cliente (só pra tarefas — pros
@@ -1450,7 +1560,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         }
       })
       .sort((a, b) => b.score - a.score || b.concluidas - a.concluidas)
-  }, [usuarios, items, clientesMap, periodo])
+  }, [usuarios, items, pubItems, clientesMap, periodo])
 
   // KPIs do time todo
   const teamKpis = useMemo(() => {
@@ -1486,7 +1596,8 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
       {/* Filtro de período */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted">
-          Score = 60% conclusão + 30% pontualidade − 10% atraso. Ordenado pelo melhor desempenho.
+          <span className="text-zinc-300">Score</span> = 60% conclusão + 30% pontualidade − 10% atraso ·{' '}
+          <span className="text-pink-300">Social Media</span> = publicações no prazo ÷ publicações avaliáveis.
         </p>
         <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
           {(['7d', '30d', '90d', 'all'] as Periodo[]).map((p) => (
@@ -1612,6 +1723,7 @@ function CargoBreakdown({ stats }: { stats: ColaboradorStats[] }) {
 
 function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats[] }) {
   const accent = cargoAccent[cargo]
+  const ehSocialMedia = cargo === 'social_media'
   const totalTarefas = pessoas.reduce((s, p) => s + p.total, 0)
   const totalConcluidas = pessoas.reduce((s, p) => s + p.concluidas, 0)
   const totalAtrasadas = pessoas.reduce((s, p) => s + p.atrasadas, 0)
@@ -1619,6 +1731,10 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
     pessoas.length > 0
       ? Math.round(pessoas.reduce((s, p) => s + p.score, 0) / pessoas.length)
       : 0
+  const labelSubtotal = ehSocialMedia ? 'no prazo' : 'concluídas'
+  const labelAtraso = ehSocialMedia
+    ? `${totalAtrasadas} publicação(ões) fora do prazo no cargo`
+    : `${totalAtrasadas} tarefa(s) atrasada(s) no cargo`
 
   return (
     <Card className="overflow-hidden">
@@ -1639,7 +1755,7 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
             </h3>
             <p className="text-[11px] text-muted leading-tight mt-0.5">
               {pessoas.length} {pessoas.length === 1 ? 'pessoa' : 'pessoas'} ·{' '}
-              {totalConcluidas}/{totalTarefas} concluídas
+              {totalConcluidas}/{totalTarefas} {labelSubtotal}
             </p>
           </div>
         </div>
@@ -1664,7 +1780,7 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
       <CardBody className="p-3 space-y-2">
         {totalAtrasadas > 0 && (
           <div className="flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/5 px-2.5 py-1 text-[11px] text-red-300">
-            <AlertCircle size={11} /> {totalAtrasadas} tarefa(s) atrasada(s) no cargo
+            <AlertCircle size={11} /> {labelAtraso}
           </div>
         )}
         {pessoas.map((p, idx) => (
@@ -1677,6 +1793,7 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
 
 function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, atrasadas, score, taxaPontualidade } = stats
+  const ehSocialMedia = user.cargo === 'social_media'
 
   const scoreColor =
     score >= 80
@@ -1720,9 +1837,13 @@ function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number
           </span>
         </div>
         <div className="mt-1 flex items-center gap-3 text-[10px]">
-          <span className="text-emerald-400/80">✓ {Math.round(taxaPontualidade)}% pontualidade</span>
+          <span className="text-emerald-400/80">
+            ✓ {Math.round(taxaPontualidade)}% {ehSocialMedia ? 'no prazo' : 'pontualidade'}
+          </span>
           {atrasadas > 0 ? (
-            <span className="text-red-400/80">⚠ {atrasadas} atrasada(s)</span>
+            <span className="text-red-400/80">
+              ⚠ {atrasadas} {ehSocialMedia ? 'fora do prazo' : 'atrasada(s)'}
+            </span>
           ) : (
             <span className="text-muted">— sem atrasos</span>
           )}
@@ -1735,6 +1856,7 @@ function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number
 function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, pendentes, atrasadas, noPrazo, score, taxaPontualidade, porFrequencia } =
     stats
+  const ehSocialMedia = user.cargo === 'social_media'
 
   const scoreColor =
     score >= 80
@@ -1807,7 +1929,7 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
       {/* Barra de progresso */}
       <div className="mt-3">
         <div className="flex items-center justify-between text-[10px] text-muted mb-1">
-          <span>Tarefas concluídas</span>
+          <span>{ehSocialMedia ? 'Publicações no prazo' : 'Tarefas concluídas'}</span>
           <span className="tabular-nums">
             {concluidas}/{total}
           </span>
@@ -1821,20 +1943,22 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
       </div>
 
       {/* Mini-stats */}
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className={cn('mt-3 grid gap-2', ehSocialMedia ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4')}>
         <Pill
           icon={<CheckCircle2 size={11} className="text-emerald-400" />}
           label="No prazo"
           value={noPrazo}
         />
-        <Pill
-          icon={<CircleDot size={11} className="text-zinc-400" />}
-          label="Pendentes"
-          value={pendentes}
-        />
+        {!ehSocialMedia && (
+          <Pill
+            icon={<CircleDot size={11} className="text-zinc-400" />}
+            label="Pendentes"
+            value={pendentes}
+          />
+        )}
         <Pill
           icon={<AlertCircle size={11} className="text-red-400" />}
-          label="Atrasadas"
+          label={ehSocialMedia ? 'Fora do prazo' : 'Atrasadas'}
           value={atrasadas}
           highlight={atrasadas > 0 ? 'danger' : undefined}
         />
