@@ -84,7 +84,8 @@ export function stripBlobUrl(url: string | null | undefined): string {
   return isDeadBlobUrl(url) ? '' : url ?? ''
 }
 
-/** Remove URLs blob: de um array de strings. */
+/** Remove URLs blob: E strings vazias/em-branco de um array de strings.
+ *  URL vazia gera <img src=""> = caixa muda no render. Melhor filtrar. */
 export function stripBlobUrls(urls: string[] | null | undefined): string[] {
-  return (urls ?? []).filter((u) => !isDeadBlobUrl(u))
+  return (urls ?? []).filter((u) => typeof u === 'string' && u.trim() !== '' && !isDeadBlobUrl(u))
 }

@@ -1721,27 +1721,12 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
         {form.artes_prontas.length > 0 && (
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             {form.artes_prontas.map((url, i) => (
-              <div
+              <ArteThumb
                 key={i}
-                className="group relative overflow-hidden rounded-lg border border-emerald-500/30 bg-bg-soft"
-              >
-                {isImageUrl(url) ? (
-                  <img src={url} alt={`arte ${i + 1}`} className="h-24 w-full object-cover" />
-                ) : (
-                  <div className="flex h-24 items-center justify-center text-[10px] text-muted p-2 text-center">
-                    <a href={url} target="_blank" rel="noreferrer" className="underline break-all">
-                      {url}
-                    </a>
-                  </div>
-                )}
-                <button
-                  onClick={() => removeArte(i)}
-                  className="absolute top-1 right-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  title="Remover"
-                >
-                  <X size={10} />
-                </button>
-              </div>
+                url={url}
+                index={i}
+                onRemove={() => removeArte(i)}
+              />
             ))}
           </div>
         )}
@@ -2001,11 +1986,64 @@ function Field({ label, children, full }: { label: string; children: React.React
   )
 }
 
+/** Thumbnail de uma arte pronta. Trata 3 casos:
+ *   1) URL parece imagem (extensao ou host conhecido) -> <img> com onError
+ *   2) Imagem carregou 404/erro -> fallback com "nao carregou" + link
+ *   3) URL nao e' imagem (video, pdf, drive, etc) -> link direto
+ *  Sempre mostra botao de remover em cima (visivel no hover). */
+function ArteThumb({
+  url,
+  index,
+  onRemove,
+}: {
+  url: string
+  index: number
+  onRemove: () => void
+}) {
+  const [erro, setErro] = useState(false)
+  const parece_imagem = isImageUrl(url)
+  return (
+    <div className="group relative overflow-hidden rounded-lg border border-emerald-500/30 bg-bg-soft">
+      {parece_imagem && !erro ? (
+        <img
+          src={url}
+          alt={`arte ${index + 1}`}
+          className="h-24 w-full object-cover"
+          onError={() => setErro(true)}
+        />
+      ) : (
+        <div className="flex h-24 flex-col items-center justify-center gap-1 text-[10px] p-2 text-center">
+          {erro && (
+            <span className="text-amber-300/80">⚠ não carregou</span>
+          )}
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted underline break-all line-clamp-2"
+          >
+            {url || '(URL vazia)'}
+          </a>
+        </div>
+      )}
+      <button
+        onClick={onRemove}
+        className="absolute top-1 right-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+        title="Remover"
+      >
+        <X size={10} />
+      </button>
+    </div>
+  )
+}
+
 function isImageUrl(url: string): boolean {
+  // Nao trata `blob:` como imagem — blob URL e' session-scoped e morre
+  // ao recarregar a pagina. Aparece como caixa muda no render se tratado
+  // como imagem. Deixa cair no fallback de link.
   return (
     /\.(jpe?g|png|gif|webp|avif|svg)(\?|$)/i.test(url) ||
-    /images\.unsplash\.com/i.test(url) ||
-    url.startsWith('blob:')
+    /images\.unsplash\.com/i.test(url)
   )
 }
 
