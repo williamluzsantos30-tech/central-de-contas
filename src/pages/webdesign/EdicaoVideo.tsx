@@ -63,6 +63,20 @@ const statusBar: Record<StatusEdicaoVideo, string> = {
   conclusao: 'bg-emerald-500',
 }
 
+// Cor forte pro pill de status (dropdown estilizado por status)
+const statusPill: Record<StatusEdicaoVideo, string> = {
+  pendente:
+    'border-zinc-500/50 bg-zinc-500/15 text-zinc-200',
+  em_edicao:
+    'border-violet-500/50 bg-violet-500/20 text-violet-100',
+  em_aprovacao:
+    'border-amber-500/60 bg-amber-500/25 text-amber-100',
+  em_alteracao:
+    'border-red-500/70 bg-red-500/30 text-red-100 font-semibold shadow-[0_0_10px_rgba(239,68,68,0.35)]',
+  conclusao:
+    'border-emerald-500/60 bg-emerald-500/20 text-emerald-100',
+}
+
 /** Conta dias úteis (seg-sex) entre `start` e hoje. */
 function diasUteisDesde(start: Date): number {
   const today = new Date()
@@ -420,7 +434,151 @@ function ClienteGrupoCard({
           <LinhaVideo key={it.id} edicao={it} onEdit={() => onEdit(it)} onChanged={onChanged} />
         ))}
       </div>
+      {/* Adicionar rapido — cliente ja definido pelo grupo */}
+      {cliente && (
+        <AdicionarVideoRapido
+          cliente={cliente}
+          onCreated={onChanged}
+          onOpenFull={onEdit}
+        />
+      )}
     </Card>
+  )
+}
+
+/* =========================================================
+   Mini-form pra criar video ja com cliente definido pelo grupo
+   ========================================================= */
+
+function AdicionarVideoRapido({
+  cliente,
+  onCreated,
+  onOpenFull,
+}: {
+  cliente: Cliente
+  onCreated: () => void
+  onOpenFull: (e: EdicaoVideo) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [titulo, setTitulo] = useState('')
+  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
+  const [responsavelId, setResponsavelId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!expanded || responsaveis.length > 0) return
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('ativo', true)
+      .eq('aprovado', true)
+      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
+      .order('nome')
+      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
+  }, [expanded, responsaveis.length])
+
+  async function criar(abrirDetalhesAoTerminar: boolean) {
+    if (!titulo.trim()) {
+      alert('Informe um título.')
+      return
+    }
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('edicoes_video')
+      .insert({
+        cliente_id: cliente.id,
+        titulo: titulo.trim(),
+        status: 'pendente',
+        responsavel_id: responsavelId || null,
+      })
+      .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
+      .single()
+    setSaving(false)
+    if (error) {
+      alert('Erro ao criar: ' + error.message)
+      return
+    }
+    // Reset e recarrega
+    setTitulo('')
+    setResponsavelId('')
+    setExpanded(false)
+    onCreated()
+    // Se pediu abrir o modal completo, faz isso agora (ex: pra briefing/refs)
+    if (abrirDetalhesAoTerminar && data) {
+      onOpenFull(data as EdicaoVideo)
+    }
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-border py-2 text-[11px] text-muted transition-colors hover:bg-bg-soft/30 hover:text-brand-300"
+      >
+        <Plus size={12} />
+        Adicionar vídeo pra {cliente.nome}
+      </button>
+    )
+  }
+
+  return (
+    <div className="border-t border-border bg-bg-soft/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          autoFocus
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !saving) {
+              e.preventDefault()
+              criar(false)
+            } else if (e.key === 'Escape') {
+              setExpanded(false)
+              setTitulo('')
+            }
+          }}
+          placeholder="Título do vídeo (ex: Corte podcast episódio 12)"
+          className="h-8 flex-1 min-w-[220px] text-sm"
+        />
+        <Select
+          value={responsavelId}
+          onChange={(e) => setResponsavelId(e.target.value)}
+          className="h-8 w-40 text-[11px]"
+        >
+          <option value="">Sem editor</option>
+          {responsaveis.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.nome}
+            </option>
+          ))}
+        </Select>
+        <Button size="sm" onClick={() => criar(false)} disabled={saving || !titulo.trim()}>
+          {saving ? '...' : 'Criar'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => criar(true)}
+          disabled={saving || !titulo.trim()}
+          title="Cria e abre pra preencher briefing / refs / arquivos"
+        >
+          Criar e detalhar
+        </Button>
+        <button
+          onClick={() => {
+            setExpanded(false)
+            setTitulo('')
+          }}
+          className="grid h-7 w-7 place-items-center rounded text-muted hover:text-zinc-200"
+          title="Cancelar"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      <p className="mt-1.5 text-[10px] text-muted">
+        Enter cria · Esc cancela · "Criar e detalhar" cria e abre pra colocar briefing/refs/arquivos
+      </p>
+    </div>
   )
 }
 
@@ -449,14 +607,20 @@ function LinhaVideo({
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-bg-soft/40',
+        'group relative flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-bg-soft/40',
       )}
     >
-      {/* Barra colorida lateral do status */}
-      <span className={cn('h-8 w-0.5 shrink-0 rounded-full', statusBar[edicao.status])} />
+      {/* Barra colorida lateral do status — mais grossa e sombreada pra
+          bater o olho e ja saber o status */}
+      <span
+        className={cn(
+          'absolute left-0 top-1 bottom-1 w-1 rounded-r',
+          statusBar[edicao.status],
+        )}
+      />
 
       {/* Ordem + titulo */}
-      <div className="min-w-0 flex-1 cursor-pointer" onClick={onEdit}>
+      <div className="min-w-0 flex-1 cursor-pointer pl-2" onClick={onEdit}>
         <div className="flex items-center gap-2">
           <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
             #{edicao.ordem ?? 0}
@@ -479,20 +643,30 @@ function LinhaVideo({
         </div>
       </div>
 
-      {/* Status dropdown (mudanca rapida) */}
-      <Select
-        value={edicao.status}
-        onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
-        onClick={(e) => e.stopPropagation()}
-        className="h-7 w-32 text-[11px]"
-        title="Mover de etapa"
-      >
-        {ESTEIRA_EDICAO_VIDEO.map((s) => (
-          <option key={s} value={s}>
-            {statusEdicaoVideoLabel[s]}
-          </option>
-        ))}
-      </Select>
+      {/* Status pill colorido (dropdown estilizado) — cor forte pra bater o olho */}
+      <div className="relative">
+        <select
+          value={edicao.status}
+          onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            'h-7 cursor-pointer appearance-none rounded-md border pl-2.5 pr-6 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-500/40',
+            statusPill[edicao.status],
+          )}
+          title="Mover de etapa"
+        >
+          {ESTEIRA_EDICAO_VIDEO.map((s) => (
+            <option key={s} value={s} className="bg-bg-card text-zinc-100">
+              {statusEdicaoVideoLabel[s]}
+            </option>
+          ))}
+        </select>
+        {/* Setinha custom (appearance-none esconde a padrao) */}
+        <ChevronDown
+          size={11}
+          className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 opacity-70"
+        />
+      </div>
 
       {/* Prazo */}
       <span
