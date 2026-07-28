@@ -16,6 +16,7 @@ import {
   Video,
   Pencil,
   User,
+  FolderOpen,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -122,6 +123,7 @@ export default function EdicaoVideo() {
   const [filtroStatus, setFiltroStatus] = useState<StatusEdicaoVideo | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<EdicaoVideo | null>(null)
+  const [expandedGrupo, setExpandedGrupo] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -308,6 +310,10 @@ export default function EdicaoVideo() {
               cliente={items[0]?.cliente ?? null}
               items={items}
               estourados={estourados}
+              expanded={expandedGrupo === clienteId}
+              onToggle={() =>
+                setExpandedGrupo((cur) => (cur === clienteId ? null : clienteId))
+              }
               onEdit={(e) => {
                 setEditing(e)
                 setModalOpen(true)
@@ -394,55 +400,226 @@ function ClienteGrupoCard({
   cliente,
   items,
   estourados,
+  expanded,
+  onToggle,
   onEdit,
   onChanged,
 }: {
   cliente: Cliente | null
   items: EdicaoVideo[]
   estourados: number
+  expanded: boolean
+  onToggle: () => void
   onEdit: (e: EdicaoVideo) => void
   onChanged: () => void
 }) {
+  // Contagem por status pros dots coloridos no header
+  const counts = useMemo(() => {
+    const c: Record<StatusEdicaoVideo, number> = {
+      pendente: 0,
+      em_edicao: 0,
+      em_aprovacao: 0,
+      em_alteracao: 0,
+      conclusao: 0,
+    }
+    for (const it of items) c[it.status]++
+    return c
+  }, [items])
+
+  const totalVideos = items.length
+  const concluidos = counts.conclusao
+  const progressPct = totalVideos === 0 ? 0 : Math.round((concluidos / totalVideos) * 100)
+
+  // Ultimo editor ativo (aquele com mais videos nao-concluidos atribuidos).
+  // Usado como avatar principal do grupo. Se ninguem tem, cai pra qualquer
+  // responsavel do grupo. Se ninguem tem responsavel, mostra placeholder.
+  const responsavelPrincipal = useMemo(() => {
+    const contagem = new Map<string, { count: number; profile: EdicaoVideo['responsavel'] }>()
+    for (const it of items) {
+      if (!it.responsavel_id || !it.responsavel) continue
+      if (it.status === 'conclusao') continue
+      const cur = contagem.get(it.responsavel_id)
+      contagem.set(it.responsavel_id, {
+        count: (cur?.count ?? 0) + 1,
+        profile: it.responsavel,
+      })
+    }
+    if (contagem.size === 0) {
+      // fallback: qualquer um com responsavel (inclusive concluidos)
+      const primeiro = items.find((it) => it.responsavel)?.responsavel ?? null
+      return primeiro
+    }
+    let melhor: EdicaoVideo['responsavel'] = null
+    let maxCount = -1
+    for (const { count, profile } of contagem.values()) {
+      if (count > maxCount) {
+        maxCount = count
+        melhor = profile
+      }
+    }
+    return melhor
+  }, [items])
+
+  // Info do rodape — proxima entrega OU aviso de estourados
+  const proximoPrazo = useMemo(() => {
+    const abertos = items
+      .filter((it) => it.status !== 'conclusao' && it.prazo)
+      .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
+    return abertos[0]?.prazo ?? null
+  }, [items])
+
+  const barColor =
+    progressPct === 100
+      ? 'bg-emerald-500/70'
+      : estourados > 0
+        ? 'bg-red-500/70'
+        : progressPct >= 50
+          ? 'bg-amber-500/70'
+          : 'bg-sky-500/70'
+
   return (
-    <Card className="overflow-hidden">
-      {/* Header do grupo */}
-      <div className="flex items-center justify-between border-b border-border bg-bg-soft/40 px-4 py-2.5">
+    <div
+      className={cn(
+        'rounded-xl border bg-bg-card overflow-hidden transition-all',
+        expanded
+          ? 'border-brand-500/50 shadow-lg shadow-brand-500/5'
+          : 'border-border hover:border-brand-500/30',
+      )}
+    >
+      {/* Header clicavel — colapsa/expande */}
+      <div
+        onClick={onToggle}
+        className={cn(
+          'flex cursor-pointer items-center gap-3 px-4 py-3',
+          expanded ? 'bg-bg-soft/40' : 'hover:bg-bg-soft/40',
+        )}
+      >
+        <ChevronRight
+          size={14}
+          className={cn(
+            'shrink-0 text-muted transition-transform',
+            expanded && 'rotate-90',
+          )}
+        />
+        <FolderOpen size={16} className="shrink-0 text-brand-300" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-zinc-100">
-            {cliente?.nome ?? 'Sem cliente'}
+            [{(cliente?.nome ?? 'SEM CLIENTE').toUpperCase()}] EDIÇÃO DE VÍDEO
           </p>
-          <p className="mt-0.5 text-[11px] text-muted">
-            {[cliente?.nicho, cliente?.squad && `Squad ${cliente.squad}`]
-              .filter(Boolean)
-              .join(' · ') || '—'}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+            <Badge tone="brand">
+              {totalVideos} {totalVideos === 1 ? 'vídeo' : 'vídeos'}
+            </Badge>
+            <Badge tone={progressPct === 100 ? 'success' : 'neutral'}>
+              {progressPct}% concluído
+            </Badge>
+            {cliente?.nome && <span>· {cliente.nome}</span>}
+            {cliente?.squad && <span>· Squad {cliente.squad}</span>}
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-right">
+
+        {/* Dots coloridos por status (mesmo padrao do PlanejamentoCard) */}
+        <div className="hidden md:flex items-center gap-1">
+          {ESTEIRA_EDICAO_VIDEO.map((s) =>
+            counts[s] > 0 ? (
+              <span
+                key={s}
+                title={`${statusEdicaoVideoLabel[s]}: ${counts[s]}`}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-soft px-2 py-0.5 text-[10px] text-zinc-300"
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full bg-current', statusDot[s])} />
+                {counts[s]}
+              </span>
+            ) : null,
+          )}
+        </div>
+
+        {/* Aviso de estourados + avatar do responsavel principal */}
+        <div className="flex items-center gap-2">
           {estourados > 0 && (
-            <span className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">
-              ⚠ {estourados}/{items.length} estourado{estourados > 1 ? 's' : ''}
+            <span
+              className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300"
+              title="Vídeos com prazo estourado"
+            >
+              ⚠ {estourados} estourado{estourados > 1 ? 's' : ''}
             </span>
           )}
-          <span className="text-[11px] text-muted">
-            {items.length} vídeo{items.length > 1 ? 's' : ''}
+          {responsavelPrincipal ? (
+            <Avatar
+              name={responsavelPrincipal.nome}
+              url={responsavelPrincipal.avatar_url}
+              size="sm"
+            />
+          ) : (
+            <span
+              className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted"
+              title="Sem editor atribuído"
+            >
+              <User size={10} />
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Barra de progresso + rodape de status */}
+      <div>
+        <div className="h-1 bg-bg-soft">
+          <div
+            className={cn('h-full transition-all', barColor)}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 bg-bg-soft/30 px-4 py-1.5">
+          <span
+            className={cn(
+              'text-[10px] uppercase tracking-wider',
+              estourados > 0 ? 'text-red-400 font-semibold' : 'text-muted',
+            )}
+          >
+            SLA · lote 2 vídeos × 3 dias úteis
+          </span>
+          <span
+            className={cn(
+              'text-[11px] font-semibold',
+              progressPct === 100
+                ? 'text-emerald-400'
+                : estourados > 0
+                  ? 'text-red-400'
+                  : 'text-zinc-200',
+            )}
+          >
+            {progressPct === 100
+              ? 'Lote concluído'
+              : proximoPrazo
+                ? `Próxima entrega ${formatDateBR(proximoPrazo)}`
+                : 'Sem prazo definido'}
           </span>
         </div>
       </div>
-      {/* Lista compacta */}
-      <div className="divide-y divide-border/60">
-        {items.map((it) => (
-          <LinhaVideo key={it.id} edicao={it} onEdit={() => onEdit(it)} onChanged={onChanged} />
-        ))}
-      </div>
-      {/* Adicionar rapido — cliente ja definido pelo grupo */}
-      {cliente && (
-        <AdicionarVideoRapido
-          cliente={cliente}
-          onCreated={onChanged}
-          onOpenFull={onEdit}
-        />
+
+      {/* Conteudo expandido — lista de videos + criacao rapida */}
+      {expanded && (
+        <div className="border-t border-border">
+          <div className="divide-y divide-border/60">
+            {items.map((it) => (
+              <LinhaVideo
+                key={it.id}
+                edicao={it}
+                onEdit={() => onEdit(it)}
+                onChanged={onChanged}
+              />
+            ))}
+          </div>
+          {cliente && (
+            <AdicionarVideoRapido
+              cliente={cliente}
+              onCreated={onChanged}
+              onOpenFull={onEdit}
+            />
+          )}
+        </div>
       )}
-    </Card>
+    </div>
   )
 }
 
