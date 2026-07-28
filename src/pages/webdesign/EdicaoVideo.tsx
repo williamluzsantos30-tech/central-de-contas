@@ -105,8 +105,7 @@ export default function EdicaoVideo() {
   const [q, setQ] = useState('')
   const [filtroCliente, setFiltroCliente] = useState<string>('')
   const [filtroResponsavel, setFiltroResponsavel] = useState<string>('')
-  const [collapsed, setCollapsed] = useState<Partial<Record<StatusEdicaoVideo, boolean>>>({})
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [filtroStatus, setFiltroStatus] = useState<StatusEdicaoVideo | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<EdicaoVideo | null>(null)
 
@@ -137,7 +136,10 @@ export default function EdicaoVideo() {
     load()
   }, [])
 
-  const filtered = useMemo(() => {
+  // Filtro base — cliente + responsavel + busca. Status fica SEPARADO
+  // pra regua de contadores mostrar a contagem "total" independente
+  // do filtro de status ativo.
+  const filteredBase = useMemo(() => {
     let arr = edicoes
     if (filtroCliente) arr = arr.filter((e) => e.cliente_id === filtroCliente)
     if (filtroResponsavel) {
@@ -157,16 +159,44 @@ export default function EdicaoVideo() {
     return arr
   }, [edicoes, filtroCliente, filtroResponsavel, q])
 
-  const porStatus = useMemo(() => {
-    const m = new Map<StatusEdicaoVideo, EdicaoVideo[]>()
-    for (const s of ESTEIRA_EDICAO_VIDEO) m.set(s, [])
-    for (const e of filtered) m.get(e.status)?.push(e)
+  // Contadores por status (com base no filteredBase — sem filtro de status)
+  const contadores = useMemo(() => {
+    const m = new Map<StatusEdicaoVideo, number>()
+    for (const s of ESTEIRA_EDICAO_VIDEO) m.set(s, 0)
+    for (const e of filteredBase) m.set(e.status, (m.get(e.status) ?? 0) + 1)
     return m
-  }, [filtered])
+  }, [filteredBase])
 
-  const sections = ESTEIRA_EDICAO_VIDEO.filter(
-    (s) => (porStatus.get(s)?.length ?? 0) > 0,
-  )
+  // Aplica o filtro de status (se ativo) por cima do filteredBase
+  const filtered = useMemo(() => {
+    if (!filtroStatus) return filteredBase
+    return filteredBase.filter((e) => e.status === filtroStatus)
+  }, [filteredBase, filtroStatus])
+
+  // Agrupa por cliente_id. Ordem dos grupos: cliente com mais itens
+  // estourados primeiro (mais urgente); dentro do grupo por ordem asc.
+  const porCliente = useMemo(() => {
+    const m = new Map<string, EdicaoVideo[]>()
+    for (const e of filtered) {
+      const key = e.cliente_id ?? '__sem__'
+      const arr = m.get(key) ?? []
+      arr.push(e)
+      m.set(key, arr)
+    }
+    // Ordena items dentro do grupo por ordem asc
+    for (const arr of m.values()) {
+      arr.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+    }
+    // Ordena grupos: mais estourados primeiro, depois mais items totais
+    const grupos = Array.from(m.entries()).map(([clienteId, items]) => {
+      const estourados = items.filter(
+        (i) => i.status !== 'conclusao' && i.prazo && isDateOverdue(i.prazo),
+      ).length
+      return { clienteId, items, estourados }
+    })
+    grupos.sort((a, b) => b.estourados - a.estourados || b.items.length - a.items.length)
+    return grupos
+  }, [filtered])
 
   return (
     <div>
@@ -227,73 +257,50 @@ export default function EdicaoVideo() {
         </CardBody>
       </Card>
 
+      {/* Regua de contadores por status — click filtra a lista abaixo */}
+      {!loading && edicoes.length > 0 && (
+        <ContadorRegua
+          contadores={contadores}
+          ativo={filtroStatus}
+          onClick={(s) => setFiltroStatus(filtroStatus === s ? '' : s)}
+        />
+      )}
+
       {loading ? (
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
           Carregando...
         </div>
-      ) : sections.length === 0 ? (
+      ) : porCliente.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-bg-soft/40 p-12 text-center">
           <Film size={28} className="mx-auto mb-2 text-muted" />
-          <p className="text-sm text-zinc-200">Nenhuma edição na esteira</p>
+          <p className="text-sm text-zinc-200">
+            {edicoes.length === 0
+              ? 'Nenhuma edição na esteira'
+              : 'Nenhuma edição pros filtros ativos'}
+          </p>
           <p className="mt-1 text-xs text-muted">
-            Clique em <span className="text-brand-300">Nova edição</span> para começar.
+            {edicoes.length === 0 ? (
+              <>Clique em <span className="text-brand-300">Nova edição</span> para começar.</>
+            ) : (
+              'Ajuste os filtros pra ver mais itens.'
+            )}
           </p>
         </div>
       ) : (
-        <div className="space-y-5">
-          {sections.map((status) => {
-            const items = porStatus.get(status) ?? []
-            const isCollapsed = collapsed[status] ?? false
-            return (
-              <div key={status}>
-                <button
-                  onClick={() =>
-                    setCollapsed((c) => ({ ...c, [status]: !(c[status] ?? false) }))
-                  }
-                  className="mb-2 flex w-full items-center gap-2.5 text-left"
-                >
-                  <span
-                    className={cn(
-                      'h-2 w-2 rounded-full shadow-[0_0_8px_currentColor]',
-                      statusDot[status],
-                      'bg-current',
-                    )}
-                  />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
-                    {statusEdicaoVideoLabel[status]}
-                  </span>
-                  <span className="rounded-md bg-bg-elev px-1.5 py-0.5 text-[10px] text-muted">
-                    {items.length}
-                  </span>
-                  {isCollapsed ? (
-                    <ChevronRight size={12} className="ml-auto text-muted" />
-                  ) : (
-                    <ChevronDown size={12} className="ml-auto text-muted" />
-                  )}
-                </button>
-                {!isCollapsed && (
-                  <div className="flex flex-col gap-2">
-                    {items.map((e) => (
-                      <EdicaoAccordion
-                        key={e.id}
-                        edicao={e}
-                        clientes={clientes}
-                        expanded={expandedId === e.id}
-                        onToggle={() =>
-                          setExpandedId((id) => (id === e.id ? null : e.id))
-                        }
-                        onClick={() => {
-                          setEditing(e)
-                          setModalOpen(true)
-                        }}
-                        onChanged={load}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+        <div className="space-y-3">
+          {porCliente.map(({ clienteId, items, estourados }) => (
+            <ClienteGrupoCard
+              key={clienteId}
+              cliente={items[0]?.cliente ?? null}
+              items={items}
+              estourados={estourados}
+              onEdit={(e) => {
+                setEditing(e)
+                setModalOpen(true)
+              }}
+              onChanged={load}
+            />
+          ))}
         </div>
       )}
 
@@ -311,6 +318,226 @@ export default function EdicaoVideo() {
 /* =========================================================
    Accordion / linha horizontal larga (padrão Projetos)
 ========================================================= */
+
+/* =========================================================
+   Regua de contadores por status (clicavel = filtro)
+   ========================================================= */
+
+function ContadorRegua({
+  contadores,
+  ativo,
+  onClick,
+}: {
+  contadores: Map<StatusEdicaoVideo, number>
+  ativo: StatusEdicaoVideo | ''
+  onClick: (s: StatusEdicaoVideo) => void
+}) {
+  return (
+    <Card className="mb-3">
+      <CardBody className="flex flex-wrap items-center gap-1.5 py-2">
+        {ESTEIRA_EDICAO_VIDEO.map((s) => {
+          const n = contadores.get(s) ?? 0
+          const isAtivo = ativo === s
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onClick(s)}
+              disabled={n === 0}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                isAtivo
+                  ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
+                  : n === 0
+                    ? 'border-border bg-bg-soft text-muted opacity-50 cursor-default'
+                    : 'border-border bg-bg-soft text-zinc-300 hover:border-brand-500/40 hover:text-brand-300',
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full bg-current', statusDot[s])} />
+              <span>{statusEdicaoVideoLabel[s]}</span>
+              <span className="tabular-nums opacity-80">{n}</span>
+            </button>
+          )
+        })}
+        {ativo && (
+          <button
+            onClick={() => onClick(ativo)}
+            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted hover:text-zinc-200"
+          >
+            <X size={10} /> limpar filtro
+          </button>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Card de cliente com N videos agrupados
+   ========================================================= */
+
+function ClienteGrupoCard({
+  cliente,
+  items,
+  estourados,
+  onEdit,
+  onChanged,
+}: {
+  cliente: Cliente | null
+  items: EdicaoVideo[]
+  estourados: number
+  onEdit: (e: EdicaoVideo) => void
+  onChanged: () => void
+}) {
+  return (
+    <Card className="overflow-hidden">
+      {/* Header do grupo */}
+      <div className="flex items-center justify-between border-b border-border bg-bg-soft/40 px-4 py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-zinc-100">
+            {cliente?.nome ?? 'Sem cliente'}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted">
+            {[cliente?.nicho, cliente?.squad && `Squad ${cliente.squad}`]
+              .filter(Boolean)
+              .join(' · ') || '—'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-right">
+          {estourados > 0 && (
+            <span className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+              ⚠ {estourados}/{items.length} estourado{estourados > 1 ? 's' : ''}
+            </span>
+          )}
+          <span className="text-[11px] text-muted">
+            {items.length} vídeo{items.length > 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+      {/* Lista compacta */}
+      <div className="divide-y divide-border/60">
+        {items.map((it) => (
+          <LinhaVideo key={it.id} edicao={it} onEdit={() => onEdit(it)} onChanged={onChanged} />
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+/* =========================================================
+   Linha compacta de 1 video
+   ========================================================= */
+
+function LinhaVideo({
+  edicao,
+  onEdit,
+  onChanged,
+}: {
+  edicao: EdicaoVideo
+  onEdit: () => void
+  onChanged: () => void
+}) {
+  const concluido = edicao.status === 'conclusao'
+  const estourado = !concluido && edicao.prazo ? isDateOverdue(edicao.prazo) : false
+
+  async function mudarStatus(novo: StatusEdicaoVideo) {
+    if (novo === edicao.status) return
+    await supabase.from('edicoes_video').update({ status: novo }).eq('id', edicao.id)
+    onChanged()
+  }
+
+  return (
+    <div
+      className={cn(
+        'group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-bg-soft/40',
+      )}
+    >
+      {/* Barra colorida lateral do status */}
+      <span className={cn('h-8 w-0.5 shrink-0 rounded-full', statusBar[edicao.status])} />
+
+      {/* Ordem + titulo */}
+      <div className="min-w-0 flex-1 cursor-pointer" onClick={onEdit}>
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
+            #{edicao.ordem ?? 0}
+          </span>
+          <p className="truncate text-sm text-zinc-100">
+            {edicao.titulo || 'Sem título'}
+          </p>
+          {edicao.video_final_url && (
+            <a
+              href={edicao.video_final_url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 text-muted hover:text-brand-300"
+              title="Abrir vídeo final"
+            >
+              <ExternalLink size={11} />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Status dropdown (mudanca rapida) */}
+      <Select
+        value={edicao.status}
+        onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
+        onClick={(e) => e.stopPropagation()}
+        className="h-7 w-32 text-[11px]"
+        title="Mover de etapa"
+      >
+        {ESTEIRA_EDICAO_VIDEO.map((s) => (
+          <option key={s} value={s}>
+            {statusEdicaoVideoLabel[s]}
+          </option>
+        ))}
+      </Select>
+
+      {/* Prazo */}
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] tabular-nums',
+          concluido
+            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            : estourado
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-border bg-bg-soft text-zinc-300',
+        )}
+        title={estourado ? 'Prazo estourado' : 'Prazo'}
+      >
+        <Calendar size={10} />
+        {edicao.prazo ? formatDateBR(edicao.prazo) : '—'}
+        {estourado && <span>⚠</span>}
+      </span>
+
+      {/* Responsavel */}
+      {edicao.responsavel ? (
+        <Avatar
+          name={edicao.responsavel.nome}
+          url={edicao.responsavel.avatar_url}
+          size="sm"
+        />
+      ) : (
+        <span
+          className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted"
+          title="Sem responsável"
+        >
+          <User size={11} />
+        </span>
+      )}
+
+      {/* Editar */}
+      <button
+        onClick={onEdit}
+        className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-bg-elev hover:text-brand-300 group-hover:opacity-100"
+        title="Editar detalhes"
+      >
+        <Pencil size={12} />
+      </button>
+    </div>
+  )
+}
 
 export function EdicaoAccordion({
   edicao,
@@ -711,6 +938,7 @@ export function EdicaoVideoModal({
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [uploadingFinal, setUploadingFinal] = useState(false)
+  const [uploadingArquivos, setUploadingArquivos] = useState(false)
   const [novoArquivoUrl, setNovoArquivoUrl] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const videoFinalInputRef = useRef<HTMLInputElement | null>(null)
@@ -854,16 +1082,21 @@ export function EdicaoVideoModal({
       alert('Preview: upload desabilitado.')
       return
     }
-    const novos: EdicaoArquivo[] = []
-    for (const file of Array.from(files)) {
-      const url = await uploadToStorageSafe(file, 'edicao-video', 'webdesign-assets')
-      if (!url) continue
-      novos.push({ nome: file.name, tamanho: file.size, tipo: file.type, url })
+    setUploadingArquivos(true)
+    try {
+      const novos: EdicaoArquivo[] = []
+      for (const file of Array.from(files)) {
+        const url = await uploadToStorageSafe(file, 'edicao-video', 'webdesign-assets')
+        if (!url) continue
+        novos.push({ nome: file.name, tamanho: file.size, tipo: file.type, url })
+      }
+      if (novos.length > 0) {
+        setForm((f) => ({ ...f, arquivos: [...f.arquivos, ...novos] }))
+      }
+    } finally {
+      setUploadingArquivos(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
-    if (novos.length > 0) {
-      setForm((f) => ({ ...f, arquivos: [...f.arquivos, ...novos] }))
-    }
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function onVideoFinalSelected(files: FileList | null) {
@@ -898,11 +1131,24 @@ export function EdicaoVideoModal({
           ) : (
             <div />
           )}
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {(uploadingArquivos || uploadingFinal) && (
+              <span className="text-[11px] text-amber-300">
+                ⚠ Aguarde upload terminar antes de salvar
+              </span>
+            )}
             <Button variant="secondary" onClick={onClose} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={save} disabled={saving}>
+            <Button
+              onClick={save}
+              disabled={saving || uploadingArquivos || uploadingFinal}
+              title={
+                uploadingArquivos || uploadingFinal
+                  ? 'Aguarde upload terminar'
+                  : undefined
+              }
+            >
               {saving ? 'Salvando...' : edicao ? 'Salvar' : 'Criar'}
             </Button>
           </div>
@@ -1003,13 +1249,19 @@ export function EdicaoVideoModal({
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <Label>Arquivos brutos / referências</Label>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={13} /> Adicionar arquivos
-            </Button>
+            <div className="flex items-center gap-2">
+              {uploadingArquivos && (
+                <span className="text-[11px] text-amber-300">Enviando...</span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingArquivos}
+              >
+                <Upload size={13} /> Adicionar arquivos
+              </Button>
+            </div>
           </div>
           <input
             ref={fileInputRef}
