@@ -26,7 +26,13 @@ export default function MinhasTarefas() {
       .select('*, cliente:clientes(*), responsavel:profiles(*)')
       .eq('responsavel_id', profile.id)
       .order('data_vencimento', { ascending: true })
-    setTarefas((data as Tarefa[]) ?? [])
+    // Filtra tarefas cujo cliente esta em churn/arquivado — nao faz sentido
+    // aparecer na lista pra alguem que ja nao trabalha mais com o cliente
+    setTarefas(
+      ((data as Tarefa[]) ?? []).filter(
+        (t) => t.cliente?.status !== 'churn' && !t.cliente?.arquivado_em,
+      ),
+    )
     setLoading(false)
   }
 

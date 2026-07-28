@@ -231,7 +231,13 @@ function DashboardCliente({
       atrasadas: atrasadasAjustadas,
       ativosProblema,
     })
-    setMinhasTarefas((minhasRes.data as Tarefa[]) ?? [])
+    // Filtra tarefas cujo cliente esta em churn/arquivado — nao faz sentido
+    // aparecer no "hoje" pra alguem que ja nao trabalha mais com o cliente
+    setMinhasTarefas(
+      ((minhasRes.data as Tarefa[]) ?? []).filter(
+        (t) => t.cliente?.status !== 'churn' && !t.cliente?.arquivado_em,
+      ),
+    )
 
     // Counts por cliente — usa as atrasadasValidas (já sem churn/arquivado)
     const atrasadasPorCliente = new Map<string, number>()
