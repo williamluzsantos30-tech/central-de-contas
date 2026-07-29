@@ -1293,6 +1293,20 @@ export function EdicaoVideoModal({
   const [novoArquivoUrl, setNovoArquivoUrl] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const videoFinalInputRef = useRef<HTMLInputElement | null>(null)
+  // Chave da ultima abertura — evita reset do form quando o pai refetch
+  // enquanto o modal ta aberto (bug de "adiciona link e some").
+  // Ver useEffect abaixo.
+  const initializedForRef = useRef<string | null>(null)
+
+  /** Persiste UM patch direto no banco (bypass do save() geral). Usado
+   *  quando o usuario adiciona um anexo — se o item ja existe (tem id),
+   *  grava no ato pra sobreviver a fechar-sem-salvar ou refetch do pai.
+   *  Se e' item novo (sem id), so fica no estado local; ao clicar Salvar
+   *  o item e' criado com tudo junto. */
+  async function persistPatch(patch: Record<string, unknown>) {
+    if (!edicao?.id || previewMode) return
+    await supabase.from('edicoes_video').update(patch).eq('id', edicao.id)
+  }
 
   /** Detecta o "tipo" do link pra rotular o item (Drive/YouTube/Vimeo/Link). */
   function detectTipoLink(url: string): string {
@@ -1320,21 +1334,29 @@ export function EdicaoVideoModal({
   function addLinkArquivo() {
     const url = novoArquivoUrl.trim()
     if (!url) return
-    setForm((f) => ({
-      ...f,
-      arquivos: [
-        ...f.arquivos,
-        { nome: nomeDoLink(url), tamanho: 0, tipo: detectTipoLink(url), url },
-      ],
-    }))
+    const novoArquivo = {
+      nome: nomeDoLink(url),
+      tamanho: 0,
+      tipo: detectTipoLink(url),
+      url,
+    }
+    const novosArquivos = [...form.arquivos, novoArquivo]
+    setForm((f) => ({ ...f, arquivos: novosArquivos }))
     setNovoArquivoUrl('')
+    // Persiste no ato — mesmo se fechar sem salvar, o link nao some
+    void persistPatch({ arquivos: novosArquivos })
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      // Ao fechar, esquece a chave. Proxima abertura vai reinicializar.
+      initializedForRef.current = null
+      return
+    }
+    // So carrega responsaveis uma vez por abertura (nao a cada re-render)
     if (previewMode) {
       setResponsaveis([])
-    } else {
+    } else if (responsaveis.length === 0) {
       supabase
         .from('profiles')
         .select('*')
@@ -1344,6 +1366,15 @@ export function EdicaoVideoModal({
         .order('nome')
         .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
     }
+
+    // Bug antes: toda vez que o pai refetchava a lista, o `edicao` prop
+    // trocava de referencia e o form era resetado — apagava links/arquivos
+    // que o usuario acabou de adicionar mas nao salvou ainda.
+    // Agora: so inicializa uma vez por abertura de item (chave = id ou 'new').
+    // Se o mesmo item ja foi inicializado, nao sobrescreve o form.
+    const chaveAtual = edicao?.id ?? 'new'
+    if (initializedForRef.current === chaveAtual) return
+    initializedForRef.current = chaveAtual
 
     if (edicao) {
       setForm({
@@ -1372,7 +1403,7 @@ export function EdicaoVideoModal({
         observacoes: '',
       })
     }
-  }, [open, edicao, previewMode])
+  }, [open, edicao, previewMode, responsaveis.length])
 
   async function save() {
     if (!form.cliente_id) {
@@ -1442,7 +1473,10 @@ export function EdicaoVideoModal({
         novos.push({ nome: file.name, tamanho: file.size, tipo: file.type, url })
       }
       if (novos.length > 0) {
-        setForm((f) => ({ ...f, arquivos: [...f.arquivos, ...novos] }))
+        const novosArquivos = [...form.arquivos, ...novos]
+        setForm((f) => ({ ...f, arquivos: novosArquivos }))
+        // Persiste no ato — anexo nunca some
+        await persistPatch({ arquivos: novosArquivos })
       }
     } finally {
       setUploadingArquivos(false)
@@ -1460,7 +1494,11 @@ export function EdicaoVideoModal({
     setUploadingFinal(true)
     try {
       const url = await uploadToStorageSafe(file, 'edicao-video-final', 'webdesign-assets')
-      if (url) setForm((f) => ({ ...f, video_final_url: url }))
+      if (url) {
+        setForm((f) => ({ ...f, video_final_url: url }))
+        // Persiste no ato — se fechar sem salvar, video final ja esta gravado
+        await persistPatch({ video_final_url: url })
+      }
     } finally {
       setUploadingFinal(false)
       if (videoFinalInputRef.current) videoFinalInputRef.current.value = ''
@@ -1546,42 +1584,30 @@ export function EdicaoVideoModal({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Responsável (editor)">
-            <Select
-              value={form.responsavel_id}
-              onChange={(e) => setForm({ ...form, responsavel_id: e.target.value })}
-            >
-              <option value="">—</option>
-              {responsaveis.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Aprovado pelo cliente">
-            <button
-              type="button"
-              onClick={toggleAprovado}
-              className={cn(
-                'inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors',
-                form.aprovado_em
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                  : 'border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-zinc-200',
-              )}
-            >
-              {form.aprovado_em ? (
-                <>✓ Aprovado em {formatDateBR(form.aprovado_em)}</>
-              ) : (
-                <>○ Marcar como aprovado</>
-              )}
-            </button>
-            <p className="mt-1 text-[10px] text-muted">
-              Define o ponto de partida do prazo (lote 2 vídeos × 3 dias úteis).
-            </p>
-          </Field>
-        </div>
+        {/* Responsavel foi removido daqui — atribui-se na criacao rapida do
+            grupo (mesmo padrao da producao social media). Se precisar
+            reatribuir depois, futuro: clicar no avatar da linha. */}
+        <Field label="Aprovado pelo cliente">
+          <button
+            type="button"
+            onClick={toggleAprovado}
+            className={cn(
+              'inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors',
+              form.aprovado_em
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                : 'border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-zinc-200',
+            )}
+          >
+            {form.aprovado_em ? (
+              <>✓ Aprovado em {formatDateBR(form.aprovado_em)}</>
+            ) : (
+              <>○ Marcar como aprovado</>
+            )}
+          </button>
+          <p className="mt-1 text-[10px] text-muted">
+            Define o ponto de partida do prazo (lote 2 vídeos × 3 dias úteis).
+          </p>
+        </Field>
 
         <Field label="Briefing / Contexto">
           <Textarea
@@ -1594,7 +1620,11 @@ export function EdicaoVideoModal({
 
         <ReferenciasField
           values={form.referencias}
-          onChange={(referencias) => setForm({ ...form, referencias })}
+          onChange={(referencias) => {
+            setForm({ ...form, referencias })
+            // Persiste no ato — referencias tambem nao somem
+            void persistPatch({ referencias })
+          }}
         />
 
         <div>
@@ -1681,12 +1711,14 @@ export function EdicaoVideoModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      setForm((f) => ({
-                        ...f,
-                        arquivos: f.arquivos.filter((_, idx) => idx !== i),
-                      }))
-                    }
+                    onClick={() => {
+                      const novosArquivos = form.arquivos.filter(
+                        (_, idx) => idx !== i,
+                      )
+                      setForm((f) => ({ ...f, arquivos: novosArquivos }))
+                      // Persiste no ato — remocao tambem nao volta se refetch
+                      void persistPatch({ arquivos: novosArquivos })
+                    }}
                     className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
                   >
                     <X size={13} />
