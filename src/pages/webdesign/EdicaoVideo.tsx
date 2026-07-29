@@ -733,7 +733,7 @@ function ClienteGrupoCard({
               <LinhaVideo
                 key={it.id}
                 edicao={it}
-                onEdit={() => onEdit(it)}
+                onEdit={(override) => onEdit(override ?? it)}
                 onChanged={onChanged}
               />
             ))}
@@ -876,7 +876,10 @@ function LinhaVideo({
   onChanged,
 }: {
   edicao: EdicaoVideo
-  onEdit: () => void
+  /** Se `override` for passado, abre o modal com essa versao (util quando
+   *  acabamos de atualizar um campo localmente e o parent ainda nao
+   *  refetch — evita o modal abrir com dados stale). */
+  onEdit: (override?: EdicaoVideo) => void
   onChanged: () => void
 }) {
   const concluido = edicao.status === 'conclusao'
@@ -892,7 +895,12 @@ function LinhaVideo({
     onChanged()
     // Quando muda pra em_alteracao, abre o modal automaticamente pra
     // pessoa ja preencher a descricao da alteracao no ato.
-    if (novo === 'em_alteracao') onEdit()
+    // IMPORTANTE: passa o item ja com status atualizado — o parent ainda
+    // nao refetch, entao se abrissemos com `edicao` o modal ia iniciar
+    // com o status antigo (bug reportado: "so vai se eu abrir a tarefa").
+    if (novo === 'em_alteracao') {
+      onEdit({ ...edicao, status: 'em_alteracao' })
+    }
   }
 
   return (
