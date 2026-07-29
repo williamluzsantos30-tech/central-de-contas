@@ -124,6 +124,7 @@ export default function EdicaoVideo() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<EdicaoVideo | null>(null)
   const [expandedGrupo, setExpandedGrupo] = useState<string | null>(null)
+  const [showConcluidos, setShowConcluidos] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -191,7 +192,7 @@ export default function EdicaoVideo() {
 
   // Agrupa por cliente_id. Ordem dos grupos: cliente com mais itens
   // estourados primeiro (mais urgente); dentro do grupo por ordem asc.
-  const porCliente = useMemo(() => {
+  const { porClienteAtivos, porClienteConcluidos } = useMemo(() => {
     const m = new Map<string, EdicaoVideo[]>()
     for (const e of filtered) {
       const key = e.cliente_id ?? '__sem__'
@@ -203,16 +204,31 @@ export default function EdicaoVideo() {
     for (const arr of m.values()) {
       arr.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
     }
-    // Ordena grupos: mais estourados primeiro, depois mais items totais
-    const grupos = Array.from(m.entries()).map(([clienteId, items]) => {
+    // Separa: um grupo eh "concluido" quando TODOS os videos estao em conclusao
+    // (nenhum ainda em pendente/em_edicao/em_aprovacao/em_alteracao).
+    const ativos: Array<{ clienteId: string; items: EdicaoVideo[]; estourados: number }> = []
+    const concluidos: Array<{ clienteId: string; items: EdicaoVideo[]; estourados: number }> = []
+    for (const [clienteId, items] of m.entries()) {
       const estourados = items.filter(
         (i) => i.status !== 'conclusao' && i.prazo && isDateOverdue(i.prazo),
       ).length
-      return { clienteId, items, estourados }
+      const todosConcluidos = items.length > 0 && items.every((i) => i.status === 'conclusao')
+      const grupo = { clienteId, items, estourados }
+      if (todosConcluidos) concluidos.push(grupo)
+      else ativos.push(grupo)
+    }
+    // Ativos: mais estourados primeiro, depois mais items totais
+    ativos.sort((a, b) => b.estourados - a.estourados || b.items.length - a.items.length)
+    // Concluidos: mais recentes primeiro (por updated_at do ultimo video)
+    concluidos.sort((a, b) => {
+      const ua = Math.max(...a.items.map((i) => new Date(i.updated_at).getTime()))
+      const ub = Math.max(...b.items.map((i) => new Date(i.updated_at).getTime()))
+      return ub - ua
     })
-    grupos.sort((a, b) => b.estourados - a.estourados || b.items.length - a.items.length)
-    return grupos
+    return { porClienteAtivos: ativos, porClienteConcluidos: concluidos }
   }, [filtered])
+  // Alias mantido pra retrocompat interno (empty check)
+  const porCliente = porClienteAtivos
 
   return (
     <div>
@@ -286,7 +302,7 @@ export default function EdicaoVideo() {
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
           Carregando...
         </div>
-      ) : porCliente.length === 0 ? (
+      ) : porClienteAtivos.length === 0 && porClienteConcluidos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-bg-soft/40 p-12 text-center">
           <Film size={28} className="mx-auto mb-2 text-muted" />
           <p className="text-sm text-zinc-200">
@@ -304,7 +320,7 @@ export default function EdicaoVideo() {
         </div>
       ) : (
         <div className="space-y-3">
-          {porCliente.map(({ clienteId, items, estourados }) => (
+          {porClienteAtivos.map(({ clienteId, items, estourados }) => (
             <ClienteGrupoCard
               key={clienteId}
               cliente={items[0]?.cliente ?? null}
@@ -321,6 +337,60 @@ export default function EdicaoVideo() {
               onChanged={load}
             />
           ))}
+
+          {/* Grupos com 100% dos videos concluidos — recolhidos por padrao
+              pra desafogar a tela. Mesmo padrao da Producao Social Media. */}
+          {porClienteConcluidos.length > 0 && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowConcluidos((v) => !v)}
+                className="group flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-bg-soft/40 px-4 py-2.5 transition-colors hover:bg-bg-soft/70"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-300">
+                    Concluídos
+                  </span>
+                  <Badge tone="success" className="text-[10px]">
+                    {porClienteConcluidos.length}
+                  </Badge>
+                  <span className="text-[11px] text-muted">
+                    Clientes com 100% dos vídeos finalizados
+                  </span>
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={cn(
+                    'text-muted transition-transform duration-200',
+                    showConcluidos && 'rotate-180',
+                  )}
+                />
+              </button>
+              {showConcluidos && (
+                <div className="mt-3 flex flex-col gap-3">
+                  {porClienteConcluidos.map(({ clienteId, items, estourados }) => (
+                    <ClienteGrupoCard
+                      key={clienteId}
+                      cliente={items[0]?.cliente ?? null}
+                      items={items}
+                      estourados={estourados}
+                      expanded={expandedGrupo === clienteId}
+                      onToggle={() =>
+                        setExpandedGrupo((cur) =>
+                          cur === clienteId ? null : clienteId,
+                        )
+                      }
+                      onEdit={(e) => {
+                        setEditing(e)
+                        setModalOpen(true)
+                      }}
+                      onChanged={load}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -774,10 +844,34 @@ function LinhaVideo({
 }) {
   const concluido = edicao.status === 'conclusao'
   const estourado = !concluido && edicao.prazo ? isDateOverdue(edicao.prazo) : false
+  const [editingResp, setEditingResp] = useState(false)
+  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
+
+  // Carrega a lista de editores so quando o user clicar no avatar (lazy).
+  useEffect(() => {
+    if (!editingResp || responsaveis.length > 0) return
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('ativo', true)
+      .eq('aprovado', true)
+      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
+      .order('nome')
+      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
+  }, [editingResp, responsaveis.length])
 
   async function mudarStatus(novo: StatusEdicaoVideo) {
     if (novo === edicao.status) return
     await supabase.from('edicoes_video').update({ status: novo }).eq('id', edicao.id)
+    onChanged()
+  }
+
+  async function mudarResponsavel(novoId: string) {
+    await supabase
+      .from('edicoes_video')
+      .update({ responsavel_id: novoId || null })
+      .eq('id', edicao.id)
+    setEditingResp(false)
     onChanged()
   }
 
@@ -862,21 +956,47 @@ function LinhaVideo({
         {estourado && <span>⚠</span>}
       </span>
 
-      {/* Responsavel */}
-      {edicao.responsavel ? (
-        <Avatar
-          name={edicao.responsavel.nome}
-          url={edicao.responsavel.avatar_url}
-          size="sm"
-        />
-      ) : (
-        <span
-          className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted"
-          title="Sem responsável"
-        >
-          <User size={11} />
-        </span>
-      )}
+      {/* Responsavel — click abre dropdown de editores */}
+      <div onClick={(e) => e.stopPropagation()}>
+        {editingResp ? (
+          <select
+            autoFocus
+            value={edicao.responsavel_id ?? ''}
+            onChange={(e) => mudarResponsavel(e.target.value)}
+            onBlur={() => setEditingResp(false)}
+            className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
+          >
+            <option value="">— sem editor —</option>
+            {responsaveis.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <button
+            onClick={() => setEditingResp(true)}
+            className="grid h-7 w-7 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
+            title={
+              edicao.responsavel
+                ? `Editor: ${edicao.responsavel.nome} — clique pra trocar`
+                : 'Clique pra atribuir um editor'
+            }
+          >
+            {edicao.responsavel ? (
+              <Avatar
+                name={edicao.responsavel.nome}
+                url={edicao.responsavel.avatar_url}
+                size="sm"
+              />
+            ) : (
+              <span className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted">
+                <User size={11} />
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       {/* Editar */}
       <button
