@@ -500,9 +500,11 @@ function ClienteGrupoCard({
   const concluidos = counts.conclusao
   const progressPct = totalVideos === 0 ? 0 : Math.round((concluidos / totalVideos) * 100)
 
-  // Ultimo editor ativo (aquele com mais videos nao-concluidos atribuidos).
-  // Usado como avatar principal do grupo. Se ninguem tem, cai pra qualquer
-  // responsavel do grupo. Se ninguem tem responsavel, mostra placeholder.
+  // Editor do grupo. Cliente decide UM editor pra tudo (mesmo padrao
+  // Producao Social Media). A gente identifica pela maioria: pega o
+  // editor com mais videos nao-concluidos atribuidos, com fallback pra
+  // qualquer editor do grupo (mesmo concluidos). Se ninguem foi
+  // atribuido, retorna null.
   const responsavelPrincipal = useMemo(() => {
     const contagem = new Map<string, { count: number; profile: EdicaoVideo['responsavel'] }>()
     for (const it of items) {
@@ -515,7 +517,6 @@ function ClienteGrupoCard({
       })
     }
     if (contagem.size === 0) {
-      // fallback: qualquer um com responsavel (inclusive concluidos)
       const primeiro = items.find((it) => it.responsavel)?.responsavel ?? null
       return primeiro
     }
@@ -529,6 +530,36 @@ function ClienteGrupoCard({
     }
     return melhor
   }, [items])
+
+  const responsavelIdDoGrupo = responsavelPrincipal?.id ?? null
+
+  // Edicao inline do editor do grupo (aplica em bulk pra todos os videos)
+  const [editingRespGrupo, setEditingRespGrupo] = useState(false)
+  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
+  useEffect(() => {
+    if (!editingRespGrupo || responsaveisLista.length > 0) return
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('ativo', true)
+      .eq('aprovado', true)
+      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
+      .order('nome')
+      .then(({ data }) => setResponsaveisLista((data as Profile[]) ?? []))
+  }, [editingRespGrupo, responsaveisLista.length])
+
+  async function mudarResponsavelGrupo(novoId: string) {
+    // Atribui pra TODOS os videos do grupo em uma unica chamada.
+    // Even se o cliente tiver 50 videos, um in-list suporta.
+    const ids = items.map((it) => it.id)
+    if (ids.length === 0) return
+    await supabase
+      .from('edicoes_video')
+      .update({ responsavel_id: novoId || null })
+      .in('id', ids)
+    setEditingRespGrupo(false)
+    onChanged()
+  }
 
   // Info do rodape — proxima entrega OU aviso de estourados
   const proximoPrazo = useMemo(() => {
@@ -614,20 +645,47 @@ function ClienteGrupoCard({
               ⚠ {estourados} estourado{estourados > 1 ? 's' : ''}
             </span>
           )}
-          {responsavelPrincipal ? (
-            <Avatar
-              name={responsavelPrincipal.nome}
-              url={responsavelPrincipal.avatar_url}
-              size="sm"
-            />
-          ) : (
-            <span
-              className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted"
-              title="Sem editor atribuído"
-            >
-              <User size={10} />
-            </span>
-          )}
+          {/* Editor do grupo — click abre dropdown, aplica em TODOS os videos */}
+          <div onClick={(e) => e.stopPropagation()}>
+            {editingRespGrupo ? (
+              <select
+                autoFocus
+                value={responsavelIdDoGrupo ?? ''}
+                onChange={(e) => mudarResponsavelGrupo(e.target.value)}
+                onBlur={() => setEditingRespGrupo(false)}
+                className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
+              >
+                <option value="">— sem editor —</option>
+                {responsaveisLista.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nome}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <button
+                onClick={() => setEditingRespGrupo(true)}
+                className="grid h-7 w-7 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
+                title={
+                  responsavelPrincipal
+                    ? `Editor: ${responsavelPrincipal.nome} — clique pra trocar (aplica em todos os vídeos do grupo)`
+                    : 'Clique pra atribuir um editor pra todos os vídeos deste cliente'
+                }
+              >
+                {responsavelPrincipal ? (
+                  <Avatar
+                    name={responsavelPrincipal.nome}
+                    url={responsavelPrincipal.avatar_url}
+                    size="sm"
+                  />
+                ) : (
+                  <span className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted">
+                    <User size={11} />
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -683,6 +741,7 @@ function ClienteGrupoCard({
           {cliente && (
             <AdicionarVideoRapido
               cliente={cliente}
+              responsavelIdDoGrupo={responsavelIdDoGrupo}
               onCreated={onChanged}
               onOpenFull={onEdit}
             />
@@ -699,30 +758,19 @@ function ClienteGrupoCard({
 
 function AdicionarVideoRapido({
   cliente,
+  responsavelIdDoGrupo,
   onCreated,
   onOpenFull,
 }: {
   cliente: Cliente
+  /** Editor atual do grupo. Novos videos ja nascem com ele atribuido. */
+  responsavelIdDoGrupo: string | null
   onCreated: () => void
   onOpenFull: (e: EdicaoVideo) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [titulo, setTitulo] = useState('')
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
-  const [responsavelId, setResponsavelId] = useState('')
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!expanded || responsaveis.length > 0) return
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [expanded, responsaveis.length])
 
   async function criar(abrirDetalhesAoTerminar: boolean) {
     if (!titulo.trim()) {
@@ -730,13 +778,15 @@ function AdicionarVideoRapido({
       return
     }
     setSaving(true)
+    // Novo video herda o editor do grupo (setado no header do grupo).
+    // Se o grupo ainda nao tem editor, fica null.
     const { data, error } = await supabase
       .from('edicoes_video')
       .insert({
         cliente_id: cliente.id,
         titulo: titulo.trim(),
         status: 'pendente',
-        responsavel_id: responsavelId || null,
+        responsavel_id: responsavelIdDoGrupo,
       })
       .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
       .single()
@@ -747,7 +797,6 @@ function AdicionarVideoRapido({
     }
     // Reset e recarrega
     setTitulo('')
-    setResponsavelId('')
     setExpanded(false)
     onCreated()
     // Se pediu abrir o modal completo, faz isso agora (ex: pra briefing/refs)
@@ -787,18 +836,6 @@ function AdicionarVideoRapido({
           placeholder="Título do vídeo (ex: Corte podcast episódio 12)"
           className="h-8 flex-1 min-w-[220px] text-sm"
         />
-        <Select
-          value={responsavelId}
-          onChange={(e) => setResponsavelId(e.target.value)}
-          className="h-8 w-40 text-[11px]"
-        >
-          <option value="">Sem editor</option>
-          {responsaveis.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.nome}
-            </option>
-          ))}
-        </Select>
         <Button size="sm" onClick={() => criar(false)} disabled={saving || !titulo.trim()}>
           {saving ? '...' : 'Criar'}
         </Button>
@@ -844,35 +881,18 @@ function LinhaVideo({
 }) {
   const concluido = edicao.status === 'conclusao'
   const estourado = !concluido && edicao.prazo ? isDateOverdue(edicao.prazo) : false
-  const [editingResp, setEditingResp] = useState(false)
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
-
-  // Carrega a lista de editores so quando o user clicar no avatar (lazy).
-  useEffect(() => {
-    if (!editingResp || responsaveis.length > 0) return
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [editingResp, responsaveis.length])
+  // Sinaliza video em alteracao sem descricao — designer nao sabe o que mudar
+  const precisaDescricao =
+    edicao.status === 'em_alteracao' &&
+    (!edicao.descricao_alteracao || edicao.descricao_alteracao.trim() === '')
 
   async function mudarStatus(novo: StatusEdicaoVideo) {
     if (novo === edicao.status) return
     await supabase.from('edicoes_video').update({ status: novo }).eq('id', edicao.id)
     onChanged()
-  }
-
-  async function mudarResponsavel(novoId: string) {
-    await supabase
-      .from('edicoes_video')
-      .update({ responsavel_id: novoId || null })
-      .eq('id', edicao.id)
-    setEditingResp(false)
-    onChanged()
+    // Quando muda pra em_alteracao, abre o modal automaticamente pra
+    // pessoa ja preencher a descricao da alteracao no ato.
+    if (novo === 'em_alteracao') onEdit()
   }
 
   return (
@@ -956,47 +976,17 @@ function LinhaVideo({
         {estourado && <span>⚠</span>}
       </span>
 
-      {/* Responsavel — click abre dropdown de editores */}
-      <div onClick={(e) => e.stopPropagation()}>
-        {editingResp ? (
-          <select
-            autoFocus
-            value={edicao.responsavel_id ?? ''}
-            onChange={(e) => mudarResponsavel(e.target.value)}
-            onBlur={() => setEditingResp(false)}
-            className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
-          >
-            <option value="">— sem editor —</option>
-            {responsaveis.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nome}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <button
-            onClick={() => setEditingResp(true)}
-            className="grid h-7 w-7 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
-            title={
-              edicao.responsavel
-                ? `Editor: ${edicao.responsavel.nome} — clique pra trocar`
-                : 'Clique pra atribuir um editor'
-            }
-          >
-            {edicao.responsavel ? (
-              <Avatar
-                name={edicao.responsavel.nome}
-                url={edicao.responsavel.avatar_url}
-                size="sm"
-              />
-            ) : (
-              <span className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted">
-                <User size={11} />
-              </span>
-            )}
-          </button>
-        )}
-      </div>
+      {/* Editor NAO aparece mais na linha — atribuido no header do grupo
+          (mesmo padrao da Producao Social Media). Se este video em
+          alteracao ainda nao tem descricao, mostra badge de aviso. */}
+      {precisaDescricao && (
+        <span
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-red-500/50 bg-red-500/15 px-2 text-[10px] font-semibold text-red-200"
+          title="Cliente pediu alteração mas ninguém descreveu o que mudar"
+        >
+          ⚠ sem descrição
+        </span>
+      )}
 
       {/* Editar */}
       <button
@@ -1394,6 +1384,7 @@ export function EdicaoVideoModal({
     arquivos: EdicaoArquivo[]
     video_final_url: string
     observacoes: string
+    descricao_alteracao: string
   }>({
     cliente_id: '',
     titulo: '',
@@ -1405,6 +1396,7 @@ export function EdicaoVideoModal({
     arquivos: [],
     video_final_url: '',
     observacoes: '',
+    descricao_alteracao: '',
   })
   const [responsaveis, setResponsaveis] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
@@ -1508,6 +1500,7 @@ export function EdicaoVideoModal({
         arquivos: edicao.arquivos ?? [],
         video_final_url: edicao.video_final_url ?? '',
         observacoes: edicao.observacoes ?? '',
+        descricao_alteracao: edicao.descricao_alteracao ?? '',
       })
     } else {
       setForm({
@@ -1521,6 +1514,7 @@ export function EdicaoVideoModal({
         arquivos: [],
         video_final_url: '',
         observacoes: '',
+        descricao_alteracao: '',
       })
     }
   }, [open, edicao, previewMode, responsaveis.length])
@@ -1547,6 +1541,7 @@ export function EdicaoVideoModal({
       arquivos: form.arquivos,
       video_final_url: form.video_final_url.trim() || null,
       observacoes: form.observacoes || null,
+      descricao_alteracao: form.descricao_alteracao || null,
     }
     if (edicao) {
       await supabase.from('edicoes_video').update(payload).eq('id', edicao.id)
@@ -1665,6 +1660,38 @@ export function EdicaoVideoModal({
       }
     >
       <div className="space-y-4">
+        {/* Descricao da alteracao — so aparece quando status=em_alteracao.
+            Fica bem no topo com borda vermelha pra ninguem perder.
+            Mesmo padrao do ItemEditor da SocialMedia. */}
+        {form.status === 'em_alteracao' && (
+          <div className="rounded-xl border-2 border-red-500/60 bg-red-500/5 p-4 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-red-300">⚠</span>
+              <h4 className="text-sm font-semibold text-red-100">
+                Descrição da alteração
+              </h4>
+              <span className="text-[11px] text-red-300/80">
+                — o que o cliente pediu pra mudar
+              </span>
+            </div>
+            <Textarea
+              autoFocus={!form.descricao_alteracao}
+              value={form.descricao_alteracao}
+              onChange={(e) => {
+                const val = e.target.value
+                setForm({ ...form, descricao_alteracao: val })
+                // Persiste no ato — mesmo se fechar sem salvar, nao some
+                void persistPatch({ descricao_alteracao: val || null })
+              }}
+              placeholder="Ex.: Cortar o inicio (0-8s). Ajustar audio no 1:20 que ta muito baixo. Trocar a foto de capa da thumb."
+              className="min-h-[80px] border-red-500/30 bg-bg-soft text-sm focus:border-red-500/60"
+            />
+            <p className="mt-1.5 text-[10px] text-red-300/70">
+              Este campo fica de histórico mesmo depois do vídeo sair de alteração.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Cliente">
             <Select

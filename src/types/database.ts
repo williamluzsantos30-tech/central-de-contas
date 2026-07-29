@@ -100,6 +100,8 @@ export interface EdicaoVideo {
   arquivos: EdicaoArquivo[]
   video_final_url: string | null
   observacoes: string | null
+  /** O que o cliente pediu pra mudar quando o video vai pra status=em_alteracao (migration 060). */
+  descricao_alteracao: string | null
   created_at: string
   updated_at: string
   cliente?: Cliente | null
