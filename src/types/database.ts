@@ -474,6 +474,8 @@ export interface ItemSocialMedia {
    */
   referencias: EdicaoReferencia[]
   observacoes: string | null
+  /** O que o cliente pediu pra mudar quando o item vai pra status=alteracao (migration 059). */
+  descricao_alteracao: string | null
   ordem: number
   // Marcação de publicação (playbook 3.3 e KPI #1)
   publicado_url: string | null

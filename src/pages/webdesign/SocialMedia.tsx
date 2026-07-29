@@ -1372,7 +1372,16 @@ function ItemRow({
 
   async function mudarStatus(s: StatusSocialMedia) {
     await updateField('status', s)
+    // Auto-expande quando muda pra alteracao pra a pessoa ja preencher o
+    // "o que o cliente pediu pra mudar" sem precisar clicar em nada.
+    if (s === 'alteracao' && !expanded) onToggle()
   }
+
+  // Sinaliza item que precisa de descricao (esta em alteracao e ainda nao
+  // teve a descricao preenchida). Mostra um badge amarelo na linha.
+  const precisaDescricao =
+    item.status === 'alteracao' &&
+    (!item.descricao_alteracao || item.descricao_alteracao.trim() === '')
 
   return (
     <div className={cn(expanded && 'bg-bg-soft/30')}>
@@ -1455,6 +1464,14 @@ function ItemRow({
         </div>
 
         <div className="flex items-center gap-1">
+          {precisaDescricao && (
+            <span
+              className="inline-flex h-5 items-center gap-1 rounded-md border border-red-500/50 bg-red-500/15 px-1.5 text-[10px] font-semibold text-red-200"
+              title="Cliente pediu alteração mas ninguém descreveu o que mudar"
+            >
+              ⚠ sem descrição
+            </span>
+          )}
           {(item.copy_texto || item.copy_arquivo_url) && (
             <span
               className="grid h-5 w-5 place-items-center rounded-md border border-brand-500/40 bg-brand-500/15 text-brand-300"
@@ -1553,6 +1570,7 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
       artes_prontas: stripBlobUrls(item.artes_prontas),
       referencias: (item.referencias ?? []) as ItemSocialMedia['referencias'],
       observacoes: item.observacoes ?? '',
+      descricao_alteracao: item.descricao_alteracao ?? '',
     }),
     [item],
   )
@@ -1577,6 +1595,8 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
       payload.referencias = form.referencias
     if (form.observacoes !== base.observacoes)
       payload.observacoes = form.observacoes || null
+    if (form.descricao_alteracao !== base.descricao_alteracao)
+      payload.descricao_alteracao = form.descricao_alteracao || null
 
     if (Object.keys(payload).length === 0) {
       setSaveState('idle')
@@ -1644,6 +1664,34 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
 
   return (
     <div className="space-y-4">
+      {/* Descricao da alteracao — so aparece quando status=alteracao.
+          Fica bem no topo com borda vermelha pra ninguem perder. */}
+      {item.status === 'alteracao' && (
+        <div className="rounded-xl border-2 border-red-500/60 bg-red-500/5 p-4 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-red-300">⚠</span>
+            <h4 className="text-sm font-semibold text-red-100">
+              Descrição da alteração
+            </h4>
+            <span className="text-[11px] text-red-300/80">
+              — o que o cliente pediu pra mudar
+            </span>
+          </div>
+          <Textarea
+            autoFocus={!form.descricao_alteracao}
+            value={form.descricao_alteracao}
+            onChange={(e) =>
+              setForm({ ...form, descricao_alteracao: e.target.value })
+            }
+            placeholder="Ex.: Trocar a paleta pra tons mais quentes. Reforçar o CTA no último slide. Ajustar a fonte do título (muito fina no mobile)."
+            className="min-h-[80px] border-red-500/30 bg-bg-soft text-sm focus:border-red-500/60"
+          />
+          <p className="mt-1.5 text-[10px] text-red-300/70">
+            Este campo fica de histórico mesmo depois do item sair de alteração.
+          </p>
+        </div>
+      )}
+
       <div className="rounded-xl border border-border bg-bg-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <Sparkles size={14} className="text-brand-300" />
