@@ -919,7 +919,14 @@ function LinhaVideo({
       />
 
       {/* Ordem + titulo */}
-      <div className="min-w-0 flex-1 cursor-pointer pl-2" onClick={onEdit}>
+      {/* IMPORTANTE: envolvo em arrow pra descartar o MouseEvent.
+          onEdit aceita (override?: EdicaoVideo) — se passar o event
+          direto, o event vira "override" e o modal abre com o event
+          no lugar do item (bug: "Selecione um cliente"). */}
+      <div
+        className="min-w-0 flex-1 cursor-pointer pl-2"
+        onClick={() => onEdit()}
+      >
         <div className="flex items-center gap-2">
           <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
             #{edicao.ordem ?? 0}
@@ -996,9 +1003,10 @@ function LinhaVideo({
         </span>
       )}
 
-      {/* Editar */}
+      {/* Editar — mesma razao do onClick acima: envolve em arrow pra
+          descartar o MouseEvent (senao entra como override e quebra) */}
       <button
-        onClick={onEdit}
+        onClick={() => onEdit()}
         className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-bg-elev hover:text-brand-300 group-hover:opacity-100"
         title="Editar detalhes"
       >
