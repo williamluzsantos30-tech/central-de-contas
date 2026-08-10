@@ -537,18 +537,26 @@ function PlanejamentoCard({
 
   const progressPct = items.length === 0 ? 0 : Math.round((counts.conclusao / items.length) * 100)
 
-  // SLA: prazo máximo de 16 dias a partir da criação do planejamento
+  // SLA: prazo maximo de 16 dias a partir de quando o cliente APROVOU o
+  // planejamento. Antes contava desde created_at (criacao no sistema) e
+  // penalizava planejamentos que ficavam parados esperando aprovacao do
+  // cliente — SLA "estourava" sem o time de producao ter culpa.
+  // Regra:
+  //   aprovado_em preenchido → conta dias desde aprovacao
+  //   aprovado_em null       → SLA nao comecou; mostra "aguardando aprovacao"
   const SLA_DIAS = 16
-  const startMs = new Date(planejamento.created_at).getTime()
-  const diasUsados = Math.max(
-    0,
-    Math.floor((Date.now() - startMs) / (1000 * 60 * 60 * 24)),
-  )
+  const aprovadoEm = planejamento.aprovado_em
   const allDone = items.length > 0 && counts.conclusao === items.length
-  const slaEstourado = !allDone && diasUsados > SLA_DIAS
-  const slaPct = Math.min(100, Math.round((diasUsados / SLA_DIAS) * 100))
+  const startMs = aprovadoEm ? new Date(aprovadoEm).getTime() : null
+  const diasUsados = startMs
+    ? Math.max(0, Math.floor((Date.now() - startMs) / (1000 * 60 * 60 * 24)))
+    : 0
+  const slaEstourado = !allDone && !!startMs && diasUsados > SLA_DIAS
+  const slaPct = startMs ? Math.min(100, Math.round((diasUsados / SLA_DIAS) * 100)) : 0
   const slaBarColor = allDone
     ? 'bg-emerald-500/70'
+    : !startMs
+    ? 'bg-zinc-500/50'
     : slaEstourado
     ? 'bg-red-500/70'
     : diasUsados >= 12
@@ -556,6 +564,8 @@ function PlanejamentoCard({
     : 'bg-sky-500/70'
   const slaLabel = allDone
     ? `SLA cumprido em ${diasUsados}d`
+    : !startMs
+    ? 'Aguardando aprovação do cliente'
     : slaEstourado
     ? `SLA estourado · +${diasUsados - SLA_DIAS}d`
     : `${diasUsados}/${SLA_DIAS} dias`
