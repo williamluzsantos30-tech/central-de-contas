@@ -1932,68 +1932,37 @@ function PrazoInlineItem({
 
 function PrazoInlinePlanejamento({
   planejamento,
-  onUpdated,
+  onUpdated: _onUpdated,
 }: {
   planejamento: PlanejamentoSocialMedia
   onUpdated: () => void
 }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(planejamento.prazo ?? '')
-
-  useEffect(() => {
-    setValue(planejamento.prazo ?? '')
-  }, [planejamento.prazo])
-
-  async function commit(newValue: string) {
-    const prazo = newValue || null
-    const current = planejamento.prazo ?? null
-    if (prazo === current) {
-      setEditing(false)
-      return
-    }
-    await supabase.from('producoes_social_media').update({ prazo }).eq('id', planejamento.id)
-    setEditing(false)
-    onUpdated()
-  }
-
+  void _onUpdated
+  // Prazo do planejamento agora eh AUTOMATICO — trigger no banco (migration
+  // 063) recalcula como MAX(items.prazo) sempre que um item muda. Nao ha
+  // mais edicao manual, mostra so o valor calculado com tooltip explicando.
   const overdue = isDateOverdue(planejamento.prazo)
-
-  if (editing) {
-    return (
-      <input
-        type="date"
-        autoFocus
-        value={value}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => commit(value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
-      />
-    )
-  }
-
   return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation()
-        setEditing(true)
-      }}
+    <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors',
+        'inline-flex cursor-default items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]',
         planejamento.prazo
           ? overdue
-            ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-            : 'border-border bg-bg-soft text-zinc-200 hover:border-brand-500/40'
-          : 'border-dashed border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
+            ? 'border-red-500/40 bg-red-500/10 text-red-300'
+            : 'border-border bg-bg-soft text-zinc-200'
+          : 'border-dashed border-border text-muted',
       )}
+      title={
+        planejamento.prazo
+          ? 'Data da última postagem do planejamento (auto-calculada)'
+          : 'Sem itens com prazo — adicione um post com data pra calcular'
+      }
     >
       <Calendar size={10} />
-      {planejamento.prazo ? prazoLabel(planejamento.prazo, !!overdue) : 'Definir prazo'}
-    </button>
+      {planejamento.prazo
+        ? prazoLabel(planejamento.prazo, !!overdue)
+        : 'Sem prazo'}
+    </span>
   )
 }
 
