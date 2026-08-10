@@ -481,13 +481,17 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
     seteDias.setDate(seteDias.getDate() + 7)
     const seteDiasStr = seteDias.toISOString().slice(0, 10)
 
-    // Meus clientes SM (com social_media_id = me)
+    // Meus clientes SM (com social_media_id = me). Inclui ativos E atencao —
+    // se o cliente esta em 'atencao', ele ainda esta sob responsabilidade da
+    // social media e posts atrasados dele precisam aparecer. Exclui pausado
+    // (nao esta produzindo conteudo) e churn/arquivado.
     const { data: meusClientes } = await supabase
       .from('clientes')
       .select('id, nome')
       .contains('modulos', ['social_media'])
       .eq('social_media_id', profile.id)
-      .eq('status', 'ativo')
+      .in('status', ['ativo', 'atencao'])
+      .is('arquivado_em', null)
     const meusClientesArr = (meusClientes as Array<{ id: string; nome: string }>) ?? []
     const meusIds = meusClientesArr.map((c) => c.id)
     const nomesPorId = new Map(meusClientesArr.map((c) => [c.id, c.nome]))
@@ -512,17 +516,20 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
     const planoIds = planos.map((p) => p.id)
 
     let itemsDoMes: ItemSocialMedia[] = []
+    let itemsTodos: ItemSocialMedia[] = []
     let proximosArr: ItemSocialMedia[] = []
     if (planoIds.length > 0) {
       const { data: items } = await supabase
         .from('producoes_social_media_items')
         .select('*')
         .in('producao_id', planoIds)
-      const itemsArr = (items as ItemSocialMedia[]) ?? []
-      itemsDoMes = itemsArr.filter(
+      itemsTodos = (items as ItemSocialMedia[]) ?? []
+      itemsDoMes = itemsTodos.filter(
         (i) => i.prazo && i.prazo.slice(0, 10) >= monthStart && i.prazo.slice(0, 10) <= monthEnd,
       )
-      proximosArr = itemsArr
+      // Proximos 7 dias — SEM cap. Se tem 15 posts pra hoje, mostra os 15.
+      // O render usa max-height + overflow-y-auto pra nao esticar a tela.
+      proximosArr = itemsTodos
         .filter(
           (i) =>
             i.prazo &&
@@ -531,10 +538,12 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
             i.status !== 'conclusao',
         )
         .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
-        .slice(0, 8)
     }
 
-    const atrasados = itemsDoMes.filter(
+    // Atrasados: TODOS os posts com prazo passado e nao concluidos, nao so
+    // do mes atual. Se um post ficou atrasado desde o mes passado, continua
+    // atrasado ate ser concluido.
+    const atrasados = itemsTodos.filter(
       (i) => i.status !== 'conclusao' && i.prazo && i.prazo.slice(0, 10) < today,
     )
 
@@ -572,6 +581,7 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
       const cliId = planoIdToCliente.get(a.producao_id)
       if (cliId) atrasadasPorCliente.set(cliId, (atrasadasPorCliente.get(cliId) ?? 0) + 1)
     }
+    // SEM cap — render usa scroll interno pra lista longa.
     const atencao = meusClientesArr
       .map((c) => ({
         id: c.id,
@@ -581,7 +591,6 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
       }))
       .filter((c) => c.postagensAtrasadas > 0 || !c.setupOk)
       .sort((a, b) => b.postagensAtrasadas - a.postagensAtrasadas)
-      .slice(0, 8)
     setClientesAtencao(atencao)
     setLoading(false)
   }
@@ -621,9 +630,18 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Próximos 7 dias</CardTitle>
+            <CardTitle>
+              Próximos 7 dias
+              {!loading && proximos.length > 0 && (
+                <span className="ml-2 text-[11px] font-normal text-muted">
+                  · {proximos.length}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardBody className="space-y-2">
+          {/* max-h + overflow-y-auto — se tem 20 posts, scroll interno em vez
+              de esticar a tela toda. Empty state e loading ficam sem scroll. */}
+          <CardBody className="space-y-2 max-h-[420px] overflow-y-auto">
             {loading ? (
               <p className="text-sm text-muted">Carregando...</p>
             ) : proximos.length === 0 ? (
@@ -651,9 +669,16 @@ function DashboardSocialMedia({ profile }: { profile: Profile | null }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Meus clientes que precisam de atenção</CardTitle>
+            <CardTitle>
+              Meus clientes que precisam de atenção
+              {!loading && clientesAtencao.length > 0 && (
+                <span className="ml-2 text-[11px] font-normal text-muted">
+                  · {clientesAtencao.length}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardBody className="space-y-2">
+          <CardBody className="space-y-2 max-h-[420px] overflow-y-auto">
             {loading ? (
               <p className="text-sm text-muted">Carregando...</p>
             ) : clientesAtencao.length === 0 ? (
