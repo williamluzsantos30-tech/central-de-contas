@@ -1954,8 +1954,8 @@ function PrazoInlinePlanejamento({
       )}
       title={
         planejamento.prazo
-          ? 'Data da última postagem do planejamento (auto-calculada)'
-          : 'Sem itens com prazo — adicione um post com data pra calcular'
+          ? 'Data da última entrega de produção (auto-calculada — MAX do prazo_producao dos items)'
+          : 'Sem items com prazo de produção — o prazo aparece quando o planejamento for aprovado e a fila gerar as datas'
       }
     >
       <Calendar size={10} />
