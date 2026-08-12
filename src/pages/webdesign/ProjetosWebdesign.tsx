@@ -672,6 +672,12 @@ function ProjetoEditor({
     const idsLegacySingle = stripBlobUrl(projeto.identidade_visual_url)
     const identidadeVisualUrls =
       idsArr.length > 0 ? idsArr : idsLegacySingle ? [idsLegacySingle] : []
+    // Copy arquivos — usa o array novo (migration 065). Backfill do singular
+    // pra caso o projeto ainda nao foi migrado no banco.
+    const copyArqArr = stripBlobUrls(projeto.copy_arquivos ?? [])
+    const copyArqLegacy = stripBlobUrl(projeto.copy_arquivo_url)
+    const copyArquivos =
+      copyArqArr.length > 0 ? copyArqArr : copyArqLegacy ? [copyArqLegacy] : []
     return {
       status: projeto.status,
       url_producao: stripBlobUrl(projeto.url_producao),
@@ -679,7 +685,7 @@ function ProjetoEditor({
       briefing_pdf_url: stripBlobUrl(projeto.briefing_pdf_url),
       identidade_visual_urls: identidadeVisualUrls,
       fotos: stripBlobUrls(projeto.fotos),
-      copy_arquivo_url: stripBlobUrl(projeto.copy_arquivo_url),
+      copy_arquivos: copyArquivos,
       copy_texto: projeto.copy_texto ?? '',
       observacoes: projeto.observacoes ?? '',
     }
@@ -688,6 +694,7 @@ function ProjetoEditor({
   // Baseline pro save baseado em diff (evita lost-update entre usuários)
   const baselineRef = useRef(initialForm)
   const [novaFoto, setNovaFoto] = useState('')
+  const [novoCopyUrl, setNovoCopyUrl] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [uploadingKind, setUploadingKind] = useState<'briefing' | 'identidade' | 'fotos' | 'copy' | null>(null)
   const firstRenderRef = useRef(true)
@@ -733,12 +740,26 @@ function ProjetoEditor({
     if (urls.length > 0) setForm((f) => ({ ...f, fotos: [...f.fotos, ...urls] }))
     setUploadingKind(null)
   }
-  async function handleUploadCopy(file: File | null) {
-    if (!file) return
+  async function handleUploadCopy(files: FileList | null) {
+    if (!files || files.length === 0) return
     setUploadingKind('copy')
-    const url = await uploadArquivo(file, 'projetos/copy')
-    if (url) setForm((f) => ({ ...f, copy_arquivo_url: url }))
+    const urls: string[] = []
+    for (const file of Array.from(files)) {
+      const u = await uploadArquivo(file, 'projetos/copy')
+      if (u) urls.push(u)
+    }
+    if (urls.length > 0)
+      setForm((f) => ({ ...f, copy_arquivos: [...f.copy_arquivos, ...urls] }))
     setUploadingKind(null)
+  }
+  function addCopyUrl() {
+    const u = novoCopyUrl.trim()
+    if (!u) return
+    setForm((f) => ({ ...f, copy_arquivos: [...f.copy_arquivos, u] }))
+    setNovoCopyUrl('')
+  }
+  function removeCopy(i: number) {
+    setForm((f) => ({ ...f, copy_arquivos: f.copy_arquivos.filter((_, idx) => idx !== i) }))
   }
 
   function addFotoUrl() {
@@ -770,8 +791,12 @@ function ProjetoEditor({
     }
     if (JSON.stringify(form.fotos) !== JSON.stringify(base.fotos))
       payload.fotos = form.fotos
-    if (form.copy_arquivo_url !== base.copy_arquivo_url)
-      payload.copy_arquivo_url = form.copy_arquivo_url || null
+    if (JSON.stringify(form.copy_arquivos) !== JSON.stringify(base.copy_arquivos)) {
+      payload.copy_arquivos = form.copy_arquivos
+      // Limpa o singular legacy pra evitar divergencia — a fonte da verdade
+      // agora eh o array copy_arquivos.
+      payload.copy_arquivo_url = null
+    }
     if (form.copy_texto !== base.copy_texto)
       payload.copy_texto = form.copy_texto || null
     if (form.observacoes !== base.observacoes)
@@ -965,33 +990,75 @@ function ProjetoEditor({
         </div>
 
         <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">
-          Arquivo de copy (PDF/DOC)
+          Arquivos de copy (PDF/DOC) — pode adicionar quantos precisar
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            value={form.copy_arquivo_url}
-            onChange={(e) => setForm({ ...form, copy_arquivo_url: e.target.value })}
-            placeholder="Cole um link OU clique em Upload ao lado"
+            value={novoCopyUrl}
+            onChange={(e) => setNovoCopyUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addCopyUrl()
+              }
+            }}
+            placeholder="Cole um link e Enter, OU use Upload ao lado"
             className="flex-1 min-w-[200px]"
           />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={addCopyUrl}
+            disabled={!novoCopyUrl.trim()}
+          >
+            <Plus size={12} /> URL
+          </Button>
           <FileUploadButton
             accept="application/pdf,.doc,.docx,.txt,.md"
-            onFile={handleUploadCopy}
+            multiple
+            onFiles={handleUploadCopy}
             busy={uploadingKind === 'copy'}
-            label="Upload arquivo"
+            label="Upload arquivos"
           />
-          {form.copy_arquivo_url && (
-            <a
-              href={form.copy_arquivo_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs text-zinc-200 hover:bg-bg-elev"
-            >
-              <ExternalLink size={12} />
-              Abrir
-            </a>
-          )}
         </div>
+        {form.copy_arquivos.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {form.copy_arquivos.map((url, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
+              >
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 flex-1 truncate text-xs text-zinc-200 hover:text-brand-300 hover:underline"
+                  title={url}
+                >
+                  <FileText size={11} className="mr-1 inline" />
+                  {url.split('/').pop() || url}
+                </a>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded p-1 text-muted hover:bg-bg-elev hover:text-brand-300"
+                  title="Abrir"
+                >
+                  <ExternalLink size={12} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeCopy(i)}
+                  className="shrink-0 rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
+                  title="Remover"
+                >
+                  <X size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Observações internas">

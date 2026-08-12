@@ -388,6 +388,9 @@ export interface ProjetoWebdesign {
   identidade_visual_urls: string[]
   fotos: string[]
   copy_arquivo_url: string | null
+  /** Array de arquivos de copy (PDFs/DOCs). Migration 065. Substitui
+   *  copy_arquivo_url no frontend (o singular fica de backward compat). */
+  copy_arquivos: string[]
   /** Texto da copy quando o projeto veio de uma Criação tipo copy_lp aprovada. */
   copy_texto: string | null
   /** Criação (copy_lp) que gerou esse projeto. Null se foi criado manual. */
