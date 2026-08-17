@@ -51,13 +51,12 @@ interface ClienteSocialStats {
   /** Em produção pra publicar no FUTURO neste mês (não publicadas ainda, prazo no futuro) */
   emProducaoFuturoMes: number
   /**
-   * Dias do mês relevantes pra coluna "publicação": só inclui posts que
-   * já tiveram um desfecho (publicado ou prazo passou sem publicação).
-   * Futuras ainda não publicadas não entram aqui — viram contador separado.
+   * Dias do mês com posts (agora inclui futuros como state='futura' pra
+   * pintar o strip do mes completo). Ordenados por dia.
    */
   diasDoMes: Array<{
     dia: number
-    publicada: boolean
+    state: 'publicada' | 'atrasada' | 'futura'
     status: ItemSocialMedia['status']
     titulo: string
     formato: ItemSocialMedia['formato']
@@ -139,10 +138,13 @@ export default function SocialClientes() {
   }, [])
 
   // Stats por cliente, escopadas ao MÊS CORRENTE.
-  // diasDoMes reflete EXCLUSIVAMENTE o desfecho de publicação:
-  //   - publicada (publicado_em != null) → ✓
-  //   - prazo passou e não publicou → ✗
-  //   - futura ainda em produção → contador separado
+  // diasDoMes agora inclui TODOS os posts do mês, cada um com state:
+  //   - 'publicada'  = publicado_em != null
+  //   - 'atrasada'   = prazo passou sem publicar
+  //   - 'futura'     = prazo no futuro, ainda em produção
+  // O strip visual do mês (PostsCell) pinta cada dia com base nesse state,
+  // permitindo AM ver a distribuição completa (publicados + atrasados +
+  // futuros) num relance.
   //
   // ⚠️ A fonte da verdade pra "publicada" é o campo publicado_em (timestamp
   // real de publicação), NÃO o status='conclusao' — esse último é só
@@ -178,28 +180,34 @@ export default function SocialClientes() {
       if (publicada) stat.concluidasMes++
 
       if (publicada) {
-        // Publicou de verdade (independente da data do prazo)
         stat.diasDoMes.push({
           dia: d.getDate(),
-          publicada: true,
+          state: 'publicada',
           status: it.status,
           titulo: it.titulo,
           formato: it.formato,
         })
       } else if (d < today) {
-        // Prazo passou e não publicou → atrasada do mês
+        // Prazo passou e não publicou → atrasada
         stat.atrasadasMes++
         stat.diasDoMes.push({
           dia: d.getDate(),
-          publicada: false,
+          state: 'atrasada',
           status: it.status,
           titulo: it.titulo,
           formato: it.formato,
         })
       } else {
-        // Prazo futuro e ainda não publicou → em produção (inclui artes
-        // com status=conclusao que ainda não foram pro ar)
+        // Prazo futuro — em producao. Entra no strip como 'futura' pra o
+        // AM ver a distribuicao completa do mes (e nao so o que passou).
         stat.emProducaoFuturoMes++
+        stat.diasDoMes.push({
+          dia: d.getDate(),
+          state: 'futura',
+          status: it.status,
+          titulo: it.titulo,
+          formato: it.formato,
+        })
       }
     }
     // Ordena os dias por número
@@ -533,11 +541,18 @@ export default function SocialClientes() {
 }
 
 /**
- * Coluna "Publicações do mês": só fala de DESFECHO de publicação.
- *   - Cápsula verde com ✓ = post publicado no dia X
- *   - Cápsula vermelha com ✗ = dia X tinha post programado e não foi publicado
- *   - Posts ainda em produção (prazo futuro) NÃO aparecem como cápsula,
- *     viram um contador discreto "N em produção"
+ * Coluna "Publicações do mês": mini-timeline do mês.
+ *   - 1 mini-celula por dia do mes atual (28-31 celulas horizontais)
+ *   - Cor pinta o dia:
+ *     · verde  = publicada
+ *     · vermelho = atrasada (prazo passou sem publicar)
+ *     · roxo/cinza = programada futura (em produção)
+ *     · vazio = sem post nesse dia
+ *   - Dia de hoje ganha ring roxo pra referencia visual
+ *   - Se tem MULTIPLOS posts no mesmo dia, o mais critico ganha a cor:
+ *     atrasada > futura > publicada
+ *   - Rodape agregado embaixo (contadores por status)
+ *   - Tooltip por dia (title) descreve o post
  */
 function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
   if (
@@ -552,44 +567,73 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
     )
   }
 
-  // Mostra até 8 dias inline; se tiver mais, "+N"
-  const visiveis = stats.diasDoMes.slice(0, 8)
-  const restantes = stats.diasDoMes.length - visiveis.length
+  // Descobre o mes atual + numero de dias
+  const today = new Date()
+  const anoMes = { ano: today.getFullYear(), mes: today.getMonth() } // 0-indexed
+  const totalDias = new Date(anoMes.ano, anoMes.mes + 1, 0).getDate()
+  const diaHoje = today.getDate()
+
+  // Agrupa posts por dia. Se tem multiplos no mesmo dia, escolhe o pior
+  // (atrasada > futura > publicada) pra colorir a celula.
+  type DiaInfo = {
+    state: 'publicada' | 'atrasada' | 'futura'
+    tooltip: string
+  }
+  const porDia = new Map<number, DiaInfo>()
+  const prioridade = { atrasada: 3, futura: 2, publicada: 1 } as const
+  for (const d of stats.diasDoMes) {
+    const cur = porDia.get(d.dia)
+    const label =
+      d.state === 'publicada'
+        ? '✓ Publicada'
+        : d.state === 'atrasada'
+          ? '⚠ Não publicada (prazo passou)'
+          : '⏳ Em produção'
+    const tip = `Dia ${d.dia} · ${d.formato} · ${d.titulo} — ${label}`
+    if (!cur || prioridade[d.state] > prioridade[cur.state]) {
+      porDia.set(d.dia, { state: d.state, tooltip: tip })
+    } else {
+      // Concatena tooltips se mesmo dia tem mais de 1
+      porDia.set(d.dia, { state: cur.state, tooltip: `${cur.tooltip}\n${tip}` })
+    }
+  }
+
+  const cellClass = (state?: 'publicada' | 'atrasada' | 'futura'): string => {
+    switch (state) {
+      case 'publicada':
+        return 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
+      case 'atrasada':
+        return 'bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+      case 'futura':
+        return 'bg-violet-500/70'
+      default:
+        return 'bg-bg-elev'
+    }
+  }
+
+  const dias = Array.from({ length: totalDias }, (_, i) => i + 1)
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-1">
-        {visiveis.map((d, i) => (
-          <span
-            key={`${d.dia}-${i}`}
-            title={
-              d.publicada
-                ? `Dia ${d.dia} · ${d.formato} · ${d.titulo} — Publicada ✓`
-                : `Dia ${d.dia} · ${d.formato} · ${d.titulo} — Não publicada (prazo passou)`
-            }
-            className={cn(
-              'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
-              d.publicada
-                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
-                : 'border-red-500/50 bg-red-500/15 text-red-200',
-            )}
-          >
-            {d.publicada ? (
-              <CheckCircle2 size={9} className="shrink-0" />
-            ) : (
-              <AlertCircle size={9} className="shrink-0" />
-            )}
-            {d.dia}
-          </span>
-        ))}
-        {restantes > 0 && (
-          <span className="text-[10px] text-muted tabular-nums">+{restantes}</span>
-        )}
-        {/* Nenhum desfecho ainda neste mês */}
-        {stats.diasDoMes.length === 0 && (
-          <span className="text-[11px] text-muted">sem publicações ainda</span>
-        )}
+    <div className="flex min-w-[210px] flex-col gap-1.5">
+      {/* Strip do mes — 1 celula por dia */}
+      <div className="flex items-center gap-[2px]">
+        {dias.map((dia) => {
+          const info = porDia.get(dia)
+          const isHoje = dia === diaHoje
+          return (
+            <span
+              key={dia}
+              title={info ? info.tooltip : `Dia ${dia}`}
+              className={cn(
+                'h-3 w-[6px] rounded-sm transition-colors',
+                cellClass(info?.state),
+                isHoje && 'ring-1 ring-brand-300/80 ring-offset-1 ring-offset-bg-card',
+              )}
+            />
+          )
+        })}
       </div>
+      {/* Rodape agregado */}
       <div className="flex items-center gap-2 text-[10px] text-muted">
         <span
           className="inline-flex items-center gap-0.5 text-emerald-300/90"
@@ -609,7 +653,7 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
         )}
         {stats.emProducaoFuturoMes > 0 && (
           <span
-            className="inline-flex items-center gap-0.5"
+            className="inline-flex items-center gap-0.5 text-violet-300/90"
             title="Em produção (prazo ainda no futuro)"
           >
             <Sparkles size={9} />
