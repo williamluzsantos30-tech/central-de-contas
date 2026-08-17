@@ -56,20 +56,31 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
     : 0
 
   // "Apresentar proximo plano" — data alvo pra mostrar o plano do proximo
-  // mes pro cliente. Postagem nao pode parar; o time precisa ter tempo pra:
-  // cliente aprovar (~5d) + designer produzir primeiro lote de 3 posts (~5d).
-  // Formula: ultima postagem do mes atual - 10 dias corridos.
-  // Se nao ha itens no mes (plano nao criado ainda), mostra "sem plano".
-  const ultimaPostagemMs = itemsDoMes
-    .map((i) => (i.prazo ? new Date(i.prazo + 'T12:00:00').getTime() : 0))
-    .reduce((max, cur) => Math.max(max, cur), 0)
-  const apresentarProximoPlano = ultimaPostagemMs
-    ? (() => {
-        const d = new Date(ultimaPostagemMs)
-        d.setDate(d.getDate() - 10)
-        return d.toISOString().slice(0, 10)
-      })()
-    : null
+  // mes pro cliente. Regra do time: PRIMEIRO DIA DE POSTAGEM da ultima
+  // semana (Mon-Sun) do mes.
+  //   1) Pega a ultima data de postagem
+  //   2) Descobre a semana Mon-Sun em que ela cai
+  //   3) Pega a primeira postagem >= inicio dessa semana
+  // Isso da a data em que a ultima onda de posts do mes comeca — o
+  // proximo plano precisa estar sendo apresentado nesse dia pra dar tempo
+  // de: cliente aprovar + designer produzir o primeiro lote sem gap.
+  const apresentarProximoPlano: string | null = (() => {
+    const postDates = itemsDoMes
+      .map((i) => i.prazo?.slice(0, 10))
+      .filter((d): d is string => !!d)
+      .sort()
+    if (postDates.length === 0) return null
+    const lastPost = postDates[postDates.length - 1]
+    const lastPostDate = new Date(lastPost + 'T12:00:00')
+    // Segunda-feira da semana da ultima postagem (0=Dom, 1=Seg, ..., 6=Sab)
+    const dow = lastPostDate.getDay()
+    const daysBackToMon = dow === 0 ? 6 : dow - 1
+    const weekStart = new Date(lastPostDate)
+    weekStart.setDate(weekStart.getDate() - daysBackToMon)
+    const weekStartISO = weekStart.toISOString().slice(0, 10)
+    // Primeira postagem >= inicio dessa semana
+    return postDates.find((d) => d >= weekStartISO) ?? null
+  })()
   const diasAteApresentar = apresentarProximoPlano
     ? Math.floor(
         (new Date(apresentarProximoPlano + 'T12:00:00').getTime() -
