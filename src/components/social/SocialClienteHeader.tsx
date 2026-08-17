@@ -55,6 +55,45 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
       )
     : 0
 
+  // "Apresentar proximo plano" — data alvo pra mostrar o plano do proximo
+  // mes pro cliente. Postagem nao pode parar; o time precisa ter tempo pra:
+  // cliente aprovar (~5d) + designer produzir primeiro lote de 3 posts (~5d).
+  // Formula: ultima postagem do mes atual - 10 dias corridos.
+  // Se nao ha itens no mes (plano nao criado ainda), mostra "sem plano".
+  const ultimaPostagemMs = itemsDoMes
+    .map((i) => (i.prazo ? new Date(i.prazo + 'T12:00:00').getTime() : 0))
+    .reduce((max, cur) => Math.max(max, cur), 0)
+  const apresentarProximoPlano = ultimaPostagemMs
+    ? (() => {
+        const d = new Date(ultimaPostagemMs)
+        d.setDate(d.getDate() - 10)
+        return d.toISOString().slice(0, 10)
+      })()
+    : null
+  const diasAteApresentar = apresentarProximoPlano
+    ? Math.floor(
+        (new Date(apresentarProximoPlano + 'T12:00:00').getTime() -
+          new Date(today + 'T12:00:00').getTime()) /
+          (1000 * 60 * 60 * 24),
+      )
+    : null
+  const apresentarTone: 'success' | 'warning' | 'danger' | 'brand' =
+    diasAteApresentar === null
+      ? 'brand'
+      : diasAteApresentar < 0
+        ? 'danger'
+        : diasAteApresentar <= 3
+          ? 'warning'
+          : 'brand'
+  const apresentarSub =
+    diasAteApresentar === null
+      ? 'sem plano ativo'
+      : diasAteApresentar < 0
+        ? `${Math.abs(diasAteApresentar)}d atrasado`
+        : diasAteApresentar === 0
+          ? 'hoje'
+          : `em ${diasAteApresentar}d`
+
   return (
     <Card className="mb-4 overflow-hidden">
       <CardBody className="space-y-4">
@@ -89,6 +128,12 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
               value={formatDateBR(proximoPost?.prazo)}
               sub={proximoPost?.formato ?? 'sem agenda'}
               tone="brand"
+            />
+            <KpiBox
+              label="Apresentar próximo plano"
+              value={apresentarProximoPlano ? formatDateBR(apresentarProximoPlano) : '—'}
+              sub={apresentarSub}
+              tone={apresentarTone}
             />
             <KpiBox
               label="Setup do perfil"
