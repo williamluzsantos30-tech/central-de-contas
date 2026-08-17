@@ -541,18 +541,14 @@ export default function SocialClientes() {
 }
 
 /**
- * Coluna "Publicações do mês": mini-timeline do mês.
- *   - 1 mini-celula por dia do mes atual (28-31 celulas horizontais)
- *   - Cor pinta o dia:
- *     · verde  = publicada
- *     · vermelho = atrasada (prazo passou sem publicar)
- *     · roxo/cinza = programada futura (em produção)
- *     · vazio = sem post nesse dia
- *   - Dia de hoje ganha ring roxo pra referencia visual
- *   - Se tem MULTIPLOS posts no mesmo dia, o mais critico ganha a cor:
- *     atrasada > futura > publicada
- *   - Rodape agregado embaixo (contadores por status)
- *   - Tooltip por dia (title) descreve o post
+ * Coluna "Publicações do mês": pills com o numero do dia de cada post.
+ *   - Verde  = publicada (✓)
+ *   - Vermelha = atrasada (⚠ prazo passou sem publicar)
+ *   - Violeta = futura (⏳ em producao pra publicar)
+ * Se um mesmo dia tem MULTIPLOS posts, aparece uma pill por post (nao
+ * agrupa) — usuario ve a quantidade real.
+ * Ordenado por dia ascendente. Sem cap — mostra todos, com wrap natural.
+ * Rodape agregado embaixo (contadores por status).
  */
 function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
   if (
@@ -567,71 +563,51 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
     )
   }
 
-  // Descobre o mes atual + numero de dias
-  const today = new Date()
-  const anoMes = { ano: today.getFullYear(), mes: today.getMonth() } // 0-indexed
-  const totalDias = new Date(anoMes.ano, anoMes.mes + 1, 0).getDate()
-  const diaHoje = today.getDate()
-
-  // Agrupa posts por dia. Se tem multiplos no mesmo dia, escolhe o pior
-  // (atrasada > futura > publicada) pra colorir a celula.
-  type DiaInfo = {
-    state: 'publicada' | 'atrasada' | 'futura'
-    tooltip: string
-  }
-  const porDia = new Map<number, DiaInfo>()
-  const prioridade = { atrasada: 3, futura: 2, publicada: 1 } as const
-  for (const d of stats.diasDoMes) {
-    const cur = porDia.get(d.dia)
-    const label =
-      d.state === 'publicada'
-        ? '✓ Publicada'
-        : d.state === 'atrasada'
-          ? '⚠ Não publicada (prazo passou)'
-          : '⏳ Em produção'
-    const tip = `Dia ${d.dia} · ${d.formato} · ${d.titulo} — ${label}`
-    if (!cur || prioridade[d.state] > prioridade[cur.state]) {
-      porDia.set(d.dia, { state: d.state, tooltip: tip })
-    } else {
-      // Concatena tooltips se mesmo dia tem mais de 1
-      porDia.set(d.dia, { state: cur.state, tooltip: `${cur.tooltip}\n${tip}` })
-    }
-  }
-
-  const cellClass = (state?: 'publicada' | 'atrasada' | 'futura'): string => {
+  const pillClass = (state: 'publicada' | 'atrasada' | 'futura'): string => {
     switch (state) {
       case 'publicada':
-        return 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
+        return 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
       case 'atrasada':
-        return 'bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+        return 'border-red-500/50 bg-red-500/15 text-red-200'
       case 'futura':
-        return 'bg-violet-500/70'
-      default:
-        return 'bg-bg-elev'
+        return 'border-violet-500/50 bg-violet-500/15 text-violet-200'
     }
   }
 
-  const dias = Array.from({ length: totalDias }, (_, i) => i + 1)
+  const iconFor = (state: 'publicada' | 'atrasada' | 'futura') => {
+    switch (state) {
+      case 'publicada':
+        return <CheckCircle2 size={9} className="shrink-0" />
+      case 'atrasada':
+        return <AlertCircle size={9} className="shrink-0" />
+      case 'futura':
+        return <Sparkles size={9} className="shrink-0" />
+    }
+  }
+
+  const labelFor = (state: 'publicada' | 'atrasada' | 'futura') =>
+    state === 'publicada'
+      ? 'Publicada ✓'
+      : state === 'atrasada'
+        ? 'Não publicada (prazo passou)'
+        : 'Em produção'
 
   return (
-    <div className="flex min-w-[210px] flex-col gap-1.5">
-      {/* Strip do mes — 1 celula por dia */}
-      <div className="flex items-center gap-[2px]">
-        {dias.map((dia) => {
-          const info = porDia.get(dia)
-          const isHoje = dia === diaHoje
-          return (
-            <span
-              key={dia}
-              title={info ? info.tooltip : `Dia ${dia}`}
-              className={cn(
-                'h-3 w-[6px] rounded-sm transition-colors',
-                cellClass(info?.state),
-                isHoje && 'ring-1 ring-brand-300/80 ring-offset-1 ring-offset-bg-card',
-              )}
-            />
-          )
-        })}
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        {stats.diasDoMes.map((d, i) => (
+          <span
+            key={`${d.dia}-${i}`}
+            title={`Dia ${d.dia} · ${d.formato} · ${d.titulo} — ${labelFor(d.state)}`}
+            className={cn(
+              'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
+              pillClass(d.state),
+            )}
+          >
+            {iconFor(d.state)}
+            {d.dia}
+          </span>
+        ))}
       </div>
       {/* Rodape agregado */}
       <div className="flex items-center gap-2 text-[10px] text-muted">
