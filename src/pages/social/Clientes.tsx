@@ -48,15 +48,21 @@ interface ClienteSocialStats {
   concluidasMes: number
   /** Atrasadas DO MÊS CORRENTE (prazo passou e não publicou) */
   atrasadasMes: number
-  /** Em produção pra publicar no FUTURO neste mês (não publicadas ainda, prazo no futuro) */
+  /** Em produção — designer ainda mexendo (pendente/design/alteracao), prazo futuro */
   emProducaoFuturoMes: number
+  /** Arte pronta, aguardando publicação (design_finalizado/em_aprovacao/conclusao), prazo futuro */
+  prontasFuturoMes: number
   /**
-   * Dias do mês com posts (agora inclui futuros como state='futura' pra
-   * pintar o strip do mes completo). Ordenados por dia.
+   * Dias do mês com posts. Ordenados por dia.
+   * state:
+   *   publicada  - publicado_em setado
+   *   atrasada   - prazo passou sem publicar
+   *   pronta     - arte finalizada, aguardando publicacao (futura)
+   *   futura     - designer ainda mexendo (futura)
    */
   diasDoMes: Array<{
     dia: number
-    state: 'publicada' | 'atrasada' | 'futura'
+    state: 'publicada' | 'atrasada' | 'pronta' | 'futura'
     status: ItemSocialMedia['status']
     titulo: string
     formato: ItemSocialMedia['formato']
@@ -163,6 +169,7 @@ export default function SocialClientes() {
         concluidasMes: 0,
         atrasadasMes: 0,
         emProducaoFuturoMes: 0,
+        prontasFuturoMes: 0,
         diasDoMes: [],
       })
 
@@ -198,12 +205,24 @@ export default function SocialClientes() {
           formato: it.formato,
         })
       } else {
-        // Prazo futuro — em producao. Entra no strip como 'futura' pra o
-        // AM ver a distribuicao completa do mes (e nao so o que passou).
-        stat.emProducaoFuturoMes++
+        // Prazo futuro. Divide em 2 sub-estados operacionais:
+        //   pronta  = arte ja entregue, aguardando publicacao (tarefa do
+        //             SM / cliente): design_finalizado, em_aprovacao,
+        //             conclusao
+        //   futura  = designer ainda mexendo (tarefa do designer):
+        //             pendente, design, alteracao
+        const artePronta =
+          it.status === 'design_finalizado' ||
+          it.status === 'em_aprovacao' ||
+          it.status === 'conclusao'
+        if (artePronta) {
+          stat.prontasFuturoMes++
+        } else {
+          stat.emProducaoFuturoMes++
+        }
         stat.diasDoMes.push({
           dia: d.getDate(),
-          state: 'futura',
+          state: artePronta ? 'pronta' : 'futura',
           status: it.status,
           titulo: it.titulo,
           formato: it.formato,
@@ -553,7 +572,9 @@ export default function SocialClientes() {
 function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
   if (
     !stats ||
-    (stats.diasDoMes.length === 0 && stats.emProducaoFuturoMes === 0)
+    (stats.diasDoMes.length === 0 &&
+      stats.emProducaoFuturoMes === 0 &&
+      stats.prontasFuturoMes === 0)
   ) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-muted">
@@ -563,34 +584,42 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
     )
   }
 
-  const pillClass = (state: 'publicada' | 'atrasada' | 'futura'): string => {
+  type PillState = 'publicada' | 'atrasada' | 'pronta' | 'futura'
+
+  const pillClass = (state: PillState): string => {
     switch (state) {
       case 'publicada':
         return 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
       case 'atrasada':
         return 'border-red-500/50 bg-red-500/15 text-red-200'
+      case 'pronta':
+        return 'border-amber-500/50 bg-amber-500/15 text-amber-200'
       case 'futura':
         return 'border-violet-500/50 bg-violet-500/15 text-violet-200'
     }
   }
 
-  const iconFor = (state: 'publicada' | 'atrasada' | 'futura') => {
+  const iconFor = (state: PillState) => {
     switch (state) {
       case 'publicada':
         return <CheckCircle2 size={9} className="shrink-0" />
       case 'atrasada':
         return <AlertCircle size={9} className="shrink-0" />
+      case 'pronta':
+        return <CheckCircle2 size={9} className="shrink-0" />
       case 'futura':
         return <Sparkles size={9} className="shrink-0" />
     }
   }
 
-  const labelFor = (state: 'publicada' | 'atrasada' | 'futura') =>
+  const labelFor = (state: PillState) =>
     state === 'publicada'
       ? 'Publicada ✓'
       : state === 'atrasada'
         ? 'Não publicada (prazo passou)'
-        : 'Em produção'
+        : state === 'pronta'
+          ? 'Arte pronta — aguardando publicação'
+          : 'Em produção'
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -627,10 +656,19 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
             {stats.atrasadasMes}
           </span>
         )}
+        {stats.prontasFuturoMes > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5 text-amber-300/90"
+            title="Arte pronta, aguardando publicação (design_finalizado, em_aprovacao ou conclusao com prazo futuro)"
+          >
+            <CheckCircle2 size={9} />
+            {stats.prontasFuturoMes} pronta{stats.prontasFuturoMes > 1 ? 's' : ''}
+          </span>
+        )}
         {stats.emProducaoFuturoMes > 0 && (
           <span
             className="inline-flex items-center gap-0.5 text-violet-300/90"
-            title="Em produção (prazo ainda no futuro)"
+            title="Em produção — designer ainda trabalhando (pendente/design/alteração)"
           >
             <Sparkles size={9} />
             {stats.emProducaoFuturoMes} em produção
