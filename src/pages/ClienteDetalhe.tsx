@@ -492,7 +492,9 @@ export default function ClienteDetalhe() {
 
       {modo === 'trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
 
-      {modo === 'trafego' && tab === 'metas' && <MetasPanel clienteId={cliente.id} />}
+      {modo === 'trafego' && tab === 'metas' && (
+        <MetasPanel clienteId={cliente.id} cliente={cliente} />
+      )}
 
       {modo === 'trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
 

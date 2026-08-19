@@ -15,15 +15,19 @@ import {
   Stethoscope,
   Activity,
   Trophy,
+  FileText,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency, monthKey } from '@/lib/utils'
-import type { Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
+import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
+import { downloadRelatorioMetasPDF } from './RelatorioMetasPDF'
 
 interface Props {
   clienteId: string
+  cliente: Cliente
 }
 
 type Plataforma = 'google' | 'meta'
@@ -97,10 +101,24 @@ function computeCalculos(v: MetasValores): Calculos {
   }
 }
 
-export function MetasPanel({ clienteId }: Props) {
+export function MetasPanel({ clienteId, cliente }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(monthKey())
   const [todosMeses, setTodosMeses] = useState<Meta[]>([])
   const [loading, setLoading] = useState(true)
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+
+  async function baixarPdf() {
+    if (todosMeses.length === 0) {
+      alert('Não há metas registradas pra esse cliente ainda.')
+      return
+    }
+    setGerandoPdf(true)
+    try {
+      await downloadRelatorioMetasPDF({ cliente, historico: todosMeses })
+    } finally {
+      setGerandoPdf(false)
+    }
+  }
 
   // Refs das 4 planilhas para forçar flush antes de operações destrutivas
   const planMetaGoogleRef = useRef<PlanilhaHandle>(null)
@@ -242,6 +260,16 @@ export function MetasPanel({ clienteId }: Props) {
             <ChevronRight size={14} />
           </button>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={baixarPdf}
+          disabled={gerandoPdf || todosMeses.length === 0}
+          title="Baixa PDF com resultados mês a mês + resumo do período"
+        >
+          <FileText size={13} />
+          {gerandoPdf ? 'Gerando...' : 'Baixar PDF'}
+        </Button>
       </div>
 
       {/* Google Ads */}
