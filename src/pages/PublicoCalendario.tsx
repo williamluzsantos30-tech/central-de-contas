@@ -116,9 +116,13 @@ export default function PublicoCalendario() {
   }, [postsPorDia])
 
   function shiftMes(delta: number) {
-    const d = new Date(mesISO)
-    d.setMonth(d.getMonth() + delta)
-    setMesISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`)
+    // Bug antes: `new Date(mesISO)` interpreta "2026-07-01" como UTC midnight.
+    // Em Brasil (UTC-3) vira 2026-06-30 21:00 local, entao getMonth() retorna
+    // Junho. +1 volta pra Julho — travava no mesmo mes. Fix: parse manual
+    // dos componentes; o constructor Date(y, m, d) usa timezone LOCAL.
+    const [y, m] = mesISO.split('-').map(Number)
+    const nova = new Date(y, m - 1 + delta, 1)
+    setMesISO(`${nova.getFullYear()}-${String(nova.getMonth() + 1).padStart(2, '0')}-01`)
   }
 
   function goHoje() {
@@ -126,10 +130,15 @@ export default function PublicoCalendario() {
     setMesISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`)
   }
 
-  const mesLabel = new Date(mesISO).toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  })
+  // Mesma correcao — new Date(mesISO) shift de timezone. Parse manual +
+  // constructor Date(y, m, d) mantem a data em local time.
+  const mesLabel = (() => {
+    const [y, m] = mesISO.split('-').map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', {
+      month: 'long',
+      year: 'numeric',
+    })
+  })()
 
   return (
     <div className="min-h-screen bg-bg text-zinc-100">
