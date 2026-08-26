@@ -170,6 +170,39 @@ export default function HeadSocial() {
   const [filtroSM, setFiltroSM] = useState<string>('')
   const [mostrarResolvidos, setMostrarResolvidos] = useState(false)
 
+  /**
+   * Auto-resolve followups quando a operacao ja resolveu por outra via.
+   * Roda depois do fetch inicial. Compara: cada followup ativo (status !=
+   * resolvido) contra a lista atual de chaves de pendencia. Se a chave
+   * do followup nao aparece mais, a pendencia foi sanada — marca como
+   * resolvido com observacao "auto-resolvido".
+   *
+   * Ex.: head cobrou aprovacao -> cliente aprovou -> item saiu de
+   * em_aprovacao -> pendencia some -> followup fica preso. Com esta
+   * funcao, o followup vira resolvido sozinho na proxima carga.
+   */
+  async function autoResolverPendenciasSanadas(
+    followupsAtivos: SocialFollowup[],
+    pendenciasChaves: Set<string>,
+  ) {
+    const orphans = followupsAtivos.filter(
+      (f) =>
+        f.status !== 'resolvido' &&
+        !pendenciasChaves.has(chave(f.cliente_id, f.tipo, f.ref_id)),
+    )
+    if (orphans.length === 0) return
+    await supabase
+      .from('social_followup')
+      .update({
+        status: 'resolvido',
+        observacao: 'Resolvido automaticamente (operação já sanou a pendência)',
+      })
+      .in(
+        'id',
+        orphans.map((o) => o.id),
+      )
+  }
+
   async function load() {
     setLoading(true)
     const [cRes, pRes, iRes, sRes, smRes, fRes] = await Promise.all([
@@ -212,11 +245,62 @@ export default function HeadSocial() {
       })
       .filter((x): x is ItemSocialMedia & { cliente_id: string } => x !== null)
 
+    // Antes de setar o state, roda auto-resolve dos followups cuja
+    // pendencia ja foi sanada pela operacao (item aprovado, publicado,
+    // call remarcada, setup completo). Precisa fazer aqui pra pegar
+    // os dados frescos, e depois refetchar os followups.
+    const clienteAtivos = new Set(clientesArr.map((c) => c.id))
+    const hoje = new Date().toISOString().slice(0, 10)
+    const chavesAtivas = new Set<string>()
+
+    // aprovacao
+    for (const it of itemsEnriched) {
+      if (it.status === 'em_aprovacao' && clienteAtivos.has(it.cliente_id)) {
+        chavesAtivas.add(chave(it.cliente_id, 'aprovacao', it.id))
+      }
+    }
+    // publicacao
+    for (const it of itemsEnriched) {
+      const pronta =
+        (it.status === 'design_finalizado' || it.status === 'conclusao') &&
+        !it.publicado_em &&
+        it.prazo &&
+        it.prazo.slice(0, 10) >= hoje
+      if (pronta && clienteAtivos.has(it.cliente_id)) {
+        chavesAtivas.add(chave(it.cliente_id, 'publicacao', it.id))
+      }
+    }
+    // call
+    for (const c of clientesArr) {
+      const prox = c.proxima_call_alinhamento
+      if (!prox || prox < hoje) {
+        chavesAtivas.add(chave(c.id, 'call', null))
+      }
+    }
+    // setup
+    const setupsMap = new Map(setupsArr.map((s) => [s.cliente_id, s]))
+    for (const c of clientesArr) {
+      const s = setupsMap.get(c.id)
+      const faltando = s
+        ? [s.foto_status, s.bio_status, s.destaques_status, s.contato_status].filter(
+            (v) => v !== 'ok',
+          ).length
+        : 4
+      if (faltando > 0) {
+        chavesAtivas.add(chave(c.id, 'setup', null))
+      }
+    }
+
+    await autoResolverPendenciasSanadas(fArr, chavesAtivas)
+
+    // Refetcha os followups pra pegar o que foi auto-resolvido
+    const { data: fArrFinal } = await supabase.from('social_followup').select('*')
+
     setClientes(clientesArr)
     setItems(itemsEnriched)
-    setSetups(new Map(setupsArr.map((s) => [s.cliente_id, s])))
+    setSetups(setupsMap)
     setSocialMedias(smArr)
-    setFollowups(fArr)
+    setFollowups((fArrFinal as SocialFollowup[]) ?? fArr)
     setLoading(false)
   }
 
