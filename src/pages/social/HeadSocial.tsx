@@ -90,7 +90,9 @@ interface ClienteLite {
   id: string
   nome: string
   status: string
-  telefone: string | null
+  /** Link do grupo WhatsApp do cliente. Usado pelo botao "WhatsApp"
+   *  do card. Se null, botao fica desabilitado. */
+  link_grupo: string | null
   social_media_id: string | null
   proxima_call_alinhamento: string | null
   ultima_call_alinhamento: string | null
@@ -146,10 +148,24 @@ function diasAte(dateISO: string | null | undefined): number | null {
   return Math.floor((target - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function whatsappUrl(telefone: string | null, mensagem: string): string {
-  if (!telefone) return '#'
-  const digits = telefone.replace(/\D/g, '')
-  const numero = digits.length >= 12 ? digits : `55${digits}` // adiciona +55 se nao tiver
+/**
+ * Resolve o link pra abrir uma conversa/grupo do cliente.
+ *   - Se `link_grupo` ja e' uma URL (chat.whatsapp.com, wa.me, http)
+ *     abre direto.
+ *   - Se e' um numero de telefone (so digitos), monta wa.me/<tel>?text=...
+ *   - Senao retorna '#' e o botao fica desabilitado.
+ * A mensagem eh usada so quando montamos o wa.me — em link de grupo
+ * o WA nao aceita texto pre-preenchido.
+ */
+function whatsappUrl(linkGrupo: string | null, mensagem: string): string {
+  if (!linkGrupo) return '#'
+  const trimmed = linkGrupo.trim()
+  // Ja e' URL — abre direto (grupo do WhatsApp, wa.me pronto, etc)
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  // Numero puro — normaliza e monta wa.me
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 0) return '#'
+  const numero = digits.length >= 12 ? digits : `55${digits}`
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
 }
 
@@ -209,7 +225,7 @@ export default function HeadSocial() {
       supabase
         .from('clientes')
         .select(
-          'id, nome, status, telefone, social_media_id, proxima_call_alinhamento, ultima_call_alinhamento',
+          'id, nome, status, link_grupo, social_media_id, proxima_call_alinhamento, ultima_call_alinhamento',
         )
         .contains('modulos', ['social_media'])
         .in('status', ['ativo', 'atencao'])
@@ -502,10 +518,10 @@ export default function HeadSocial() {
 
   async function abrirWhatsapp(p: Pendencia) {
     const mensagem = mensagemPadrao(p)
-    const url = whatsappUrl(p.cliente.telefone, mensagem)
+    const url = whatsappUrl(p.cliente.link_grupo, mensagem)
     if (url === '#') {
       alert(
-        `Cliente ${p.cliente.nome} não tem telefone cadastrado. Adicione o telefone em Clientes primeiro.`,
+        `Cliente ${p.cliente.nome} não tem link do grupo WhatsApp cadastrado. Adicione em Clientes → detalhe → link_grupo.`,
       )
       return
     }
@@ -850,12 +866,12 @@ function FollowupCard({
           <>
             <button
               onClick={onWhatsapp}
-              disabled={!p.cliente.telefone}
+              disabled={!p.cliente.link_grupo}
               className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
               title={
-                p.cliente.telefone
-                  ? 'Abre WhatsApp e registra a tentativa'
-                  : 'Cliente sem telefone cadastrado'
+                p.cliente.link_grupo
+                  ? 'Abre o grupo/conversa do cliente no WhatsApp e registra a tentativa'
+                  : 'Cliente sem link_grupo cadastrado — preencha em Clientes'
               }
             >
               <MessageCircle size={10} />
