@@ -93,6 +93,12 @@ const nav: Group[] = [
     items: [
       { to: '/social/clientes', label: 'Clientes', icon: Users },
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
+      {
+        to: '/social/head',
+        label: 'Painel do Head',
+        icon: Activity,
+        cargosPermitidos: ['head', 'diretoria'],
+      },
     ],
   },
   { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
