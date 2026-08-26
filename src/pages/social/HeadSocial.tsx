@@ -232,7 +232,30 @@ export default function HeadSocial() {
     const itemsRaw = (iRes.data as ItemSocialMedia[]) ?? []
     const setupsArr = (sRes.data as ClientePerfilSetup[]) ?? []
     const smArr = (smRes.data as Profile[]) ?? []
+    // Se tabela social_followup nao existe (migration 066 nao rodada),
+    // trata como lista vazia e loga aviso — nao quebra o resto do painel.
     const fArr = (fRes.data as SocialFollowup[]) ?? []
+    if (fRes.error) {
+      console.warn(
+        '[HeadSocial] Falha ao carregar social_followup — a migration 066 foi rodada? Erro:',
+        fRes.error,
+      )
+    }
+    // Log de diagnostico rapido no console pra debug de "painel vazio"
+    console.info('[HeadSocial] carregado:', {
+      clientes: clientesArr.length,
+      planos: planos.length,
+      items: itemsRaw.length,
+      items_em_aprovacao: itemsRaw.filter((i) => i.status === 'em_aprovacao').length,
+      items_prontos: itemsRaw.filter(
+        (i) =>
+          (i.status === 'design_finalizado' || i.status === 'conclusao') &&
+          !i.publicado_em,
+      ).length,
+      setups: setupsArr.length,
+      social_medias: smArr.length,
+      followups: fArr.length,
+    })
 
     const planoIdToCliente = new Map<string, string>()
     for (const p of planos) planoIdToCliente.set(p.id, p.cliente_id)
@@ -556,6 +579,30 @@ export default function HeadSocial() {
           </Select>
         }
       />
+
+      {/* Barra de diagnostico — sempre visivel pra saber o que foi carregado */}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2 text-[11px] text-muted">
+        <span>
+          <b className="text-zinc-100">{clientesFiltrados.length}</b> clientes acompanhados
+        </span>
+        <span>·</span>
+        <span>
+          <b className="text-zinc-100">{items.length}</b> items no pipeline
+        </span>
+        <span>·</span>
+        <span>
+          <b className="text-zinc-100">{pendencias.length}</b> pendências detectadas
+        </span>
+        <span>·</span>
+        <span>
+          <b className="text-zinc-100">{followups.length}</b> followups salvos
+        </span>
+        {pendencias.length === 0 && (
+          <span className="ml-auto text-amber-300">
+            ⚠ 0 pendências — se ta com dado no sistema, algo pode estar bloqueando (ex: migration 066 não rodada)
+          </span>
+        )}
+      </div>
 
       {/* Kanban horizontal — 4 lanes */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
