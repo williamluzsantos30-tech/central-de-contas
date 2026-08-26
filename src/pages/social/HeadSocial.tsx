@@ -1,43 +1,55 @@
 /**
- * Painel do Head · Social Media
- * -----------------------------
- * Central de acao pro coordenador. 3 blocos focados em cobranca / envio /
- * relacionamento:
+ * Painel do Head · Social Media — Kanban de follow-ups
+ * -----------------------------------------------------
+ * Reformulado pra dar ACAO ao head, nao so listar.
  *
- *   1. AGUARDANDO APROVACAO
- *      Items em status='em_aprovacao'. Ordenados por dias aguardando
- *      (mais antigos primeiro = mais urgentes). Serve pra cobrar cliente.
+ * Cada pendencia (item pra aprovar, publicar, call vencida, setup
+ * incompleto) vira um card num kanban por status de follow-up:
  *
- *   2. PRONTAS PRA PUBLICAR / ENVIAR
- *      Items com arte pronta (design_finalizado ou conclusao) e prazo
- *      futuro que ainda nao foram publicados. Serve pra enviar/agendar.
+ *   NAO COBRADO   -> pendencia detectada, nada feito ainda
+ *   AGUARDANDO    -> cobrei, esperando cliente
+ *   AGENDADO      -> retorno marcado pra data X
+ *   ESCALADO      -> cliente sumiu, precisa outra abordagem
  *
- *   3. RELACIONAMENTO
- *      Alertas: clientes com call vencida, muitos posts atrasados no mes,
- *      setup incompleto. Serve pra planejar contato ativo.
+ * Ate a pessoa clicar "Cobrar" ou "Escalar" pela primeira vez, o card
+ * fica em NAO COBRADO (sem row no banco). Ao primeiro click, cria-se
+ * a row social_followup e o card se move de lane.
  *
- * Filtro opcional no topo: por social media responsavel do cliente.
+ * Acoes inline em cada card:
+ *   - "Cobrar via WhatsApp"  -> abre wa.me + registra tentativa
+ *   - "Marquei cobrado"       -> registra sem abrir link
+ *   - "Agendar retorno"       -> escolhe data e joga em AGENDADO
+ *   - "Escalar"               -> joga em ESCALADO
+ *   - "Resolvido"             -> tira do kanban
+ *
+ * Fonte de dados dos cards: derivado dos items/clientes (nao_cobrado)
+ * + rows do social_followup (aguardando/agendado/escalado/resolvido).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Activity,
   AlertCircle,
   Clock,
   Send,
-  Users,
   Calendar as CalendarIcon,
   PhoneCall,
   Sparkles,
-  ChevronRight,
+  MessageCircle,
+  Check,
+  ArrowRight,
+  X,
+  RotateCw,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
-import { formatDateBR, parseLocalDate } from '@/lib/dates'
+import { formatDateBR } from '@/lib/dates'
 import type {
   Cliente,
   ItemSocialMedia,
@@ -46,50 +58,132 @@ import type {
   ClientePerfilSetup,
 } from '@/types/database'
 
+/* ============================================================
+   Tipos
+   ============================================================ */
+
+type TipoFollowup = 'aprovacao' | 'publicacao' | 'call' | 'setup' | 'geral'
+type StatusFollowup =
+  | 'nao_cobrado'
+  | 'aguardando'
+  | 'agendado'
+  | 'escalado'
+  | 'resolvido'
+
+interface SocialFollowup {
+  id: string
+  cliente_id: string
+  tipo: TipoFollowup
+  ref_id: string | null
+  status: StatusFollowup
+  ultima_cobranca_em: string | null
+  proximo_followup: string | null
+  tentativas: number
+  canal: string | null
+  observacao: string | null
+  autor_ultima_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface ClienteLite {
   id: string
   nome: string
   status: string
+  telefone: string | null
   social_media_id: string | null
-  social_media?: Profile | null
   proxima_call_alinhamento: string | null
   ultima_call_alinhamento: string | null
 }
 
-interface ItemComCliente extends ItemSocialMedia {
-  cliente_id: string
-  cliente_nome: string
+interface Pendencia {
+  chave: string // cliente_id + tipo + ref_id
+  cliente: ClienteLite
+  tipo: TipoFollowup
+  refId: string | null
+  titulo: string // display
+  subtitulo?: string
+  contexto?: string // ex.: "3d parada em em_aprovacao"
+  urgencia: number // usada pra ordenar dentro da lane
+  followup?: SocialFollowup // se ja existe row no banco
 }
 
+/* ============================================================
+   Utilitarios
+   ============================================================ */
+
+const TIPO_LABEL: Record<TipoFollowup, string> = {
+  aprovacao: 'Aprovação',
+  publicacao: 'Publicação',
+  call: 'Call de alinhamento',
+  setup: 'Setup do perfil',
+  geral: 'Geral',
+}
+
+const TIPO_TONE: Record<TipoFollowup, 'brand' | 'warning' | 'danger' | 'neutral' | 'success'> = {
+  aprovacao: 'warning',
+  publicacao: 'brand',
+  call: 'danger',
+  setup: 'neutral',
+  geral: 'neutral',
+}
+
+function chave(cliente_id: string, tipo: TipoFollowup, ref_id: string | null): string {
+  return `${cliente_id}__${tipo}__${ref_id ?? ''}`
+}
+
+function diasDesde(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const ms = new Date(iso).getTime()
+  return Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24))
+}
+
+function diasAte(dateISO: string | null | undefined): number | null {
+  if (!dateISO) return null
+  const target = new Date(dateISO + 'T12:00:00').getTime()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.floor((target - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function whatsappUrl(telefone: string | null, mensagem: string): string {
+  if (!telefone) return '#'
+  const digits = telefone.replace(/\D/g, '')
+  const numero = digits.length >= 12 ? digits : `55${digits}` // adiciona +55 se nao tiver
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
+}
+
+/* ============================================================
+   Componente principal
+   ============================================================ */
+
 export default function HeadSocial() {
+  const { profile } = useAuth()
   const [clientes, setClientes] = useState<ClienteLite[]>([])
-  const [items, setItems] = useState<ItemComCliente[]>([])
+  const [items, setItems] = useState<
+    Array<ItemSocialMedia & { cliente_id: string }>
+  >([])
   const [setups, setSetups] = useState<Map<string, ClientePerfilSetup>>(new Map())
+  const [followups, setFollowups] = useState<SocialFollowup[]>([])
   const [socialMedias, setSocialMedias] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroSM, setFiltroSM] = useState<string>('')
+  const [mostrarResolvidos, setMostrarResolvidos] = useState(false)
 
   async function load() {
     setLoading(true)
-
-    const [cRes, pRes, iRes, sRes, smRes] = await Promise.all([
+    const [cRes, pRes, iRes, sRes, smRes, fRes] = await Promise.all([
       supabase
         .from('clientes')
         .select(
-          'id, nome, status, social_media_id, proxima_call_alinhamento, ultima_call_alinhamento, social_media:profiles!social_media_id(*)',
+          'id, nome, status, telefone, social_media_id, proxima_call_alinhamento, ultima_call_alinhamento',
         )
         .contains('modulos', ['social_media'])
         .in('status', ['ativo', 'atencao'])
         .is('arquivado_em', null),
-      supabase
-        .from('producoes_social_media')
-        .select('id, cliente_id'),
-      supabase
-        .from('producoes_social_media_items')
-        .select('*'),
-      supabase
-        .from('cliente_perfil_setup')
-        .select('*'),
+      supabase.from('producoes_social_media').select('id, cliente_id'),
+      supabase.from('producoes_social_media_items').select('*'),
+      supabase.from('cliente_perfil_setup').select('*'),
       supabase
         .from('profiles')
         .select('*')
@@ -97,6 +191,7 @@ export default function HeadSocial() {
         .eq('aprovado', true)
         .or('cargo.eq.social_media,cargos_extras.cs.{social_media}')
         .order('nome'),
+      supabase.from('social_followup').select('*'),
     ])
 
     const clientesArr = (cRes.data as ClienteLite[]) ?? []
@@ -104,28 +199,24 @@ export default function HeadSocial() {
     const itemsRaw = (iRes.data as ItemSocialMedia[]) ?? []
     const setupsArr = (sRes.data as ClientePerfilSetup[]) ?? []
     const smArr = (smRes.data as Profile[]) ?? []
+    const fArr = (fRes.data as SocialFollowup[]) ?? []
 
-    // Mapa producao_id -> cliente_id/nome
-    const planoIdToCliente = new Map<string, { id: string; nome: string }>()
-    const clienteById = new Map(clientesArr.map((c) => [c.id, c]))
-    for (const p of planos) {
-      const c = clienteById.get(p.cliente_id)
-      if (c) planoIdToCliente.set(p.id, { id: c.id, nome: c.nome })
-    }
+    const planoIdToCliente = new Map<string, string>()
+    for (const p of planos) planoIdToCliente.set(p.id, p.cliente_id)
 
-    // Enriquece items com cliente
-    const itemsEnriched: ItemComCliente[] = itemsRaw
+    const itemsEnriched = itemsRaw
       .map((it) => {
-        const c = planoIdToCliente.get(it.producao_id)
-        if (!c) return null
-        return { ...it, cliente_id: c.id, cliente_nome: c.nome }
+        const cid = planoIdToCliente.get(it.producao_id)
+        if (!cid) return null
+        return { ...it, cliente_id: cid }
       })
-      .filter((x): x is ItemComCliente => x !== null)
+      .filter((x): x is ItemSocialMedia & { cliente_id: string } => x !== null)
 
     setClientes(clientesArr)
     setItems(itemsEnriched)
     setSetups(new Map(setupsArr.map((s) => [s.cliente_id, s])))
     setSocialMedias(smArr)
+    setFollowups(fArr)
     setLoading(false)
   }
 
@@ -133,120 +224,224 @@ export default function HeadSocial() {
     load()
   }, [])
 
-  // ============ Filtro por social media responsavel ============
+  const followupByChave = useMemo(() => {
+    const m = new Map<string, SocialFollowup>()
+    for (const f of followups) m.set(chave(f.cliente_id, f.tipo, f.ref_id), f)
+    return m
+  }, [followups])
+
+  // Filtra clientes pelo social media selecionado
   const clientesFiltrados = useMemo(() => {
     if (!filtroSM) return clientes
     return clientes.filter((c) => c.social_media_id === filtroSM)
   }, [clientes, filtroSM])
-
-  const clienteIdsPermitidos = useMemo(
-    () => new Set(clientesFiltrados.map((c) => c.id)),
+  const clientesById = useMemo(
+    () => new Map(clientesFiltrados.map((c) => [c.id, c])),
     [clientesFiltrados],
   )
 
-  const itemsFiltrados = useMemo(
-    () => items.filter((it) => clienteIdsPermitidos.has(it.cliente_id)),
-    [items, clienteIdsPermitidos],
-  )
-
-  // ============ 1) Aguardando aprovacao ============
-  const aguardandoAprovacao = useMemo(() => {
-    return itemsFiltrados
-      .filter((it) => it.status === 'em_aprovacao')
-      .map((it) => {
-        // Dias em em_aprovacao — usamos updated_at como proxy (data em que
-        // status mudou pra em_aprovacao, assumindo que a mudanca foi
-        // proxima da ultima atualizacao).
-        const ms = new Date(it.updated_at).getTime()
-        const dias = Math.max(0, Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24)))
-        return { it, dias }
-      })
-      .sort((a, b) => b.dias - a.dias)
-  }, [itemsFiltrados])
-
-  // ============ 2) Prontas pra publicar/enviar ============
-  const prontas = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10)
-    return itemsFiltrados
-      .filter(
-        (it) =>
-          (it.status === 'design_finalizado' || it.status === 'conclusao') &&
-          !it.publicado_em &&
-          it.prazo &&
-          it.prazo.slice(0, 10) >= todayStr,
-      )
-      .map((it) => {
-        const prazoDate = parseLocalDate(it.prazo ?? '')
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const diasAteAr = prazoDate
-          ? Math.floor((prazoDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-          : null
-        return { it, diasAteAr }
-      })
-      .sort((a, b) => (a.diasAteAr ?? 999) - (b.diasAteAr ?? 999))
-  }, [itemsFiltrados])
-
-  // ============ 3) Relacionamento ============
-  const relacionamento = useMemo(() => {
+  // ============ DERIVA PENDENCIAS ============
+  const pendencias = useMemo<Pendencia[]>(() => {
+    const out: Pendencia[] = []
     const hoje = new Date().toISOString().slice(0, 10)
-    const mesCorrente = hoje.slice(0, 7)
 
-    // Call vencida ou sem agenda
-    const callAtrasada = clientesFiltrados
-      .map((c) => {
-        const proxima = c.proxima_call_alinhamento
-        if (!proxima) return { cliente: c, tipo: 'sem_agenda' as const, dias: null as number | null }
-        if (proxima < hoje) {
-          const ms = new Date(proxima + 'T12:00:00').getTime()
-          const dias = Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24))
-          return { cliente: c, tipo: 'vencida' as const, dias }
-        }
-        return null
+    // 1) Items em aprovacao
+    for (const it of items) {
+      if (it.status !== 'em_aprovacao') continue
+      const cliente = clientesById.get(it.cliente_id)
+      if (!cliente) continue
+      const dias = diasDesde(it.updated_at) ?? 0
+      const ch = chave(cliente.id, 'aprovacao', it.id)
+      out.push({
+        chave: ch,
+        cliente,
+        tipo: 'aprovacao',
+        refId: it.id,
+        titulo: it.titulo || 'Sem título',
+        subtitulo: (it.formato ?? '').toUpperCase(),
+        contexto: `${dias}d parada em aprovação`,
+        urgencia: dias,
+        followup: followupByChave.get(ch),
       })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))
-
-    // Clientes com muitos atrasados no mes corrente (2+)
-    const atrasadosPorCliente = new Map<string, number>()
-    for (const it of itemsFiltrados) {
-      if (!it.prazo) continue
-      if (it.prazo.slice(0, 7) !== mesCorrente) continue
-      if (it.status === 'conclusao' && it.publicado_em) continue
-      if (it.prazo.slice(0, 10) < hoje && !it.publicado_em) {
-        atrasadosPorCliente.set(it.cliente_id, (atrasadosPorCliente.get(it.cliente_id) ?? 0) + 1)
-      }
     }
-    const muitosAtrasados = clientesFiltrados
-      .map((c) => ({ cliente: c, count: atrasadosPorCliente.get(c.id) ?? 0 }))
-      .filter((x) => x.count >= 2)
-      .sort((a, b) => b.count - a.count)
 
-    // Setup incompleto (algum dos 4 nao esta 'ok')
-    const setupIncompleto = clientesFiltrados
-      .map((c) => {
-        const s = setups.get(c.id)
-        if (!s) return { cliente: c, faltando: 4 } // sem setup nenhum
-        const pendentes = [
-          s.foto_status,
-          s.bio_status,
-          s.destaques_status,
-          s.contato_status,
-        ].filter((v) => v !== 'ok').length
-        return pendentes > 0 ? { cliente: c, faltando: pendentes } : null
+    // 2) Prontas pra publicar (design_finalizado + conclusao)
+    for (const it of items) {
+      const pronta =
+        (it.status === 'design_finalizado' || it.status === 'conclusao') &&
+        !it.publicado_em &&
+        it.prazo &&
+        it.prazo.slice(0, 10) >= hoje
+      if (!pronta) continue
+      const cliente = clientesById.get(it.cliente_id)
+      if (!cliente) continue
+      const dias = diasAte(it.prazo ?? '') ?? 999
+      const ch = chave(cliente.id, 'publicacao', it.id)
+      const contextoLabel =
+        dias === 0 ? 'publica hoje' : dias === 1 ? 'publica amanhã' : `publica em ${dias}d`
+      out.push({
+        chave: ch,
+        cliente,
+        tipo: 'publicacao',
+        refId: it.id,
+        titulo: it.titulo || 'Sem título',
+        subtitulo: (it.formato ?? '').toUpperCase(),
+        contexto: `${contextoLabel} · ${it.prazo ? formatDateBR(it.prazo) : ''}`,
+        urgencia: 100 - dias, // quanto menos dias, maior urgencia
+        followup: followupByChave.get(ch),
       })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => b.faltando - a.faltando)
+    }
 
-    return { callAtrasada, muitosAtrasados, setupIncompleto }
-  }, [clientesFiltrados, itemsFiltrados, setups])
+    // 3) Calls vencidas / sem agenda
+    for (const c of clientesFiltrados) {
+      const prox = c.proxima_call_alinhamento
+      const vencida = prox && prox < hoje
+      const semAgenda = !prox
+      if (!vencida && !semAgenda) continue
+      const ch = chave(c.id, 'call', null)
+      const dias = vencida ? Math.abs(diasAte(prox) ?? 0) : 0
+      out.push({
+        chave: ch,
+        cliente: c,
+        tipo: 'call',
+        refId: null,
+        titulo: vencida ? `Call venceu em ${formatDateBR(prox)}` : 'Sem call agendada',
+        contexto: vencida ? `${dias}d atrasada` : '—',
+        urgencia: vencida ? 30 + dias : 20,
+        followup: followupByChave.get(ch),
+      })
+    }
+
+    // 4) Setup incompleto
+    for (const c of clientesFiltrados) {
+      const s = setups.get(c.id)
+      const faltando = s
+        ? [s.foto_status, s.bio_status, s.destaques_status, s.contato_status].filter(
+            (v) => v !== 'ok',
+          ).length
+        : 4
+      if (faltando === 0) continue
+      const ch = chave(c.id, 'setup', null)
+      out.push({
+        chave: ch,
+        cliente: c,
+        tipo: 'setup',
+        refId: null,
+        titulo: `${faltando}/4 itens do setup pendentes`,
+        contexto: 'foto · bio · destaques · contato',
+        urgencia: faltando * 5,
+        followup: followupByChave.get(ch),
+      })
+    }
+
+    // Ordena por urgencia (maior primeiro)
+    out.sort((a, b) => b.urgencia - a.urgencia)
+    return out
+  }, [items, clientesFiltrados, clientesById, setups, followupByChave])
+
+  // ============ AGRUPA POR STATUS DE FOLLOWUP ============
+  const lanes = useMemo(() => {
+    const naoCobrado: Pendencia[] = []
+    const aguardando: Pendencia[] = []
+    const agendado: Pendencia[] = []
+    const escalado: Pendencia[] = []
+    const resolvido: Pendencia[] = []
+    for (const p of pendencias) {
+      const st = p.followup?.status ?? 'nao_cobrado'
+      if (st === 'nao_cobrado') naoCobrado.push(p)
+      else if (st === 'aguardando') aguardando.push(p)
+      else if (st === 'agendado') agendado.push(p)
+      else if (st === 'escalado') escalado.push(p)
+      else if (st === 'resolvido') resolvido.push(p)
+    }
+    return { naoCobrado, aguardando, agendado, escalado, resolvido }
+  }, [pendencias])
+
+  // ============ ACOES ============
+
+  /** Upsert do followup no banco. Se nao existe, cria; se existe, atualiza. */
+  async function upsertFollowup(
+    p: Pendencia,
+    patch: Partial<SocialFollowup>,
+  ): Promise<void> {
+    const existing = p.followup
+    if (existing) {
+      await supabase
+        .from('social_followup')
+        .update({ ...patch, autor_ultima_id: profile?.id ?? null })
+        .eq('id', existing.id)
+    } else {
+      await supabase.from('social_followup').insert({
+        cliente_id: p.cliente.id,
+        tipo: p.tipo,
+        ref_id: p.refId,
+        autor_ultima_id: profile?.id ?? null,
+        ...patch,
+      })
+    }
+    await load()
+  }
+
+  /** Registra cobranca — incrementa tentativas + timestamp + status aguardando. */
+  async function registrarCobranca(p: Pendencia, canal: string) {
+    const now = new Date().toISOString()
+    await upsertFollowup(p, {
+      status: 'aguardando',
+      ultima_cobranca_em: now,
+      tentativas: (p.followup?.tentativas ?? 0) + 1,
+      canal,
+    })
+  }
+
+  async function abrirWhatsapp(p: Pendencia) {
+    const mensagem = mensagemPadrao(p)
+    const url = whatsappUrl(p.cliente.telefone, mensagem)
+    if (url === '#') {
+      alert(
+        `Cliente ${p.cliente.nome} não tem telefone cadastrado. Adicione o telefone em Clientes primeiro.`,
+      )
+      return
+    }
+    // Abre em nova aba
+    window.open(url, '_blank', 'noopener,noreferrer')
+    // Registra cobranca
+    await registrarCobranca(p, 'whatsapp')
+  }
+
+  async function marcarCobradoManual(p: Pendencia, canal: string) {
+    await registrarCobranca(p, canal)
+  }
+
+  async function agendarRetorno(p: Pendencia) {
+    const data = prompt('Data do retorno (YYYY-MM-DD):')
+    if (!data) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      alert('Formato inválido. Use YYYY-MM-DD (ex.: 2026-08-25)')
+      return
+    }
+    await upsertFollowup(p, { status: 'agendado', proximo_followup: data })
+  }
+
+  async function escalarClienteBloqueado(p: Pendencia) {
+    if (!confirm(`Escalar "${p.cliente.nome}"? Isso sinaliza que precisa de outra abordagem (diretoria/AM).`))
+      return
+    await upsertFollowup(p, { status: 'escalado' })
+  }
+
+  async function resolverPendencia(p: Pendencia) {
+    await upsertFollowup(p, { status: 'resolvido' })
+  }
+
+  async function reabrirPendencia(p: Pendencia) {
+    await upsertFollowup(p, { status: 'nao_cobrado' })
+  }
 
   if (loading) {
     return (
       <div>
         <PageHeader
           title="Painel do Head · Social Media"
-          description="Cobrança, envio e relacionamento com o cliente"
+          description="Follow-up de cobrança e relacionamento"
         />
         <Card>
           <CardBody className="p-12 text-center text-sm text-muted">
@@ -261,7 +456,7 @@ export default function HeadSocial() {
     <div className="space-y-4">
       <PageHeader
         title="Painel do Head · Social Media"
-        description="Cobrança, envio e relacionamento com o cliente"
+        description="Follow-up de cobrança e relacionamento com o cliente"
         actions={
           <Select
             value={filtroSM}
@@ -278,332 +473,344 @@ export default function HeadSocial() {
         }
       />
 
-      {/* KPIs no topo */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <Kpi
-          icon={<Clock size={18} />}
-          label="Aguardando aprovação"
-          value={aguardandoAprovacao.length.toString()}
-          tone={aguardandoAprovacao.length > 0 ? 'warning' : 'muted'}
-        />
-        <Kpi
-          icon={<Send size={18} />}
-          label="Prontas pra publicar"
-          value={prontas.length.toString()}
-          tone={prontas.length > 0 ? 'brand' : 'muted'}
-        />
-        <Kpi
-          icon={<PhoneCall size={18} />}
-          label="Calls vencidas / sem agenda"
-          value={relacionamento.callAtrasada.length.toString()}
-          tone={relacionamento.callAtrasada.length > 0 ? 'danger' : 'muted'}
-        />
-        <Kpi
-          icon={<Users size={18} />}
-          label="Clientes acompanhados"
-          value={clientesFiltrados.length.toString()}
-          tone="muted"
-        />
+      {/* Kanban horizontal — 4 lanes */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Lane
+          titulo="Não cobrado"
+          descricao="pendências novas, ainda sem ação"
+          icone={<AlertCircle size={14} />}
+          cor="border-red-500/40 bg-red-500/5"
+          count={lanes.naoCobrado.length}
+        >
+          {lanes.naoCobrado.map((p) => (
+            <FollowupCard
+              key={p.chave}
+              p={p}
+              onWhatsapp={() => abrirWhatsapp(p)}
+              onMarcarCobrado={() => marcarCobradoManual(p, 'call')}
+              onEscalar={() => escalarClienteBloqueado(p)}
+              onResolver={() => resolverPendencia(p)}
+            />
+          ))}
+        </Lane>
+
+        <Lane
+          titulo="Aguardando"
+          descricao="cobrei, esperando cliente"
+          icone={<Clock size={14} />}
+          cor="border-amber-500/40 bg-amber-500/5"
+          count={lanes.aguardando.length}
+        >
+          {lanes.aguardando.map((p) => (
+            <FollowupCard
+              key={p.chave}
+              p={p}
+              modo="aguardando"
+              onWhatsapp={() => abrirWhatsapp(p)}
+              onMarcarCobrado={() => marcarCobradoManual(p, 'call')}
+              onAgendar={() => agendarRetorno(p)}
+              onEscalar={() => escalarClienteBloqueado(p)}
+              onResolver={() => resolverPendencia(p)}
+            />
+          ))}
+        </Lane>
+
+        <Lane
+          titulo="Agendado"
+          descricao="retorno marcado"
+          icone={<CalendarIcon size={14} />}
+          cor="border-brand-500/40 bg-brand-500/5"
+          count={lanes.agendado.length}
+        >
+          {lanes.agendado.map((p) => (
+            <FollowupCard
+              key={p.chave}
+              p={p}
+              modo="agendado"
+              onWhatsapp={() => abrirWhatsapp(p)}
+              onMarcarCobrado={() => marcarCobradoManual(p, 'call')}
+              onAgendar={() => agendarRetorno(p)}
+              onResolver={() => resolverPendencia(p)}
+            />
+          ))}
+        </Lane>
+
+        <Lane
+          titulo="Escalado"
+          descricao="bloqueado, precisa outra abordagem"
+          icone={<PhoneCall size={14} />}
+          cor="border-violet-500/40 bg-violet-500/5"
+          count={lanes.escalado.length}
+        >
+          {lanes.escalado.map((p) => (
+            <FollowupCard
+              key={p.chave}
+              p={p}
+              modo="escalado"
+              onWhatsapp={() => abrirWhatsapp(p)}
+              onReabrir={() => reabrirPendencia(p)}
+              onResolver={() => resolverPendencia(p)}
+            />
+          ))}
+        </Lane>
       </div>
 
-      {/* 1) Aguardando aprovacao */}
-      <SecaoCard
-        icon={<Clock size={16} className="text-amber-300" />}
-        titulo="Aguardando aprovação do cliente"
-        subtitulo="Items em em_aprovacao — ordenados por dias esperando"
-        count={aguardandoAprovacao.length}
-        emptyMsg="Nenhum item aguardando aprovação agora."
-      >
-        {aguardandoAprovacao.map(({ it, dias }) => (
-          <LinhaItem
-            key={it.id}
-            clienteId={it.cliente_id}
-            clienteNome={it.cliente_nome}
-            titulo={it.titulo}
-            formato={it.formato}
-            direita={
-              <Badge tone={dias >= 5 ? 'danger' : dias >= 3 ? 'warning' : 'neutral'}>
-                {dias === 0 ? 'hoje' : `${dias}d aguardando`}
+      {/* Resolvidos — accordion abaixo */}
+      {lanes.resolvido.length > 0 && (
+        <Card>
+          <button
+            onClick={() => setMostrarResolvidos((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-bg-soft/40"
+          >
+            <Check size={14} className="text-emerald-300" />
+            <span className="flex-1 text-sm font-semibold">
+              Resolvidos
+              <Badge tone="success" className="ml-2">
+                {lanes.resolvido.length}
               </Badge>
-            }
-          />
-        ))}
-      </SecaoCard>
+            </span>
+            {mostrarResolvidos ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {mostrarResolvidos && (
+            <CardBody className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {lanes.resolvido.map((p) => (
+                <FollowupCard
+                  key={p.chave}
+                  p={p}
+                  modo="resolvido"
+                  onReabrir={() => reabrirPendencia(p)}
+                />
+              ))}
+            </CardBody>
+          )}
+        </Card>
+      )}
 
-      {/* 2) Prontas pra publicar */}
-      <SecaoCard
-        icon={<Send size={16} className="text-brand-300" />}
-        titulo="Prontas pra publicar / enviar"
-        subtitulo="Arte finalizada, prazo futuro, ainda não publicada"
-        count={prontas.length}
-        emptyMsg="Nenhuma arte pronta esperando publicação."
-      >
-        {prontas.map(({ it, diasAteAr }) => (
-          <LinhaItem
-            key={it.id}
-            clienteId={it.cliente_id}
-            clienteNome={it.cliente_nome}
-            titulo={it.titulo}
-            formato={it.formato}
-            direita={
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted">
-                  <CalendarIcon size={10} className="mr-1 inline" />
-                  {it.prazo ? formatDateBR(it.prazo) : '—'}
-                </span>
-                <Badge
-                  tone={
-                    diasAteAr === null
-                      ? 'neutral'
-                      : diasAteAr <= 1
-                        ? 'danger'
-                        : diasAteAr <= 3
-                          ? 'warning'
-                          : 'brand'
-                  }
-                >
-                  {diasAteAr === null
-                    ? 'sem prazo'
-                    : diasAteAr === 0
-                      ? 'hoje'
-                      : diasAteAr === 1
-                        ? 'amanhã'
-                        : `em ${diasAteAr}d`}
-                </Badge>
-              </div>
-            }
-          />
-        ))}
-      </SecaoCard>
-
-      {/* 3) Relacionamento — 3 sub-cards */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SubSecaoCard
-          icon={<PhoneCall size={14} className="text-red-300" />}
-          titulo="Calls vencidas / sem agenda"
-          count={relacionamento.callAtrasada.length}
-          emptyMsg="Todas as calls em dia."
-        >
-          {relacionamento.callAtrasada.slice(0, 10).map(({ cliente, tipo, dias }) => (
-            <LinhaCliente
-              key={cliente.id}
-              clienteId={cliente.id}
-              clienteNome={cliente.nome}
-              direita={
-                tipo === 'sem_agenda' ? (
-                  <Badge tone="neutral" className="!text-[9px]">
-                    sem agenda
-                  </Badge>
-                ) : (
-                  <Badge tone="danger" className="!text-[9px]">
-                    {dias}d atrasada
-                  </Badge>
-                )
-              }
-            />
-          ))}
-        </SubSecaoCard>
-
-        <SubSecaoCard
-          icon={<AlertCircle size={14} className="text-amber-300" />}
-          titulo="Muitos posts atrasados no mês"
-          count={relacionamento.muitosAtrasados.length}
-          emptyMsg="Ninguém com backlog no mês."
-        >
-          {relacionamento.muitosAtrasados.slice(0, 10).map(({ cliente, count }) => (
-            <LinhaCliente
-              key={cliente.id}
-              clienteId={cliente.id}
-              clienteNome={cliente.nome}
-              direita={
-                <Badge tone="warning" className="!text-[9px]">
-                  {count} atrasados
-                </Badge>
-              }
-            />
-          ))}
-        </SubSecaoCard>
-
-        <SubSecaoCard
-          icon={<Sparkles size={14} className="text-violet-300" />}
-          titulo="Setup do perfil incompleto"
-          count={relacionamento.setupIncompleto.length}
-          emptyMsg="Todos setups completos."
-        >
-          {relacionamento.setupIncompleto.slice(0, 10).map(({ cliente, faltando }) => (
-            <LinhaCliente
-              key={cliente.id}
-              clienteId={cliente.id}
-              clienteNome={cliente.nome}
-              direita={
-                <Badge tone="neutral" className="!text-[9px]">
-                  {faltando}/4 faltam
-                </Badge>
-              }
-            />
-          ))}
-        </SubSecaoCard>
-      </div>
+      <p className="text-[10px] text-muted italic">
+        Pendências detectadas automaticamente. Ao clicar em "Cobrar", "Agendar",
+        "Escalar" ou "Resolvido", o estado fica salvo por cliente + tipo.
+      </p>
     </div>
   )
 }
 
-/* =========================================================
+/* ============================================================
    Sub-componentes
-   ========================================================= */
+   ============================================================ */
 
-function Kpi({
-  icon,
-  label,
-  value,
-  tone,
+function Lane({
+  titulo,
+  descricao,
+  icone,
+  cor,
+  count,
+  children,
 }: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  tone: 'brand' | 'warning' | 'danger' | 'muted'
+  titulo: string
+  descricao: string
+  icone: React.ReactNode
+  cor: string
+  count: number
+  children: React.ReactNode
 }) {
-  const toneClass = {
-    brand: 'border-brand-500/30 bg-brand-500/10 text-brand-200',
-    warning: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-    danger: 'border-red-500/30 bg-red-500/10 text-red-200',
-    muted: 'border-border bg-bg-soft text-zinc-300',
-  }[tone]
   return (
-    <div className={cn('rounded-xl border p-3', toneClass)}>
-      <div className="flex items-center gap-2">
-        {icon}
-        <p className="text-[10px] uppercase tracking-wider opacity-80">{label}</p>
+    <div className={cn('rounded-xl border p-2.5', cor)}>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        {icone}
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wider">{titulo}</p>
+          <p className="text-[10px] text-muted">{descricao}</p>
+        </div>
+        <Badge tone={count > 0 ? 'brand' : 'neutral'}>{count}</Badge>
       </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
+      <div className="space-y-2">{children}</div>
     </div>
   )
 }
 
-function SecaoCard({
-  icon,
-  titulo,
-  subtitulo,
-  count,
-  emptyMsg,
-  children,
+function FollowupCard({
+  p,
+  modo = 'nao_cobrado',
+  onWhatsapp,
+  onMarcarCobrado,
+  onAgendar,
+  onEscalar,
+  onResolver,
+  onReabrir,
 }: {
-  icon: React.ReactNode
-  titulo: string
-  subtitulo: string
-  count: number
-  emptyMsg: string
-  children: React.ReactNode
+  p: Pendencia
+  modo?: 'nao_cobrado' | 'aguardando' | 'agendado' | 'escalado' | 'resolvido'
+  onWhatsapp?: () => void
+  onMarcarCobrado?: () => void
+  onAgendar?: () => void
+  onEscalar?: () => void
+  onResolver?: () => void
+  onReabrir?: () => void
 }) {
+  const f = p.followup
+  const cobradoDias = diasDesde(f?.ultima_cobranca_em)
+  const proxDias = f?.proximo_followup ? diasAte(f.proximo_followup) : null
+
   return (
-    <Card>
-      <div className="border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h3 className="text-sm font-semibold text-zinc-100">{titulo}</h3>
-          <Badge tone={count > 0 ? 'brand' : 'neutral'}>{count}</Badge>
-        </div>
-        <p className="mt-0.5 text-[11px] text-muted">{subtitulo}</p>
+    <div className="rounded-lg border border-border bg-bg-card p-2.5 shadow-sm">
+      {/* Cabecalho: tipo + cliente */}
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <Badge tone={TIPO_TONE[p.tipo]} className="!text-[9px]">
+          {TIPO_LABEL[p.tipo]}
+        </Badge>
+        <Link
+          to={`/social/clientes/${p.cliente.id}`}
+          className="min-w-0 flex-1 truncate text-[11px] font-medium text-brand-300 hover:underline"
+        >
+          {p.cliente.nome}
+        </Link>
       </div>
-      <CardBody className="p-0">
-        {count === 0 ? (
-          <p className="p-6 text-center text-sm text-muted">{emptyMsg}</p>
-        ) : (
-          <ul className="divide-y divide-border/60">{children}</ul>
-        )}
-      </CardBody>
-    </Card>
-  )
-}
 
-function SubSecaoCard({
-  icon,
-  titulo,
-  count,
-  emptyMsg,
-  children,
-}: {
-  icon: React.ReactNode
-  titulo: string
-  count: number
-  emptyMsg: string
-  children: React.ReactNode
-}) {
-  return (
-    <Card>
-      <div className="border-b border-border px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h4 className="flex-1 text-xs font-semibold text-zinc-100">{titulo}</h4>
-          <Badge tone={count > 0 ? 'brand' : 'neutral'} className="!text-[9px]">
-            {count}
-          </Badge>
+      {/* Titulo + subtitulo */}
+      <p className="line-clamp-2 text-xs text-zinc-100">{p.titulo}</p>
+      {p.subtitulo && (
+        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">
+          {p.subtitulo}
+        </p>
+      )}
+
+      {/* Contexto */}
+      {p.contexto && (
+        <p className="mt-1 text-[10px] text-muted">· {p.contexto}</p>
+      )}
+
+      {/* Estado do followup */}
+      {f && (
+        <div className="mt-1.5 flex flex-wrap gap-1 text-[9px] text-muted">
+          {f.tentativas > 0 && (
+            <span className="rounded bg-bg-elev px-1.5 py-0.5">
+              {f.tentativas}× cobrado
+            </span>
+          )}
+          {cobradoDias !== null && (
+            <span className="rounded bg-bg-elev px-1.5 py-0.5">
+              {cobradoDias === 0 ? 'cobrei hoje' : `${cobradoDias}d desde última`}
+            </span>
+          )}
+          {modo === 'agendado' && f.proximo_followup && (
+            <span
+              className={cn(
+                'rounded px-1.5 py-0.5',
+                proxDias !== null && proxDias < 0
+                  ? 'bg-red-500/20 text-red-200'
+                  : 'bg-brand-500/20 text-brand-200',
+              )}
+            >
+              retorno {formatDateBR(f.proximo_followup)}
+              {proxDias !== null &&
+                (proxDias < 0
+                  ? ` · ${Math.abs(proxDias)}d atrasado`
+                  : proxDias === 0
+                    ? ' · hoje'
+                    : ` · em ${proxDias}d`)}
+            </span>
+          )}
         </div>
+      )}
+
+      {/* Acoes */}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {modo !== 'resolvido' && (
+          <>
+            <button
+              onClick={onWhatsapp}
+              disabled={!p.cliente.telefone}
+              className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              title={
+                p.cliente.telefone
+                  ? 'Abre WhatsApp e registra a tentativa'
+                  : 'Cliente sem telefone cadastrado'
+              }
+            >
+              <MessageCircle size={10} />
+              WhatsApp
+            </button>
+            <button
+              onClick={onMarcarCobrado}
+              className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-2 py-1 text-[10px] text-zinc-200 hover:border-brand-500/40"
+              title="Marcar como cobrado (outros canais)"
+            >
+              <Check size={10} />
+              Cobrei
+            </button>
+            {(modo === 'nao_cobrado' || modo === 'aguardando') && onAgendar && (
+              <button
+                onClick={onAgendar}
+                className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-2 py-1 text-[10px] text-zinc-200 hover:border-brand-500/40"
+                title="Agendar retorno pra data específica"
+              >
+                <CalendarIcon size={10} />
+                Agendar
+              </button>
+            )}
+            {modo !== 'escalado' && onEscalar && (
+              <button
+                onClick={onEscalar}
+                className="inline-flex items-center gap-1 rounded border border-violet-500/40 bg-violet-500/10 px-2 py-1 text-[10px] text-violet-200 hover:bg-violet-500/20"
+                title="Escalar — cliente sumiu, precisa outra abordagem"
+              >
+                <ArrowRight size={10} />
+                Escalar
+              </button>
+            )}
+            <button
+              onClick={onResolver}
+              className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-2 py-1 text-[10px] text-zinc-200 hover:border-emerald-500/40 hover:text-emerald-200"
+              title="Pendência resolvida (cliente aprovou / publicamos / call feita)"
+            >
+              <Check size={10} />
+              Resolvido
+            </button>
+          </>
+        )}
+        {modo === 'resolvido' && (
+          <button
+            onClick={onReabrir}
+            className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-2 py-1 text-[10px] text-zinc-200 hover:border-brand-500/40"
+            title="Reabrir esse followup"
+          >
+            <RotateCw size={10} />
+            Reabrir
+          </button>
+        )}
+        {modo === 'escalado' && onReabrir && (
+          <button
+            onClick={onReabrir}
+            className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-2 py-1 text-[10px] text-zinc-200 hover:border-brand-500/40"
+            title="Voltar pra fila de cobrança normal"
+          >
+            <RotateCw size={10} />
+            Voltar
+          </button>
+        )}
       </div>
-      <CardBody className="p-0">
-        {count === 0 ? (
-          <p className="p-4 text-center text-[11px] text-muted">{emptyMsg}</p>
-        ) : (
-          <ul className="divide-y divide-border/60">{children}</ul>
-        )}
-      </CardBody>
-    </Card>
+    </div>
   )
 }
 
-function LinhaItem({
-  clienteId,
-  clienteNome,
-  titulo,
-  formato,
-  direita,
-}: {
-  clienteId: string
-  clienteNome: string
-  titulo: string
-  formato: string
-  direita: React.ReactNode
-}) {
-  return (
-    <li>
-      <Link
-        to={`/social/clientes/${clienteId}`}
-        className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-bg-soft/50"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-zinc-100">{titulo || 'Sem título'}</p>
-          <p className="mt-0.5 text-[11px] text-muted">
-            {clienteNome} · <span className="uppercase">{formato}</span>
-          </p>
-        </div>
-        {direita}
-        <ChevronRight size={13} className="shrink-0 text-muted" />
-      </Link>
-    </li>
-  )
+/** Gera mensagem base pro WhatsApp de acordo com o tipo. */
+function mensagemPadrao(p: Pendencia): string {
+  const nome = p.cliente.nome
+  switch (p.tipo) {
+    case 'aprovacao':
+      return `Oi ${nome}! Passei aqui pra lembrar da arte "${p.titulo}" que tá aguardando sua aprovação. Consegue dar uma olhada?`
+    case 'publicacao':
+      return `Oi ${nome}! O post "${p.titulo}" já está pronto pra ir ao ar. Confirma pra publicarmos?`
+    case 'call':
+      return `Oi ${nome}! Podemos marcar nossa call de alinhamento? Qual dia da semana funciona melhor?`
+    case 'setup':
+      return `Oi ${nome}! Falta pouco pra finalizar o setup do seu perfil. Consegue enviar as pendências pra gente concluir?`
+    default:
+      return `Oi ${nome}! Podemos alinhar rapidinho por aqui?`
+  }
 }
 
-function LinhaCliente({
-  clienteId,
-  clienteNome,
-  direita,
-}: {
-  clienteId: string
-  clienteNome: string
-  direita: React.ReactNode
-}) {
-  return (
-    <li>
-      <Link
-        to={`/social/clientes/${clienteId}`}
-        className="flex items-center gap-2 px-3 py-2 transition-colors hover:bg-bg-soft/50"
-      >
-        <span className="min-w-0 flex-1 truncate text-xs text-zinc-100">{clienteNome}</span>
-        {direita}
-      </Link>
-    </li>
-  )
-}
-
-// Re-export pra evitar `Activity` nao usado no lint (usado no icon do menu)
-void Activity
+// Suprime warnings de import nao usado — Sparkles/Send/X ficam pra iterar depois
+void Sparkles
+void Send
+void X
