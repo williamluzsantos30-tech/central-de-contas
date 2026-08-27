@@ -489,6 +489,10 @@ export interface ItemSocialMedia {
   publicado_url: string | null
   publicado_em: string | null
   publicado_por: string | null
+  // Marcação de agendamento (migration 068) — post foi programado no
+  // scheduler mas ainda não foi ao ar
+  programado_em: string | null
+  programado_por: string | null
   // Reaproveitamento pra tráfego (KPI #4)
   reaproveitado_para_ad: boolean
   reaproveitado_url: string | null

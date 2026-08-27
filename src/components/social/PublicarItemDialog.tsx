@@ -6,6 +6,7 @@ import {
   Megaphone,
   Pencil,
   Send,
+  Clock,
   X,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -278,39 +279,259 @@ function PublicarDialog({
 }
 
 /**
+ * Botão "Marcar como programado" — sinaliza que o post foi agendado
+ * no scheduler (Meta Business Suite / Buffer / etc). Diferente de
+ * publicado — programado = agendou, publicado = foi ao ar.
+ *
+ * Fluxo tipico: arte pronta (conclusao) -> programado -> publicado.
+ * Um post pode pular programado (publicar manualmente na data), mas
+ * quando o time agenda antecipado essa metrica ajuda a saber a
+ * consistencia da operacao.
+ *
+ * Nao mexe em status — so seta programado_em/programado_por.
+ */
+export function ProgramarItemBotao({ item, onChanged, compact }: Props) {
+  const [open, setOpen] = useState(false)
+  const ehProgramado = !!item.programado_em
+  const ehPublicado = !!item.publicado_em
+
+  // Se ja publicou, nao faz sentido mostrar botao de programar
+  if (ehPublicado) return null
+
+  if (ehProgramado) {
+    return (
+      <>
+        <button
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/15"
+          title="Editar agendamento"
+        >
+          <Clock size={11} />
+          Programado
+          <Pencil size={9} className="opacity-60" />
+        </button>
+        {open && (
+          <ProgramarDialog item={item} onClose={() => setOpen(false)} onChanged={onChanged} />
+        )}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setOpen(true)}
+        className={
+          compact
+            ? '!px-2 !py-1 !text-[11px] border-amber-500/40 !text-amber-200 hover:bg-amber-500/10'
+            : 'border-amber-500/40 !text-amber-200 hover:bg-amber-500/10'
+        }
+      >
+        <Clock size={11} />
+        Marcar como programado
+      </Button>
+      {open && (
+        <ProgramarDialog item={item} onClose={() => setOpen(false)} onChanged={onChanged} />
+      )}
+    </>
+  )
+}
+
+function ProgramarDialog({
+  item,
+  onClose,
+  onChanged,
+}: {
+  item: ItemSocialMedia
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const { profile } = useAuth()
+  // Data/hora do agendamento — default: prazo do item (dia da postagem)
+  const defaultDate = (() => {
+    if (item.programado_em) return new Date(item.programado_em).toISOString().slice(0, 16)
+    if (item.prazo) {
+      // Se tem prazo (data de postagem), usa 09:00 daquele dia como default
+      return `${item.prazo.slice(0, 10)}T09:00`
+    }
+    return new Date().toISOString().slice(0, 16)
+  })()
+  const [data, setData] = useState<string>(defaultDate)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (item.programado_em) {
+      setData(new Date(item.programado_em).toISOString().slice(0, 16))
+    }
+  }, [item])
+
+  const ehProgramado = !!item.programado_em
+
+  async function programar() {
+    setSaving(true)
+    await supabase
+      .from('producoes_social_media_items')
+      .update({
+        programado_em: new Date(data).toISOString(),
+        programado_por: profile?.id ?? null,
+      })
+      .eq('id', item.id)
+    setSaving(false)
+    onClose()
+    onChanged()
+  }
+
+  async function desmarcar() {
+    if (!confirm('Desmarcar o agendamento? A data será apagada.')) return
+    setSaving(true)
+    await supabase
+      .from('producoes_social_media_items')
+      .update({ programado_em: null, programado_por: null })
+      .eq('id', item.id)
+    setSaving(false)
+    onClose()
+    onChanged()
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={ehProgramado ? 'Editar agendamento' : 'Marcar como programado'}
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          {ehProgramado ? (
+            <button
+              onClick={desmarcar}
+              disabled={saving}
+              className="text-xs text-red-300 hover:underline disabled:opacity-50"
+            >
+              Desmarcar agendamento
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={programar} disabled={saving}>
+              <Clock size={14} />
+              {saving ? 'Salvando...' : ehProgramado ? 'Salvar' : 'Confirmar agendamento'}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-border bg-bg-soft p-3">
+          <p className="text-sm font-medium text-zinc-100">{item.titulo}</p>
+          <div className="mt-2 flex items-center gap-2 text-[10px]">
+            <Badge tone="neutral" className="!text-[9px]">
+              {item.formato}
+            </Badge>
+            {item.prazo && (
+              <span className="text-muted">
+                Prazo:{' '}
+                {new Date(item.prazo + 'T12:00:00').toLocaleDateString('pt-BR', {
+                  weekday: 'short',
+                  day: '2-digit',
+                  month: '2-digit',
+                })}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted">
+            <Clock size={11} className="text-amber-300" />
+            Data e hora do agendamento
+          </label>
+          <Input
+            type="datetime-local"
+            value={data}
+            onChange={(e) => setData(e.target.value)}
+          />
+          <p className="mt-1 text-[10px] text-muted">
+            Quando o post foi programado pra ir ao ar no scheduler (Meta Business Suite,
+            Buffer, etc). Depois que publicar de verdade, use "Marcar como publicado".
+          </p>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
  * Versão "info compacta" pra mostrar dados de uma publicação que JÁ
  * aconteceu — usado em listas / detalhes do dia. Não é botão.
  */
 export function PublicacaoInfo({ item }: { item: ItemSocialMedia }) {
-  if (!item.publicado_em) return null
-  const data = new Date(item.publicado_em)
-  const noPrazo =
-    item.prazo &&
-    data.toISOString().slice(0, 10) <= item.prazo.slice(0, 10)
+  // Renderiza 2 bandas empilhadas se aplicavel:
+  //   1) Programado — quando ha programado_em (independente de publicado)
+  //   2) Publicado — quando ha publicado_em
+  // Ambos podem coexistir: agendou e depois publicou.
+  const programadoDate = item.programado_em ? new Date(item.programado_em) : null
+  const publicadoDate = item.publicado_em ? new Date(item.publicado_em) : null
+  if (!programadoDate && !publicadoDate) return null
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px]">
-      <CheckCircle2 size={12} className="text-emerald-300" />
-      <span className="text-emerald-200 font-medium">Publicado</span>
-      <span className="text-emerald-200/80">
-        em {data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às{' '}
-        {data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-      </span>
-      {noPrazo !== null && (
-        <Badge tone={noPrazo ? 'success' : 'warning'} className="!text-[9px]">
-          {noPrazo ? 'no prazo' : 'fora do prazo'}
-        </Badge>
+    <div className="mt-2 space-y-1.5">
+      {programadoDate && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px]">
+          <Clock size={12} className="text-amber-300" />
+          <span className="text-amber-200 font-medium">Programado</span>
+          <span className="text-amber-200/80">
+            pra{' '}
+            {programadoDate.toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+            })}{' '}
+            às{' '}
+            {programadoDate.toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
       )}
-      {item.publicado_url && (
-        <a
-          href={item.publicado_url}
-          target="_blank"
-          rel="noreferrer"
-          className="ml-auto inline-flex items-center gap-1 text-emerald-300 hover:underline"
-        >
-          ver no Instagram
-          <ExternalLink size={10} />
-        </a>
+      {publicadoDate && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px]">
+          <CheckCircle2 size={12} className="text-emerald-300" />
+          <span className="text-emerald-200 font-medium">Publicado</span>
+          <span className="text-emerald-200/80">
+            em {publicadoDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às{' '}
+            {publicadoDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {item.prazo && (
+            <Badge
+              tone={
+                publicadoDate.toISOString().slice(0, 10) <= item.prazo.slice(0, 10)
+                  ? 'success'
+                  : 'warning'
+              }
+              className="!text-[9px]"
+            >
+              {publicadoDate.toISOString().slice(0, 10) <= item.prazo.slice(0, 10)
+                ? 'no prazo'
+                : 'fora do prazo'}
+            </Badge>
+          )}
+          {item.publicado_url && (
+            <a
+              href={item.publicado_url}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto inline-flex items-center gap-1 text-emerald-300 hover:underline"
+            >
+              ver no Instagram
+              <ExternalLink size={10} />
+            </a>
+          )}
+        </div>
       )}
     </div>
   )

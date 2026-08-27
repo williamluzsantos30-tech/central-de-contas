@@ -20,7 +20,7 @@ import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
-import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
+import { PublicarItemBotao, ProgramarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
 import type {
   Cliente,
   FormatoSocialMedia,
@@ -542,7 +542,10 @@ function ItemDoDia({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium text-zinc-100 text-sm leading-snug">{item.titulo}</p>
-            <PublicarItemBotao item={item} onChanged={onChanged} compact />
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <ProgramarItemBotao item={item} onChanged={onChanged} compact />
+              <PublicarItemBotao item={item} onChanged={onChanged} compact />
+            </div>
           </div>
           {item.ideia_conteudo && (
             <p className="mt-1 text-xs text-muted leading-relaxed">{item.ideia_conteudo}</p>
