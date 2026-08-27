@@ -597,6 +597,7 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
   const [headline, setHeadline] = useState(item.titulo)
   const [ideia, setIdeia] = useState(item.ideia_conteudo ?? '')
   const [copy, setCopy] = useState(item.copy_texto ?? '')
+  const [legenda, setLegenda] = useState(item.legenda ?? '')
   const [prazo, setPrazo] = useState(item.prazo?.slice(0, 10) ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -604,6 +605,7 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
     setHeadline(item.titulo)
     setIdeia(item.ideia_conteudo ?? '')
     setCopy(item.copy_texto ?? '')
+    setLegenda(item.legenda ?? '')
     setPrazo(item.prazo?.slice(0, 10) ?? '')
   }, [item])
 
@@ -615,6 +617,7 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
         titulo: headline.trim() || 'Sem título',
         ideia_conteudo: ideia.trim() || null,
         copy_texto: copy.trim() || null,
+        legenda: legenda.trim() || null,
         prazo: prazo || null,
       })
       .eq('id', item.id)
@@ -659,16 +662,34 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
         </div>
         <div>
           <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted">
-            Copy do post — texto slide a slide / legenda
+            Copy do post — texto dos slides / arte
           </label>
           <Textarea
             value={copy}
             onChange={(e) => setCopy(e.target.value)}
-            placeholder={'Slide 1:\n...\n\nSlide 2:\n...\n\nLegenda final:\n...'}
+            placeholder={'Slide 1:\n...\n\nSlide 2:\n...\n\nSlide 3:\n...'}
             className="min-h-[120px] text-sm font-mono"
           />
           <p className="mt-1 text-[10px] text-muted">
+            Texto que vai <b>DENTRO</b> da arte (slides do carrossel, script do reel).
             Aparece em "Texto da copy" na esteira de produção.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] uppercase tracking-wider text-sky-300/80">
+            Legenda do post (caption do Instagram)
+          </label>
+          <Textarea
+            value={legenda}
+            onChange={(e) => setLegenda(e.target.value)}
+            placeholder={
+              'Ex.: Você sabia que 3 em cada 5 pacientes...\n\nComenta aqui se já ouviu esse diagnóstico ✋\n\n#dorlombar #ortopedia'
+            }
+            className="min-h-[100px] text-sm border-sky-500/30 focus:border-sky-500/60"
+          />
+          <p className="mt-1 text-[10px] text-muted">
+            Texto que vai <b>FORA</b> da arte (descrição do post no Instagram).
+            Aparece no link público do calendário quando o item estiver em aprovação/concluído.
           </p>
         </div>
         <div>
@@ -723,10 +744,19 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
             {item.copy_texto && (
               <span
                 className="inline-flex items-center gap-1 text-pink-300"
-                title="Copy do post preenchida"
+                title="Copy do post (texto dos slides) preenchida"
               >
                 <Sparkles size={10} />
                 copy
+              </span>
+            )}
+            {item.legenda && (
+              <span
+                className="inline-flex items-center gap-1 text-sky-300"
+                title="Legenda (caption do Instagram) preenchida"
+              >
+                <Sparkles size={10} />
+                legenda
               </span>
             )}
             <span className="capitalize">· {item.status.replace(/_/g, ' ')}</span>
