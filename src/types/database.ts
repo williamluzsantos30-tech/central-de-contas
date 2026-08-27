@@ -472,6 +472,9 @@ export interface ItemSocialMedia {
   prazo_producao: string | null
   copy_texto: string | null
   copy_arquivo_url: string | null
+  /** Caption do post no Instagram (texto que aparece FORA da arte,
+   *  como descrição da publicação). Migration 067. */
+  legenda: string | null
   artes_prontas: string[]
   /**
    * Referências por arte (Drive, YouTube, Vimeo, links). Mesma estrutura

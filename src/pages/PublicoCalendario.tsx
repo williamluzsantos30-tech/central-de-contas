@@ -30,6 +30,9 @@ interface PostPublico {
   formato: string
   titulo: string
   ideia_conteudo: string | null
+  /** Caption do post no Instagram (texto abaixo da arte). So vem
+   *  preenchida quando o item esta em em_aprovacao ou conclusao. */
+  legenda: string | null
   status: string
   prazo: string
   publicado_em: string | null
@@ -475,6 +478,20 @@ function DiaModal({
                   <p className="mt-1 text-xs text-muted whitespace-pre-wrap">
                     {p.ideia_conteudo}
                   </p>
+                )}
+
+                {/* Legenda do post — a caption que vai abaixo da arte no
+                    Instagram. Backend so expoe quando status = em_aprovacao
+                    ou conclusao (regra na RPC), pra nao vazar copy nao pronta. */}
+                {p.legenda && (
+                  <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/5 p-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">
+                      Legenda do post
+                    </p>
+                    <p className="text-xs text-zinc-100 whitespace-pre-wrap leading-relaxed">
+                      {p.legenda}
+                    </p>
+                  </div>
                 )}
 
                 {/* Galeria de artes — só aparece quando concluído ou publicado

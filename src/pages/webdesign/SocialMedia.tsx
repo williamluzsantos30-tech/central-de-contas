@@ -16,6 +16,7 @@ import {
   FolderOpen,
   Pencil,
   Clock,
+  MessageSquare,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -1577,6 +1578,7 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
     () => ({
       copy_texto: item.copy_texto ?? '',
       copy_arquivo_url: stripBlobUrl(item.copy_arquivo_url),
+      legenda: item.legenda ?? '',
       artes_prontas: stripBlobUrls(item.artes_prontas),
       referencias: (item.referencias ?? []) as ItemSocialMedia['referencias'],
       observacoes: item.observacoes ?? '',
@@ -1599,6 +1601,7 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
     if (form.copy_texto !== base.copy_texto) payload.copy_texto = form.copy_texto || null
     if (form.copy_arquivo_url !== base.copy_arquivo_url)
       payload.copy_arquivo_url = form.copy_arquivo_url || null
+    if (form.legenda !== base.legenda) payload.legenda = form.legenda || null
     if (JSON.stringify(form.artes_prontas) !== JSON.stringify(base.artes_prontas))
       payload.artes_prontas = form.artes_prontas
     if (JSON.stringify(form.referencias) !== JSON.stringify(base.referencias))
@@ -1744,6 +1747,25 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
             </div>
           </Field>
         </div>
+      </div>
+
+      {/* Legenda do post — caption que aparece ABAIXO da arte no Instagram.
+          Diferente de copy_texto (texto dentro dos slides). Fica exposto no
+          link publico do calendario a partir do status em_aprovacao. */}
+      <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <MessageSquare size={14} className="text-sky-300" />
+          <h4 className="text-sm font-semibold text-sky-200">Legenda do post</h4>
+          <span className="text-[11px] text-muted">
+            — caption que aparece abaixo da arte no Instagram (visível pro cliente no link do calendário quando estiver em aprovação/concluído)
+          </span>
+        </div>
+        <Textarea
+          value={form.legenda}
+          onChange={(e) => setForm({ ...form, legenda: e.target.value })}
+          placeholder="Ex.: Você sabia que 3 em cada 5 pacientes com dor lombar não têm hérnia de disco?&#10;&#10;Comenta aqui se já ouviu esse diagnóstico ✋&#10;&#10;#dorlombar #ortopedia"
+          className="min-h-[140px] text-[13px] leading-relaxed"
+        />
       </div>
 
       <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
