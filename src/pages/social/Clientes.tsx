@@ -20,7 +20,6 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
@@ -95,9 +94,6 @@ export default function SocialClientes() {
   const isAdmin = profile?.role === 'admin'
   const podeVerArquivados =
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
-  // Qualquer usuario aprovado edita a call de alinhamento (migration 057).
-  // Quem faz a call sabe melhor quando ela foi/quando remarcar.
-  const podeEditarCall = !!profile
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const [orfaos, setOrfaos] = useState<Cliente[]>([])
@@ -473,7 +469,6 @@ export default function SocialClientes() {
                   <th className="px-3 py-2.5">Publicações do mês</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
-                  <th className="px-3 py-2.5">Call alinhamento</th>
                   <th className="px-3 py-2.5">Apresentar próximo plano</th>
                   <th className="px-3 py-2.5">Última atualização</th>
                   <th className="px-3 py-2.5 text-right">&nbsp;</th>
@@ -482,13 +477,13 @@ export default function SocialClientes() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Carregando...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
                       Nenhum cliente encontrado.
                     </td>
                   </tr>
@@ -547,18 +542,6 @@ export default function SocialClientes() {
                           ) : (
                             <span className="text-muted text-xs">—</span>
                           )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <CallAlinhamentoCell
-                            clienteId={c.id}
-                            clienteNome={c.nome}
-                            proxima={c.proxima_call_social}
-                            ultima={c.ultima_call_social}
-                            gcalEventId={c.gcal_event_id_social}
-                            podeEditar={podeEditarCall}
-                            onChanged={load}
-                            tipo="social"
-                          />
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           <ApresentarProximoCell data={stat?.apresentarProximoPlano ?? null} />
