@@ -56,14 +56,15 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
     : 0
 
   // "Apresentar proximo plano" — data alvo pra mostrar o plano do proximo
-  // mes pro cliente. Regra do time: PRIMEIRO DIA DE POSTAGEM da ultima
-  // semana (Mon-Sun) do mes.
+  // mes pro cliente. Regra do time: alvo precisa cair ANTES da semana da
+  // ultima postagem (nao na mesma semana), pra dar tempo do cliente
+  // aprovar antes da ultima onda comecar.
   //   1) Pega a ultima data de postagem
   //   2) Descobre a semana Mon-Sun em que ela cai
-  //   3) Pega a primeira postagem >= inicio dessa semana
-  // Isso da a data em que a ultima onda de posts do mes comeca — o
-  // proximo plano precisa estar sendo apresentado nesse dia pra dar tempo
-  // de: cliente aprovar + designer produzir o primeiro lote sem gap.
+  //   3) Vai pra semana ANTERIOR (Mon-Sun -7 dias)
+  //   4) Pega a primeira postagem que cai nessa semana anterior
+  //   5) Fallback: se semana anterior nao tem posts, usa a segunda-feira
+  //      dela (data especifica, sempre "antes" da ultima semana)
   const apresentarProximoPlano: string | null = (() => {
     const postDates = itemsDoMes
       .map((i) => i.prazo?.slice(0, 10))
@@ -77,9 +78,17 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
     const daysBackToMon = dow === 0 ? 6 : dow - 1
     const weekStart = new Date(lastPostDate)
     weekStart.setDate(weekStart.getDate() - daysBackToMon)
+    // Segunda-feira da semana ANTERIOR
+    const prevWeekStart = new Date(weekStart)
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7)
+    const prevWeekStartISO = prevWeekStart.toISOString().slice(0, 10)
     const weekStartISO = weekStart.toISOString().slice(0, 10)
-    // Primeira postagem >= inicio dessa semana
-    return postDates.find((d) => d >= weekStartISO) ?? null
+    // Primeira postagem que cai na semana anterior [prev, week)
+    const firstOfPrevWeek = postDates.find(
+      (d) => d >= prevWeekStartISO && d < weekStartISO,
+    )
+    // Fallback: sem posts na semana anterior — usa a segunda-feira dela
+    return firstOfPrevWeek ?? prevWeekStartISO
   })()
   const diasAteApresentar = apresentarProximoPlano
     ? Math.floor(
