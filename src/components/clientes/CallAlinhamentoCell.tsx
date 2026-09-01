@@ -25,6 +25,11 @@ interface Props {
   gcalEventId: string | null
   podeEditar: boolean
   onChanged: () => void
+  /** 'trafego' (default) usa colunas proxima_call_alinhamento etc + RPC
+   *  marcar_call_alinhamento_realizada. 'social' usa proxima_call_social
+   *  etc + RPC marcar_call_social_realizada. Cada time tem sua propria
+   *  reuniao mensal com o cliente. */
+  tipo?: 'trafego' | 'social'
 }
 
 function parseDate(iso: string | null): Date | null {
@@ -95,7 +100,19 @@ export function CallAlinhamentoCell({
   gcalEventId,
   podeEditar,
   onChanged,
+  tipo = 'trafego',
 }: Props) {
+  // Config por tipo — qual coluna atualizar e qual RPC chamar
+  const cfg =
+    tipo === 'social'
+      ? {
+          colProxima: 'proxima_call_social' as const,
+          rpc: 'marcar_call_social_realizada' as const,
+        }
+      : {
+          colProxima: 'proxima_call_alinhamento' as const,
+          rpc: 'marcar_call_alinhamento_realizada' as const,
+        }
   const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [novaData, setNovaData] = useState(proxima ?? '')
@@ -162,7 +179,7 @@ export function CallAlinhamentoCell({
     const valor = novaData ? proximoDiaUtil(novaData) : null
     const { error } = await supabase
       .from('clientes')
-      .update({ proxima_call_alinhamento: valor })
+      .update({ [cfg.colProxima]: valor })
       .eq('id', clienteId)
     if (error) {
       setSaving(false)
@@ -177,10 +194,9 @@ export function CallAlinhamentoCell({
 
   async function marcarRealizada() {
     setSaving(true)
-    const { data, error } = await supabase.rpc(
-      'marcar_call_alinhamento_realizada',
-      { p_cliente_id: clienteId },
-    )
+    const { data, error } = await supabase.rpc(cfg.rpc, {
+      p_cliente_id: clienteId,
+    })
     if (error) {
       setSaving(false)
       alert(`Erro ao marcar realizada: ${error.message}`)

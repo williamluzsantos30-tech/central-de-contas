@@ -184,8 +184,8 @@ export interface Cliente {
   /** Timestamp de quando o cliente entrou no status_saude_geral atual. Reseta no trigger. */
   status_geral_desde: string
   /**
-   * Call de alinhamento mensal (migration 045). Cobre Tráfego + Social Media
-   * (1 call por cliente, não 1 por módulo).
+   * Call de alinhamento mensal do TIME TRÁFEGO (migration 045). A partir
+   * da migration 069, social media tem call independente (proxima_call_social).
    */
   proxima_call_alinhamento: string | null
   ultima_call_alinhamento: string | null
@@ -195,6 +195,13 @@ export interface Cliente {
    * quando a data muda, em vez de criar duplicatas.
    */
   gcal_event_id: string | null
+  /**
+   * Call de alinhamento mensal do TIME SOCIAL MEDIA (migration 069).
+   * Separada da call de tráfego — cada time agenda sua propria reunião.
+   */
+  proxima_call_social: string | null
+  ultima_call_social: string | null
+  gcal_event_id_social: string | null
   verba_mensal: number | null
   verba_google: number | null
   verba_meta: number | null

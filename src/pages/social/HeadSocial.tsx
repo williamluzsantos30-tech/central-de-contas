@@ -94,8 +94,8 @@ interface ClienteLite {
    *  do card. Se null, botao fica desabilitado. */
   link_grupo: string | null
   social_media_id: string | null
-  proxima_call_alinhamento: string | null
-  ultima_call_alinhamento: string | null
+  proxima_call_social: string | null
+  ultima_call_social: string | null
 }
 
 interface Pendencia {
@@ -225,7 +225,7 @@ export default function HeadSocial() {
       supabase
         .from('clientes')
         .select(
-          'id, nome, status, link_grupo, social_media_id, proxima_call_alinhamento, ultima_call_alinhamento',
+          'id, nome, status, link_grupo, social_media_id, proxima_call_social, ultima_call_social',
         )
         .contains('modulos', ['social_media'])
         .in('status', ['ativo', 'atencao'])
@@ -311,7 +311,7 @@ export default function HeadSocial() {
     }
     // call
     for (const c of clientesArr) {
-      const prox = c.proxima_call_alinhamento
+      const prox = c.proxima_call_social
       if (!prox || prox < hoje) {
         chavesAtivas.add(chave(c.id, 'call', null))
       }
@@ -417,7 +417,7 @@ export default function HeadSocial() {
 
     // 3) Calls vencidas / sem agenda
     for (const c of clientesFiltrados) {
-      const prox = c.proxima_call_alinhamento
+      const prox = c.proxima_call_social
       const vencida = prox && prox < hoje
       const semAgenda = !prox
       if (!vencida && !semAgenda) continue
