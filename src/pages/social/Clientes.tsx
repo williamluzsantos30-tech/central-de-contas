@@ -52,6 +52,9 @@ interface ClienteSocialStats {
   emProducaoFuturoMes: number
   /** Arte pronta, aguardando publicação (design_finalizado/em_aprovacao/conclusao), prazo futuro */
   prontasFuturoMes: number
+  /** Data alvo pra apresentar o próximo plano — primeiro post da semana
+   *  ANTERIOR à semana da última postagem (mesma regra do KPI do header). */
+  apresentarProximoPlano: string | null
   /**
    * Dias do mês com posts. Ordenados por dia.
    * state:
@@ -162,6 +165,8 @@ export default function SocialClientes() {
     const monthEnd = endOfMonth(today)
     const planById = new Map(planejamentos.map((p) => [p.id, p]))
     const map = new Map<string, ClienteSocialStats>()
+    // Datas de postagem por cliente (ISO), pra calcular apresentarProximoPlano depois
+    const postDatesPorCliente = new Map<string, string[]>()
     for (const c of clientes)
       map.set(c.id, {
         cliente: c,
@@ -170,6 +175,7 @@ export default function SocialClientes() {
         atrasadasMes: 0,
         emProducaoFuturoMes: 0,
         prontasFuturoMes: 0,
+        apresentarProximoPlano: null,
         diasDoMes: [],
       })
 
@@ -181,6 +187,11 @@ export default function SocialClientes() {
       if (!it.prazo) continue
       const d = parseLocalDate(it.prazo)
       if (!d || d < monthStart || d > monthEnd) continue
+
+      // Guarda o ISO pra calcular apresentarProximoPlano depois
+      const arr = postDatesPorCliente.get(plan.cliente_id) ?? []
+      arr.push(it.prazo.slice(0, 10))
+      postDatesPorCliente.set(plan.cliente_id, arr)
 
       stat.postagensMes++
       const publicada = !!it.publicado_em
@@ -233,6 +244,31 @@ export default function SocialClientes() {
     for (const stat of map.values()) {
       stat.diasDoMes.sort((a, b) => a.dia - b.dia)
     }
+
+    // Calcula apresentarProximoPlano por cliente (mesma regra do KPI do
+    // header — SocialClienteHeader): primeira postagem da semana Mon-Sun
+    // ANTERIOR a semana da ultima postagem. Fallback: segunda-feira da
+    // semana anterior se ela nao tiver posts.
+    for (const [clienteId, dates] of postDatesPorCliente.entries()) {
+      const stat = map.get(clienteId)
+      if (!stat || dates.length === 0) continue
+      dates.sort()
+      const lastPost = dates[dates.length - 1]
+      const lastPostDate = new Date(lastPost + 'T12:00:00')
+      const dow = lastPostDate.getDay() // 0=Dom, 1=Seg ... 6=Sab
+      const daysBackToMon = dow === 0 ? 6 : dow - 1
+      const weekStart = new Date(lastPostDate)
+      weekStart.setDate(weekStart.getDate() - daysBackToMon)
+      const prevWeekStart = new Date(weekStart)
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7)
+      const prevWeekStartISO = prevWeekStart.toISOString().slice(0, 10)
+      const weekStartISO = weekStart.toISOString().slice(0, 10)
+      const firstOfPrevWeek = dates.find(
+        (d) => d >= prevWeekStartISO && d < weekStartISO,
+      )
+      stat.apresentarProximoPlano = firstOfPrevWeek ?? prevWeekStartISO
+    }
+
     return map
   }, [clientes, planejamentos, items])
 
@@ -438,6 +474,7 @@ export default function SocialClientes() {
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Jornada</th>
                   <th className="px-3 py-2.5">Call alinhamento</th>
+                  <th className="px-3 py-2.5">Apresentar próximo plano</th>
                   <th className="px-3 py-2.5">Última atualização</th>
                   <th className="px-3 py-2.5 text-right">&nbsp;</th>
                 </tr>
@@ -445,13 +482,13 @@ export default function SocialClientes() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={11} className="px-4 py-12 text-center text-muted">
                       Carregando...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
+                    <td colSpan={11} className="px-4 py-12 text-center text-muted">
                       Nenhum cliente encontrado.
                     </td>
                   </tr>
@@ -522,6 +559,9 @@ export default function SocialClientes() {
                             onChanged={load}
                             tipo="social"
                           />
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <ApresentarProximoCell data={stat?.apresentarProximoPlano ?? null} />
                         </td>
                         <td className="px-3 py-3 text-xs text-muted whitespace-nowrap">
                           {formatDate(c.updated_at)}
@@ -677,6 +717,53 @@ function PostsCell({ stats }: { stats?: ClienteSocialStats }) {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Cell da coluna "Apresentar próximo plano". Mostra a data alvo
+ * (primeira postagem da semana ANTERIOR a semana da ultima postagem —
+ * mesma regra do KPI do header). Cor bate com a urgencia:
+ *   - passada         -> vermelho (danger)
+ *   - hoje ou <= 3d   -> ambar (warning)
+ *   - > 3d            -> brand (rosa)
+ *   - null            -> tracinho neutro
+ */
+function ApresentarProximoCell({ data }: { data: string | null }) {
+  if (!data) {
+    return <span className="text-xs text-muted">—</span>
+  }
+  const target = new Date(data + 'T12:00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dias = Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  const tone =
+    dias < 0
+      ? 'border-red-500/50 bg-red-500/15 text-red-200'
+      : dias <= 3
+        ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+        : 'border-brand-500/40 bg-brand-500/10 text-brand-200'
+  const sub =
+    dias < 0
+      ? `${Math.abs(dias)}d atrasado`
+      : dias === 0
+        ? 'hoje'
+        : dias === 1
+          ? 'amanhã'
+          : `em ${dias}d`
+  return (
+    <span
+      className={cn(
+        'inline-flex flex-col items-start gap-0 rounded-md border px-2 py-1 text-[11px] leading-tight',
+        tone,
+      )}
+      title={`Alvo pra apresentar o próximo planejamento pro cliente (${sub})`}
+    >
+      <span className="tabular-nums font-medium">
+        {target.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+      </span>
+      <span className="text-[9px] opacity-80">{sub}</span>
+    </span>
   )
 }
 
