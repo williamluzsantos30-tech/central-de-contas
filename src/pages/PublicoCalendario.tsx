@@ -6,7 +6,7 @@
  * do cliente daquele token. Renderiza uma versão read-only do
  * calendário, sem sidebar/menu, só o essencial pro cliente acompanhar.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -17,6 +17,9 @@ import {
   Film,
   LayoutGrid,
   ExternalLink,
+  ThumbsUp,
+  MessageSquareWarning,
+  X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -72,22 +75,24 @@ export default function PublicoCalendario() {
   })
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
 
-  useEffect(() => {
+  async function carregar(withLoading = true) {
     if (!token) return
-    setLoading(true)
-    supabase
+    if (withLoading) setLoading(true)
+    const { data, error } = await supabase
       .rpc('get_calendario_publico', { p_token: token })
-      .then(({ data, error }) => {
-        if (error) {
-          setErro('Link inválido ou expirado.')
-          setLoading(false)
-          return
-        }
-        const rows = (data ?? []) as PostPublico[]
-        setPosts(rows)
-        setErro(rows.length === 0 ? null : null)
-        setLoading(false)
-      })
+    if (error) {
+      setErro('Link inválido ou expirado.')
+      setLoading(false)
+      return
+    }
+    setPosts((data ?? []) as PostPublico[])
+    setErro(null)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    carregar(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   const clienteNome = posts[0]?.cliente_nome ?? ''
@@ -350,7 +355,9 @@ export default function PublicoCalendario() {
         <DiaModal
           dataISO={diaSelecionado}
           posts={postsPorDia.get(diaSelecionado) ?? []}
+          token={token ?? ''}
           onClose={() => setDiaSelecionado(null)}
+          onRefetch={() => carregar(false)}
         />
       )}
     </div>
@@ -404,11 +411,15 @@ function PostPill({ post }: { post: PostPublico }) {
 function DiaModal({
   dataISO,
   posts,
+  token,
   onClose,
+  onRefetch,
 }: {
   dataISO: string
   posts: PostPublico[]
+  token: string
   onClose: () => void
+  onRefetch: () => void | Promise<void>
 }) {
   return (
     <div
@@ -501,6 +512,18 @@ function DiaModal({
                   <GaleriaArtes artes={artes} formato={p.formato} />
                 )}
 
+                {/* Aprovacao pelo cliente — so aparece quando o item esta
+                    aguardando decisao. Depois de aprovado ou reprovado a
+                    RPC filtra por status='em_aprovacao', entao os botoes
+                    somem naturalmente no proximo refetch. */}
+                {emAprovacao && (
+                  <AprovacaoBox
+                    token={token}
+                    itemId={p.item_id}
+                    onDone={onRefetch}
+                  />
+                )}
+
                 {publicado && p.publicado_url && (
                   <a
                     href={p.publicado_url}
@@ -527,33 +550,251 @@ function DiaModal({
 }
 
 /**
- * Renderiza a galeria de artes prontas — imagens em grid, vídeos com
- * <video controls>. Click em imagem abre em nova aba. Formato "carrossel"
- * exibe todas com contagem.
+ * Bloco de aprovacao — 2 botoes (Aprovar / Pedir alteracao). Reprovar
+ * abre textarea inline pedindo explicacao breve (min 3 chars, validado
+ * no front E no banco). Ambas as acoes chamam a mesma RPC publica
+ * `aprovar_ou_alterar_item_publico`, que valida o token, valida o item
+ * e aplica a mudanca de status.
  */
-function GaleriaArtes({ artes, formato }: { artes: string[]; formato: string }) {
-  return (
-    <div className="mt-3">
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-muted">
-        {formato === 'carrossel' && artes.length > 1
-          ? `Arte final · ${artes.length} slides`
-          : 'Arte final'}
-      </p>
-      <div
-        className={cn(
-          'grid gap-2',
-          artes.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3',
-        )}
-      >
-        {artes.map((url, i) => (
-          <ArteThumb key={`${url}-${i}`} url={url} index={i} />
-        ))}
+function AprovacaoBox({
+  token,
+  itemId,
+  onDone,
+}: {
+  token: string
+  itemId: string
+  onDone: () => void | Promise<void>
+}) {
+  const [modo, setModo] = useState<'idle' | 'reprovando' | 'salvando' | 'ok'>('idle')
+  const [descricao, setDescricao] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function aprovar() {
+    if (!confirm('Confirma a aprovação deste post?')) return
+    setErro(null)
+    setModo('salvando')
+    const { error } = await supabase.rpc('aprovar_ou_alterar_item_publico', {
+      p_token: token,
+      p_item_id: itemId,
+      p_acao: 'aprovar',
+      p_descricao: null,
+    })
+    if (error) {
+      setErro(error.message || 'Erro ao aprovar. Tente novamente.')
+      setModo('idle')
+      return
+    }
+    setModo('ok')
+    await onDone()
+  }
+
+  async function enviarAlteracao() {
+    const d = descricao.trim()
+    if (d.length < 3) {
+      setErro('Escreve pelo menos 3 caracteres explicando o que precisa mudar.')
+      return
+    }
+    setErro(null)
+    setModo('salvando')
+    const { error } = await supabase.rpc('aprovar_ou_alterar_item_publico', {
+      p_token: token,
+      p_item_id: itemId,
+      p_acao: 'alterar',
+      p_descricao: d,
+    })
+    if (error) {
+      setErro(error.message || 'Erro ao enviar. Tente novamente.')
+      setModo('reprovando')
+      return
+    }
+    setModo('ok')
+    await onDone()
+  }
+
+  if (modo === 'ok') {
+    return (
+      <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+        <CheckCircle2 size={12} className="inline mr-1" />
+        Obrigado! Sua resposta foi registrada.
       </div>
+    )
+  }
+
+  if (modo === 'reprovando' || modo === 'salvando') {
+    return (
+      <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-200">
+            O que precisa mudar?
+          </p>
+          {modo === 'reprovando' && (
+            <button
+              type="button"
+              onClick={() => {
+                setModo('idle')
+                setDescricao('')
+                setErro(null)
+              }}
+              className="grid h-5 w-5 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+              title="Cancelar"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+        <textarea
+          value={descricao}
+          onChange={(e) => setDescricao(e.target.value)}
+          disabled={modo === 'salvando'}
+          rows={3}
+          placeholder="Ex.: trocar a foto do slide 2 e ajustar o texto do slide 3"
+          className="mb-2 w-full resize-none rounded-md border border-border bg-bg-soft px-2 py-1.5 text-xs text-zinc-100 placeholder:text-muted focus:border-amber-500/60 focus:outline-none"
+          autoFocus
+        />
+        {erro && (
+          <p className="mb-2 text-[11px] text-red-300">{erro}</p>
+        )}
+        <button
+          type="button"
+          onClick={enviarAlteracao}
+          disabled={modo === 'salvando' || descricao.trim().length < 3}
+          className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+        >
+          {modo === 'salvando' ? 'Enviando…' : 'Enviar pedido de alteração'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-300/80">
+        Sua aprovação
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={aprovar}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-500/50 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-500/25"
+        >
+          <ThumbsUp size={12} /> Aprovar
+        </button>
+        <button
+          type="button"
+          onClick={() => setModo('reprovando')}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20"
+        >
+          <MessageSquareWarning size={12} /> Pedir alteração
+        </button>
+      </div>
+      {erro && (
+        <p className="text-[11px] text-red-300">{erro}</p>
+      )}
     </div>
   )
 }
 
-function ArteThumb({ url, index }: { url: string; index: number }) {
+/**
+ * Galeria de artes como carrossel swipe. Usa CSS scroll-snap horizontal
+ * — funciona touch nativo (deslize dedo esquerda/direita), no desktop
+ * mostra setas + dots pra navegar. Contador "1 / N" no topo. Cada arte
+ * aparece uma por vez em aspect-square, com object-contain pra nao
+ * cortar carrossel/reel vertical.
+ */
+function GaleriaArtes({ artes, formato }: { artes: string[]; formato: string }) {
+  const [idx, setIdx] = useState(0)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const total = artes.length
+
+  function handleScroll() {
+    const el = scrollerRef.current
+    if (!el || el.clientWidth === 0) return
+    const novo = Math.round(el.scrollLeft / el.clientWidth)
+    if (novo !== idx && novo >= 0 && novo < total) setIdx(novo)
+  }
+
+  function goTo(i: number) {
+    const el = scrollerRef.current
+    if (!el) return
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wider text-muted">
+          {formato === 'carrossel' && total > 1
+            ? `Arte final · ${total} slides`
+            : 'Arte final'}
+        </p>
+        {total > 1 && (
+          <span className="text-[10px] tabular-nums text-muted">
+            {idx + 1} / {total}
+          </span>
+        )}
+      </div>
+      <div className="relative">
+        <div
+          ref={scrollerRef}
+          onScroll={handleScroll}
+          className="flex snap-x snap-mandatory overflow-x-auto rounded-lg border border-border bg-black"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {artes.map((url, i) => (
+            <div key={`${url}-${i}`} className="w-full flex-shrink-0 snap-center">
+              <ArteSlide url={url} index={i} />
+            </div>
+          ))}
+        </div>
+        {total > 1 && (
+          <>
+            {idx > 0 && (
+              <button
+                type="button"
+                onClick={() => goTo(idx - 1)}
+                className="absolute left-2 top-1/2 hidden -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 sm:grid sm:h-9 sm:w-9"
+                aria-label="Arte anterior"
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
+            {idx < total - 1 && (
+              <button
+                type="button"
+                onClick={() => goTo(idx + 1)}
+                className="absolute right-2 top-1/2 hidden -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 sm:grid sm:h-9 sm:w-9"
+                aria-label="Próxima arte"
+              >
+                <ChevronRight size={18} />
+              </button>
+            )}
+            <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1 rounded-full bg-black/50 px-2 py-1">
+              {artes.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => goTo(i)}
+                  className={cn(
+                    'h-1.5 rounded-full transition-all',
+                    i === idx ? 'w-4 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70',
+                  )}
+                  aria-label={`Ir pra arte ${i + 1}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {total > 1 && (
+        <p className="mt-2 text-center text-[10px] italic text-muted sm:hidden">
+          Deslize pra ver as outras artes
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ArteSlide({ url, index }: { url: string; index: number }) {
   const ehVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
   if (ehVideo) {
     return (
@@ -562,25 +803,18 @@ function ArteThumb({ url, index }: { url: string; index: number }) {
         controls
         playsInline
         preload="metadata"
-        className="w-full aspect-square rounded-md border border-border object-cover bg-black"
+        className="aspect-square w-full bg-black object-contain"
       />
     )
   }
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="group block overflow-hidden rounded-md border border-border bg-bg-soft"
-      title={`Abrir arte ${index + 1} em nova aba`}
-    >
-      <img
-        src={url}
-        alt={`Arte ${index + 1}`}
-        loading="lazy"
-        className="w-full aspect-square object-cover transition-transform group-hover:scale-105"
-      />
-    </a>
+    <img
+      src={url}
+      alt={`Arte ${index + 1}`}
+      loading="lazy"
+      draggable={false}
+      className="aspect-square w-full bg-black object-contain"
+    />
   )
 }
 
