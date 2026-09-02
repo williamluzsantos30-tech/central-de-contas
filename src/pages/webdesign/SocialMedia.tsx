@@ -2107,6 +2107,11 @@ function ArteThumb({
     if (!Number.isNaN(from) && from !== index) onReorder(from, index)
   }
 
+  function abrirArte() {
+    if (!url) return
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div
       draggable={total > 1}
@@ -2114,13 +2119,15 @@ function ArteThumb({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onClick={abrirArte}
       className={cn(
         'group relative overflow-hidden rounded-lg border bg-bg-soft transition-all',
         dragOver
           ? 'border-brand-400 ring-2 ring-brand-400/40'
           : 'border-emerald-500/30',
-        total > 1 && 'cursor-grab active:cursor-grabbing',
+        total > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in',
       )}
+      title="Clique pra abrir em nova aba"
     >
       {parece_imagem && !erro ? (
         <img
@@ -2139,6 +2146,7 @@ function ArteThumb({
             href={url}
             target="_blank"
             rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className="text-muted underline break-all line-clamp-2"
           >
             {url || '(URL vazia)'}
@@ -2188,7 +2196,10 @@ function ArteThumb({
       )}
 
       <button
-        onClick={onRemove}
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
         className="absolute top-1 right-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
         title="Remover"
       >
