@@ -8,6 +8,7 @@ import {
   Sparkles,
   X,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Calendar,
   User,
@@ -1674,6 +1675,18 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
   function removeArte(i: number) {
     setForm((f) => ({ ...f, artes_prontas: f.artes_prontas.filter((_, idx) => idx !== i) }))
   }
+  /** Move a arte da posicao `from` pra `to` (swap por remocao + insercao,
+   *  nao troca simples — preserva a ordem dos outros). Usado pelas setas
+   *  e pelo drag-and-drop. Ignora se `to` sai do range. */
+  function moveArte(from: number, to: number) {
+    setForm((f) => {
+      if (to < 0 || to >= f.artes_prontas.length || from === to) return f
+      const arr = [...f.artes_prontas]
+      const [item] = arr.splice(from, 1)
+      arr.splice(to, 0, item)
+      return { ...f, artes_prontas: arr }
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -1799,16 +1812,26 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
           />
         </div>
         {form.artes_prontas.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-            {form.artes_prontas.map((url, i) => (
-              <ArteThumb
-                key={i}
-                url={url}
-                index={i}
-                onRemove={() => removeArte(i)}
-              />
-            ))}
-          </div>
+          <>
+            {form.artes_prontas.length > 1 && (
+              <p className="mt-3 text-[10px] text-muted">
+                Ordem dos slides = ordem que o cliente vai ver.
+                Arraste ou use as setas ← → pra reordenar.
+              </p>
+            )}
+            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {form.artes_prontas.map((url, i) => (
+                <ArteThumb
+                  key={`${url}-${i}`}
+                  url={url}
+                  index={i}
+                  total={form.artes_prontas.length}
+                  onRemove={() => removeArte(i)}
+                  onReorder={moveArte}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -2043,22 +2066,69 @@ function Field({ label, children, full }: { label: string; children: React.React
 function ArteThumb({
   url,
   index,
+  total,
   onRemove,
+  onReorder,
 }: {
   url: string
   index: number
+  total: number
   onRemove: () => void
+  /** Callback global (from, to) — o thumb sabe quem ele e e passa os
+   *  dois indices. Necessario porque no drag, o thumb de DESTINO precisa
+   *  informar de onde veio o de ORIGEM (via dataTransfer). */
+  onReorder: (from: number, to: number) => void
 }) {
   const [erro, setErro] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const parece_imagem = isImageUrl(url)
+  const podeMoverEsq = index > 0
+  const podeMoverDir = index < total - 1
+
+  // Drag-and-drop nativo HTML5 — origem passa o indice atual via dataTransfer,
+  // destino le e chama onReorder(from, aqui). Funciona no desktop; no mobile
+  // as setas ← → cobrem o caso (touch nao dispara dragstart nativo).
+  function handleDragStart(e: React.DragEvent) {
+    e.dataTransfer.setData('text/plain', String(index))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (!dragOver) setDragOver(true)
+  }
+  function handleDragLeave() {
+    setDragOver(false)
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const from = Number(e.dataTransfer.getData('text/plain'))
+    if (!Number.isNaN(from) && from !== index) onReorder(from, index)
+  }
+
   return (
-    <div className="group relative overflow-hidden rounded-lg border border-emerald-500/30 bg-bg-soft">
+    <div
+      draggable={total > 1}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={cn(
+        'group relative overflow-hidden rounded-lg border bg-bg-soft transition-all',
+        dragOver
+          ? 'border-brand-400 ring-2 ring-brand-400/40'
+          : 'border-emerald-500/30',
+        total > 1 && 'cursor-grab active:cursor-grabbing',
+      )}
+    >
       {parece_imagem && !erro ? (
         <img
           src={url}
           alt={`arte ${index + 1}`}
-          className="h-24 w-full object-cover"
+          className="h-24 w-full object-cover pointer-events-none"
           onError={() => setErro(true)}
+          draggable={false}
         />
       ) : (
         <div className="flex h-24 flex-col items-center justify-center gap-1 text-[10px] p-2 text-center">
@@ -2075,6 +2145,48 @@ function ArteThumb({
           </a>
         </div>
       )}
+
+      {/* Badge de posicao — sempre visivel, canto superior esquerdo.
+          Deixa claro pro editor QUAL e' a ordem atual dessa arte. */}
+      <span
+        className="absolute top-1 left-1 grid h-5 min-w-[20px] place-items-center rounded-md bg-black/75 px-1 text-[10px] font-bold text-white tabular-nums"
+        title={`Posição ${index + 1} de ${total}`}
+      >
+        {index + 1}
+      </span>
+
+      {/* Setas ← → pra reordenar — visiveis no hover (desktop) e sempre no
+          mobile (nao tem hover). Desabilitadas nos extremos. Ficam no fundo
+          da imagem pra nao competir com o botao X de remover. */}
+      {total > 1 && (
+        <div className="absolute bottom-1 left-1 flex gap-1 opacity-100 md:opacity-0 md:transition-opacity md:group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (podeMoverEsq) onReorder(index, index - 1)
+            }}
+            disabled={!podeMoverEsq}
+            className="grid h-5 w-5 place-items-center rounded-md bg-black/75 text-white hover:bg-black disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Mover pra esquerda"
+          >
+            <ChevronLeft size={11} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (podeMoverDir) onReorder(index, index + 1)
+            }}
+            disabled={!podeMoverDir}
+            className="grid h-5 w-5 place-items-center rounded-md bg-black/75 text-white hover:bg-black disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Mover pra direita"
+          >
+            <ChevronRight size={11} />
+          </button>
+        </div>
+      )}
+
       <button
         onClick={onRemove}
         className="absolute top-1 right-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
