@@ -10,6 +10,7 @@ import {
   Plus,
   Pencil,
   FileText,
+  Instagram,
 } from 'lucide-react'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { Button } from '@/components/ui/Button'
@@ -506,7 +507,24 @@ export default function SocialClientes() {
                               </Badge>
                             )}
                           </div>
-                          {c.nicho && <p className="text-[11px] text-muted">{c.nicho}</p>}
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            {c.nicho && (
+                              <span className="text-[11px] text-muted">{c.nicho}</span>
+                            )}
+                            {c.instagram_handle && (
+                              <a
+                                href={`https://instagram.com/${c.instagram_handle.replace(/^@/, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-[11px] text-pink-300/80 hover:text-pink-300"
+                                title="Abrir Instagram em nova aba"
+                              >
+                                <Instagram size={11} />
+                                @{c.instagram_handle.replace(/^@/, '')}
+                              </a>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-sm whitespace-nowrap">{c.squad ?? '—'}</td>
                         <td className="px-3 py-3 text-sm whitespace-nowrap">
