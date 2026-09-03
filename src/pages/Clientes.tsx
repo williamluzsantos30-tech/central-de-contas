@@ -52,8 +52,14 @@ export default function Clientes() {
   // Por padrão esconde arquivados (churn). Admin pode ligar.
   const [mostrarArquivados, setMostrarArquivados] = useState(false)
 
-  async function load() {
-    setLoading(true)
+  /**
+   * `silent=true` = nao dispara o placeholder "Carregando..." — usa a
+   * ultima leitura como fundo e substitui em background quando chega a
+   * nova. Sem isso, o refresh de 60s piscava a tabela toda uma vez por
+   * minuto.
+   */
+  async function load(silent = false) {
+    if (!silent) setLoading(true)
     const [cRes, gRes] = await Promise.all([
       supabase
         .from('clientes')
@@ -80,7 +86,8 @@ export default function Clientes() {
 
   useEffect(() => {
     load()
-    const id = setInterval(load, 60000)
+    // Refresh a cada 60s em background — silent=true nao pisca o loading
+    const id = setInterval(() => load(true), 60000)
     return () => clearInterval(id)
   }, [])
 
