@@ -32,13 +32,38 @@ import { useAuth } from '@/contexts/AuthContext'
 import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
 // PDF lib é pesada (~1.5MB), carrega só quando o user clica em "Baixar PDF"
 // pra não inflar o bundle inicial.
+//
+// Chunk stale: quando o app fica aberto no browser durante um deploy novo,
+// o nome do chunk lazy muda (hash diferente) e o import() falha com
+// "Failed to fetch dynamically imported module". Nesse caso, a unica
+// saida e recarregar a pagina — quando ela recarregar, vai baixar o
+// index.html novo com o mapa correto de chunks e funciona. Detecto o
+// erro pela mensagem, aviso o usuario e faco reload automatico.
 async function downloadPlanejamentoPDFLazy(args: {
   cliente: Cliente
   plano: PlanejamentoSocialMedia
   items: ItemSocialMedia[]
 }) {
-  const mod = await import('./PlanejamentoPDF')
-  return mod.downloadPlanejamentoPDF(args)
+  try {
+    const mod = await import('./PlanejamentoPDF')
+    return mod.downloadPlanejamentoPDF(args)
+  } catch (err) {
+    const msg = (err as Error)?.message ?? ''
+    const eChunkStale =
+      /Failed to fetch dynamically imported module/i.test(msg) ||
+      /Importing a module script failed/i.test(msg) ||
+      /error loading dynamically imported/i.test(msg)
+    if (eChunkStale) {
+      alert(
+        'O sistema foi atualizado enquanto essa aba estava aberta. Vou recarregar a página pra pegar a versão nova — depois é só clicar em "Baixar PDF" de novo.',
+      )
+      window.location.reload()
+      // Nunca chega aqui — reload substitui a pagina inteira. Return so
+      // pra o TS parar de reclamar do fluxo.
+      return
+    }
+    throw err
+  }
 }
 import type {
   Cliente,
