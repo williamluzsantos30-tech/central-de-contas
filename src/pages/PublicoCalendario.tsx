@@ -46,6 +46,13 @@ interface PostPublico {
    * (regra na RPC pra não vazar arte incompleta).
    */
   artes_prontas: string[]
+  /**
+   * Link direto do arquivo do vídeo no Drive. So vem preenchido pra
+   * formato='reel' e quando o item ja esta em em_aprovacao/conclusao
+   * (regra na RPC — migration 072). Renderizado como botao "Abrir
+   * vídeo no Drive".
+   */
+  link_drive_video: string | null
 }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -510,6 +517,22 @@ function DiaModal({
                     rascunho). */}
                 {artes.length > 0 && (
                   <GaleriaArtes artes={artes} formato={p.formato} />
+                )}
+
+                {/* Link do arquivo do video no Drive — so pra Reels e
+                    quando ja liberado pro cliente (regra na RPC — migration
+                    072). Permite baixar o master em melhor qualidade. */}
+                {p.link_drive_video && (
+                  <a
+                    href={p.link_drive_video}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20"
+                  >
+                    <Film size={12} />
+                    Abrir vídeo no Drive
+                    <ExternalLink size={11} className="opacity-70" />
+                  </a>
                 )}
 
                 {/* Aprovacao pelo cliente — so aparece quando o item esta

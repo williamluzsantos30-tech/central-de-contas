@@ -484,6 +484,14 @@ export interface ItemSocialMedia {
   legenda: string | null
   artes_prontas: string[]
   /**
+   * Link do arquivo do vídeo no Drive (Google Drive, Dropbox, etc).
+   * Só relevante quando formato='reel'. Migration 072. Aparece no link
+   * público do calendário como botão "Abrir vídeo no Drive" quando o
+   * item está em aprovação/concluído, pra o cliente conseguir baixar
+   * o master.
+   */
+  link_drive_video: string | null
+  /**
    * Referências por arte (Drive, YouTube, Vimeo, links). Mesma estrutura
    * usada em edicoes_video.referencias. Cada entrada: {tipo, url, descricao}.
    */

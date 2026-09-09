@@ -18,6 +18,7 @@ import {
   Pencil,
   Clock,
   MessageSquare,
+  Film,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -1581,6 +1582,7 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
       copy_arquivo_url: stripBlobUrl(item.copy_arquivo_url),
       legenda: item.legenda ?? '',
       artes_prontas: stripBlobUrls(item.artes_prontas),
+      link_drive_video: item.link_drive_video ?? '',
       referencias: (item.referencias ?? []) as ItemSocialMedia['referencias'],
       observacoes: item.observacoes ?? '',
       descricao_alteracao: item.descricao_alteracao ?? '',
@@ -1605,6 +1607,8 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
     if (form.legenda !== base.legenda) payload.legenda = form.legenda || null
     if (JSON.stringify(form.artes_prontas) !== JSON.stringify(base.artes_prontas))
       payload.artes_prontas = form.artes_prontas
+    if (form.link_drive_video !== base.link_drive_video)
+      payload.link_drive_video = form.link_drive_video.trim() || null
     if (JSON.stringify(form.referencias) !== JSON.stringify(base.referencias))
       payload.referencias = form.referencias
     if (form.observacoes !== base.observacoes)
@@ -1834,6 +1838,26 @@ function ItemEditor({ item, onChanged }: { item: ItemSocialMedia; onChanged: () 
           </>
         )}
       </div>
+
+      {/* Link do arquivo do video no Drive — so pra Reels. Aparece no
+          link publico do calendario como botao "Abrir video no Drive"
+          quando o item ta em em_aprovacao/conclusao. Migration 072. */}
+      {item.formato === 'reel' && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Film size={14} className="text-amber-300" />
+            <h4 className="text-sm font-semibold text-amber-200">Link do Drive (vídeo)</h4>
+            <span className="text-[11px] text-muted">
+              — só pra Reels. O cliente vê como botão pra abrir/baixar o master.
+            </span>
+          </div>
+          <Input
+            value={form.link_drive_video}
+            onChange={(e) => setForm({ ...form, link_drive_video: e.target.value })}
+            placeholder="https://drive.google.com/file/d/…"
+          />
+        </div>
+      )}
 
       {/* Referências por arte — links de Drive/YouTube/Vimeo + descrição */}
       <ItemReferenciasField
