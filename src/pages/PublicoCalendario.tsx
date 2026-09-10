@@ -519,9 +519,11 @@ function DiaModal({
                   <GaleriaArtes artes={artes} formato={p.formato} />
                 )}
 
-                {/* Link do arquivo do video no Drive — so pra Reels e
-                    quando ja liberado pro cliente (regra na RPC — migration
-                    072). Permite baixar o master em melhor qualidade. */}
+                {/* Link direto do arquivo do video — so pra Reels e quando
+                    ja liberado pro cliente (regra na RPC — migration 072).
+                    Permite abrir em nova aba pra baixar/revisar em outra
+                    plataforma. Auto-preenchido pelo trigger da migration
+                    074 com o video_final_url do editor. */}
                 {p.link_drive_video && (
                   <a
                     href={p.link_drive_video}
@@ -530,7 +532,7 @@ function DiaModal({
                     className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20"
                   >
                     <Film size={12} />
-                    Abrir vídeo no Drive
+                    Abrir vídeo em nova aba
                     <ExternalLink size={11} className="opacity-70" />
                   </a>
                 )}

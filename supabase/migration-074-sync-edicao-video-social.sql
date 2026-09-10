@@ -17,6 +17,10 @@
 --   2. Trigger espelha:
 --        - producoes_social_media_items.status = 'em_aprovacao'
 --        - producoes_social_media_items.artes_prontas = [video_final_url]
+--          (pra o cliente ver o preview inline no link publico)
+--        - producoes_social_media_items.link_drive_video = video_final_url
+--          se estava null (pra o botao "Abrir video" aparecer sem que
+--          a social media precise preencher manualmente — migration 072)
 --   3. Cliente abre o link publico do calendario, ve o reel na aba
 --      do dia da postagem, clica em Aprovar ou Pedir alteracao
 --   4. RPC aprovar_ou_alterar_item_publico atualiza o SMI. TRIGGER
@@ -97,6 +101,21 @@ begin
             and new.video_final_url is not null
              then jsonb_build_array(new.video_final_url)
            else artes_prontas
+         end,
+         -- Tambem popula link_drive_video (botao "Abrir video" no
+         -- link publico do calendario — migration 072) com o mesmo
+         -- video_final_url. Se o editor colou um link do Drive/
+         -- Dropbox/Vimeo direto em video_final_url, esse link vai
+         -- funcionar; se subiu pro Storage, o URL de Storage tambem
+         -- abre em nova aba com right-click / download. Zero traba-
+         -- lho manual pra social media. Se ela QUISER trocar por um
+         -- link diferente, ainda pode editar no admin — so preenche
+         -- na primeira transicao (coalesce preserva o valor manual).
+         link_drive_video = case
+           when v_target_sm_status = 'em_aprovacao'
+            and new.video_final_url is not null
+             then coalesce(link_drive_video, new.video_final_url)
+           else link_drive_video
          end,
          -- Quando volta pra alteracao, propaga tambem a descricao
          -- (caso o editor tenha preenchido). Se veio do cliente pelo
