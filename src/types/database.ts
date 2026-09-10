@@ -500,6 +500,14 @@ export interface ItemSocialMedia {
   /** O que o cliente pediu pra mudar quando o item vai pra status=alteracao (migration 059). */
   descricao_alteracao: string | null
   ordem: number
+  /**
+   * Item de backlog — conteúdo estático organizado como reserva pra
+   * publicar caso o cliente não grave os videos alinhados (migration
+   * 075). Fica na aba de Planejamento separado, não vai pro calendário
+   * público. Vira post normal quando o time desativa o flag + define
+   * prazo.
+   */
+  is_backlog: boolean
   // Marcação de publicação (playbook 3.3 e KPI #1)
   publicado_url: string | null
   publicado_em: string | null

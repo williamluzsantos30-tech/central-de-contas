@@ -18,6 +18,8 @@ import {
   Film,
   LayoutGrid,
   AlertCircle,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -555,10 +557,15 @@ function IdeiasPorFormato({
   items: ItemSocialMedia[]
   onChanged: () => void
 }) {
+  // Backlog = items com flag is_backlog=true, agrupados aparte. Nao
+  // entram nas contagens de Carrossel/Estatico/Reel pra nao poluir
+  // metricas do calendario.
+  const backlog = items.filter((i) => i.is_backlog)
+
   return (
     <div className="space-y-4">
       {formatosLista.map(({ key, label, icon: Icon }) => {
-        const itens = items.filter((i) => i.formato === key)
+        const itens = items.filter((i) => i.formato === key && !i.is_backlog)
         return (
           <Card key={key}>
             <CardHeader>
@@ -580,6 +587,38 @@ function IdeiasPorFormato({
           </Card>
         )
       })}
+
+      {/* Backlog — reserva de conteudos estaticos pra publicar se o
+          cliente nao gravar os videos. Nao aparece no calendario nem
+          pro cliente. Migration 075. */}
+      <Card className="border-amber-500/30 bg-amber-500/[0.03]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Archive size={14} className="text-amber-300" />
+            Backlog ({backlog.length})
+            <span className="text-[10px] font-normal text-muted normal-case">
+              — reserva pra publicar caso o cliente não grave os vídeos
+            </span>
+          </CardTitle>
+          <NovaIdeiaButton
+            plano={plano}
+            formato="estatico"
+            ordemSugerida={items.length + 1}
+            isBacklog
+            onCreated={onChanged}
+          />
+        </CardHeader>
+        <CardBody className="space-y-2">
+          {backlog.length === 0 ? (
+            <p className="py-4 text-center text-xs text-muted">
+              Nenhum conteúdo no backlog. Use quando quiser deixar algo
+              pronto pra publicar sem depender de gravação do cliente.
+            </p>
+          ) : (
+            backlog.map((it) => <IdeiaCard key={it.id} item={it} onChanged={onChanged} />)
+          )}
+        </CardBody>
+      </Card>
     </div>
   )
 }
@@ -589,11 +628,13 @@ function NovaIdeiaButton({
   formato,
   ordemSugerida,
   onCreated,
+  isBacklog = false,
 }: {
   plano: PlanejamentoSocialMedia
   formato: FormatoSocialMedia
   ordemSugerida: number
   onCreated: () => void
+  isBacklog?: boolean
 }) {
   const [creating, setCreating] = useState(false)
   async function criar() {
@@ -601,11 +642,12 @@ function NovaIdeiaButton({
     await supabase.from('producoes_social_media_items').insert({
       producao_id: plano.id,
       formato,
-      titulo: 'Nova ideia',
+      titulo: isBacklog ? 'Novo backlog' : 'Nova ideia',
       ideia_conteudo: '',
       status: 'pendente',
       ordem: ordemSugerida,
       artes_prontas: [],
+      is_backlog: isBacklog,
     })
     setCreating(false)
     onCreated()
@@ -654,6 +696,22 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
   async function excluir() {
     if (!confirm('Excluir essa ideia?')) return
     await supabase.from('producoes_social_media_items').delete().eq('id', item.id)
+    onChanged()
+  }
+
+  /** Move um item entre Backlog e planejamento ativo. Confirma antes
+   *  pra evitar clique acidental — mover ativa/desativa o item na
+   *  esteira e no calendario, e' uma acao com efeito visivel. */
+  async function toggleBacklog() {
+    const proxState = !item.is_backlog
+    const msg = proxState
+      ? 'Mover pro Backlog? O item sai do planejamento ativo e não aparece no calendário/link do cliente até você trazê-lo de volta.'
+      : 'Trazer do Backlog pro planejamento ativo? Lembra de definir a data de postagem depois — sem prazo, o cliente ainda não vê no link.'
+    if (!confirm(msg)) return
+    await supabase
+      .from('producoes_social_media_items')
+      .update({ is_backlog: proxState })
+      .eq('id', item.id)
     onChanged()
   }
 
@@ -746,11 +804,20 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium text-zinc-100 text-sm leading-snug">{item.titulo}</p>
-            {atrasada && !item.publicado_em && (
-              <Badge tone="danger" className="!text-[9px] flex-shrink-0">
-                atrasado
-              </Badge>
-            )}
+            <div className="flex flex-shrink-0 items-center gap-1">
+              {/* Badge de formato — so em backlog. Nas secoes de formato
+                  o dado ja e implicito pelo container, aqui e util. */}
+              {item.is_backlog && (
+                <Badge tone="neutral" className="!text-[9px] capitalize">
+                  {item.formato}
+                </Badge>
+              )}
+              {atrasada && !item.publicado_em && (
+                <Badge tone="danger" className="!text-[9px]">
+                  atrasado
+                </Badge>
+              )}
+            </div>
           </div>
           {item.ideia_conteudo && (
             <p className="mt-1 text-xs text-muted leading-relaxed">{item.ideia_conteudo}</p>
@@ -796,6 +863,13 @@ function IdeiaCard({ item, onChanged }: { item: ItemSocialMedia; onChanged: () =
               title="Editar"
             >
               <Pencil size={12} />
+            </button>
+            <button
+              onClick={toggleBacklog}
+              className="rounded p-1.5 text-muted hover:bg-bg-elev hover:text-amber-300"
+              title={item.is_backlog ? 'Trazer pro planejamento ativo' : 'Mover pro Backlog'}
+            >
+              {item.is_backlog ? <ArchiveRestore size={12} /> : <Archive size={12} />}
             </button>
             <button
               onClick={excluir}
