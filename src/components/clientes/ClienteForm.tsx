@@ -6,14 +6,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { temCargo } from '@/lib/cargos'
-import {
-  TIPOS_CLIENTE,
-  tipoClienteLabel,
-  JORNADAS_CLIENTE,
-  jornadaClienteLabel,
-  JORNADAS_SOCIAL,
-  jornadaSocialLabel,
-} from '@/lib/utils'
+import { TIPOS_CLIENTE, tipoClienteLabel } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import type { Cliente, ModuloCliente, Profile } from '@/types/database'
 
@@ -134,6 +127,14 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
   async function save() {
     setSaving(true)
     setError(null)
+    // Novo cliente sempre comeca em 'onboarding'. Edicao preserva o
+    // jornada atual (que foi definido em outra tela). Mesma logica pra
+    // jornada_social se o cliente atende Social Media.
+    const isNovo = !cliente
+    const jornadaFinal = isNovo && form.modulos.includes('trafego') ? 'onboarding' : form.jornada || null
+    const jornadaSocialFinal =
+      isNovo && form.modulos.includes('social_media') ? 'onboarding' : form.jornada_social || null
+
     const payload = {
       nome: form.nome.trim(),
       nicho: form.nicho || null,
@@ -144,8 +145,8 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       account_manager_id: form.account_manager_id || null,
       social_media_id: form.social_media_id || null,
       status: form.status,
-      jornada: form.jornada || null,
-      jornada_social: form.jornada_social || null,
+      jornada: jornadaFinal,
+      jornada_social: jornadaSocialFinal,
       nps: form.nps === '' ? null : Number(form.nps),
       semaforo: form.semaforo || null,
       plataformas: form.plataformas || null,
@@ -343,48 +344,11 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             <option value="churn">Churn</option>
           </Select>
         </Field>
-        {temTrafego && (
-          <Field label={temSocial ? 'Jornada (Tráfego)' : 'Jornada'}>
-            <Select
-              value={form.jornada}
-              onChange={(e) => setForm({ ...form, jornada: e.target.value })}
-            >
-              <option value="">—</option>
-              {JORNADAS_CLIENTE.map((j) => (
-                <option key={j} value={j}>
-                  {jornadaClienteLabel[j]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        {temSocial && (
-          <Field label={temTrafego ? 'Jornada (Social Media)' : 'Jornada'}>
-            <Select
-              value={form.jornada_social}
-              onChange={(e) => setForm({ ...form, jornada_social: e.target.value })}
-            >
-              <option value="">—</option>
-              {JORNADAS_SOCIAL.map((j) => (
-                <option key={j} value={j}>
-                  {jornadaSocialLabel[j]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        {temTrafego && (
-          <Field label="Plataformas">
-            <Select
-              value={form.plataformas}
-              onChange={(e) => setForm({ ...form, plataformas: e.target.value })}
-            >
-              <option value="google_ads">Google Ads</option>
-              <option value="meta_ads">Meta Ads</option>
-              <option value="ambos">Google + Meta</option>
-            </Select>
-          </Field>
-        )}
+        {/* Jornada, Plataformas, Verbas de anuncio e Fonte CRM removidas do
+            form de cadastro — pedido do dono da agencia pra ficar enxuto.
+            Jornada e' auto-preenchida como 'onboarding' no save (todo cliente
+            novo comeca por ai). Verbas/plataforma/CRM sao editaveis depois
+            em outras telas (v2 vai ter tela de config avancada). */}
         <Field label="Ticket Mensal (R$) *">
           <Input
             type="number"
@@ -405,45 +369,6 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
           />
         </Field>
-        {temTrafego && (
-          <>
-            <Field label="Verba Google (R$)">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.verba_google}
-                onChange={(e) => setForm({ ...form, verba_google: e.target.value })}
-                placeholder="0,00"
-              />
-            </Field>
-            <Field label="Verba Meta (R$)">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.verba_meta}
-                onChange={(e) => setForm({ ...form, verba_meta: e.target.value })}
-                placeholder="0,00"
-              />
-            </Field>
-            <Field label="Fonte CRM">
-              <Select
-                value={form.fonte_crm}
-                onChange={(e) => setForm({ ...form, fonte_crm: e.target.value })}
-              >
-                <option value="nativo">Nativo</option>
-                <option value="kommo">Kommo</option>
-              </Select>
-            </Field>
-            {form.fonte_crm === 'kommo' && (
-              <Field label="Kommo account ID">
-                <Input
-                  value={form.kommo_account_id}
-                  onChange={(e) => setForm({ ...form, kommo_account_id: e.target.value })}
-                />
-              </Field>
-            )}
-          </>
-        )}
         <Field label="Observações" full>
           <Textarea
             value={form.observacoes}
