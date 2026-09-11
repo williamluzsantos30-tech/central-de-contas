@@ -22,7 +22,16 @@ dist.zip
 supabase/.temp/
 
 # Configs locais de IDE / agente
-.claude
+# .claude: local dev settings ficam de fora, mas skills/agents/prompts
+# ficam versionados pra todo mundo do time ganhar quando clonar.
+.claude/*
+!.claude/skills/
+!.claude/skills/**
+!.claude/agents/
+!.claude/agents/**
+!.claude/commands/
+!.claude/commands/**
+!.claude/launch.json
 .vscode
 .idea
 
