@@ -63,7 +63,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { uploadToStorageSafe } from '@/lib/storage'
-import type { Cliente, ClienteEvento } from '@/types/database'
+import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 
 // Meses entre uma ISO date e hoje
 function mesesDesde(iso: string | null): number {
@@ -385,6 +385,7 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
 
   const [riscoModalOpen, setRiscoModalOpen] = useState(false)
   const [npsHistoricoOpen, setNpsHistoricoOpen] = useState(false)
+  const [contratoModalOpen, setContratoModalOpen] = useState(false)
   const [surveysRespondidos, setSurveysRespondidos] = useState<NpsSurveyRespondido[]>([])
   const [servicosModalOpen, setServicosModalOpen] = useState(false)
   const [contatoModalOpen, setContatoModalOpen] = useState(false)
@@ -766,20 +767,8 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         </div>
       </div>
 
-      {/* ============= Contrato (placeholder) ============= */}
-      <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-5">
-        <div className="mb-2 flex items-center gap-2">
-          <FileText size={14} className="text-muted" />
-          <h3 className="text-sm font-semibold text-zinc-100">Contrato</h3>
-          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-amber-300">
-            v2
-          </span>
-        </div>
-        <p className="text-xs text-muted">
-          Tipo (mensal/anual), início, fim, dias restantes, status, responsável — precisa
-          da tabela de contratos.
-        </p>
-      </div>
+      {/* ============= Contrato ============= */}
+      <ContratoBloco cliente={cliente} onEdit={() => setContratoModalOpen(true)} />
 
       {/* ============= Briefing (placeholder) ============= */}
       <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-5">
@@ -846,6 +835,19 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           onClose={() => setContatoModalOpen(false)}
           onSaved={() => {
             setContatoModalOpen(false)
+            loadEventos()
+          }}
+        />
+      )}
+
+      {/* Modal — editar contrato */}
+      {contratoModalOpen && (
+        <ContratoModal
+          cliente={cliente}
+          onClose={() => setContratoModalOpen(false)}
+          onSaved={() => {
+            setContratoModalOpen(false)
+            onChanged()
             loadEventos()
           }}
         />
@@ -1069,6 +1071,387 @@ function AcaoBtn({
 void Calendar
 void Smile
 void CheckCircle2
+
+// ============================================================
+// Contrato — bloco na Ficha + modal de edicao
+// ============================================================
+//
+// Modelo simples de contrato inline na tabela clientes (sem tabela
+// separada). Justificativa: a maioria dos clientes tem UM contrato
+// atual; historico de renovacoes fica na Timeline via cliente_eventos.
+// Quando um contrato e renovado, atualiza as datas + gera evento.
+
+const CONTRATO_TIPOS = [
+  { key: 'mensal', label: 'Mensal', meses: 1 },
+  { key: '3_meses', label: '3 meses', meses: 3 },
+  { key: '6_meses', label: '6 meses', meses: 6 },
+  { key: '12_meses', label: '12 meses', meses: 12 },
+  { key: 'anual', label: 'Anual', meses: 12 },
+  { key: 'indefinido', label: 'Indefinido', meses: null },
+] as const
+
+const CONTRATO_STATUS = [
+  { key: 'ativo', label: 'Ativo', cor: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200' },
+  { key: 'renovado', label: 'Renovado', cor: 'border-sky-500/50 bg-sky-500/15 text-sky-200' },
+  { key: 'encerrado', label: 'Encerrado', cor: 'border-zinc-500/50 bg-zinc-500/15 text-zinc-200' },
+  { key: 'pausado', label: 'Pausado', cor: 'border-amber-500/50 bg-amber-500/15 text-amber-200' },
+] as const
+
+function labelContratoTipo(key: string | null): string {
+  return CONTRATO_TIPOS.find((t) => t.key === key)?.label ?? '—'
+}
+function labelContratoStatus(key: string | null): { label: string; cor: string } {
+  return (
+    CONTRATO_STATUS.find((s) => s.key === key) ?? {
+      label: '—',
+      cor: 'border-border bg-bg-soft text-muted',
+    }
+  )
+}
+
+function diasRestantesContrato(fim: string | null): number | null {
+  if (!fim) return null
+  const fimDate = new Date(fim)
+  if (isNaN(fimDate.getTime())) return null
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  fimDate.setHours(0, 0, 0, 0)
+  return Math.round((fimDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function ContratoBloco({
+  cliente,
+  onEdit,
+}: {
+  cliente: Cliente
+  onEdit: () => void
+}) {
+  const [responsavelNome, setResponsavelNome] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!cliente.contrato_responsavel_id) {
+      setResponsavelNome(null)
+      return
+    }
+    supabase
+      .from('profiles')
+      .select('nome')
+      .eq('id', cliente.contrato_responsavel_id)
+      .maybeSingle()
+      .then(({ data }) => setResponsavelNome((data as { nome: string } | null)?.nome ?? null))
+  }, [cliente.contrato_responsavel_id])
+
+  const status = labelContratoStatus(cliente.contrato_status)
+  const dias = diasRestantesContrato(cliente.contrato_fim)
+  const semDados =
+    !cliente.contrato_tipo &&
+    !cliente.contrato_inicio &&
+    !cliente.contrato_fim &&
+    !cliente.contrato_status
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <FileText size={14} className="text-brand-300" />
+          <h3 className="text-sm font-semibold text-zinc-100">Contrato</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+          title="Editar contrato"
+        >
+          <Pencil size={11} />
+        </button>
+      </div>
+
+      {semDados ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="block w-full rounded-md border border-dashed border-border bg-bg-soft/40 py-4 text-center text-xs text-muted hover:border-brand-500/40 hover:text-brand-300"
+        >
+          Nenhum contrato cadastrado — clique pra adicionar
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <LinhaContrato
+            label="Tipo"
+            valor={labelContratoTipo(cliente.contrato_tipo)}
+            corValor="text-amber-300"
+          />
+          <LinhaContrato
+            label="Início"
+            valor={cliente.contrato_inicio ? formatDateBR(cliente.contrato_inicio) : '—'}
+            corValor="text-amber-300"
+          />
+          <LinhaContrato
+            label="Fim"
+            valor={cliente.contrato_fim ? formatDateBR(cliente.contrato_fim) : '—'}
+            corValor="text-amber-300"
+          />
+          <LinhaContrato
+            label="Dias restantes"
+            valor={
+              dias === null ? (
+                '—'
+              ) : (
+                <span
+                  className={cn(
+                    'rounded border px-2 py-0.5 text-[10px] font-medium tabular-nums',
+                    dias < 0
+                      ? 'border-red-500/50 bg-red-500/15 text-red-200'
+                      : dias < 30
+                        ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+                        : 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200',
+                  )}
+                >
+                  {dias < 0 ? `${Math.abs(dias)}d atrasado` : `${dias}d`}
+                </span>
+              )
+            }
+          />
+          <LinhaContrato
+            label="Status"
+            valor={
+              <span
+                className={cn('rounded border px-2 py-0.5 text-[10px] font-medium', status.cor)}
+              >
+                {status.label}
+              </span>
+            }
+          />
+          <LinhaContrato
+            label="Responsável"
+            valor={responsavelNome ?? '—'}
+            corValor="text-brand-300"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LinhaContrato({
+  label,
+  valor,
+  corValor = 'text-zinc-100',
+}: {
+  label: string
+  valor: React.ReactNode
+  corValor?: string
+}) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted">{label}</span>
+      <span className={cn('font-semibold', corValor)}>{valor}</span>
+    </div>
+  )
+}
+
+function ContratoModal({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [tipo, setTipo] = useState(cliente.contrato_tipo ?? '')
+  const [inicio, setInicio] = useState(cliente.contrato_inicio ?? '')
+  const [fim, setFim] = useState(cliente.contrato_fim ?? '')
+  const [status, setStatus] = useState(cliente.contrato_status ?? 'ativo')
+  const [responsavelId, setResponsavelId] = useState(cliente.contrato_responsavel_id ?? '')
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Carrega profiles pra dropdown de responsavel
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('ativo', true)
+      .eq('aprovado', true)
+      .order('nome')
+      .then(({ data }) => setProfiles((data as Profile[]) ?? []))
+  }, [])
+
+  // Ao mudar tipo E inicio, calcula fim automatico
+  useEffect(() => {
+    if (!inicio || !tipo) return
+    const cfg = CONTRATO_TIPOS.find((t) => t.key === tipo)
+    if (!cfg || cfg.meses === null) return
+    const d = new Date(inicio)
+    if (isNaN(d.getTime())) return
+    d.setMonth(d.getMonth() + cfg.meses)
+    d.setDate(d.getDate() - 1) // ultimo dia do ciclo
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dia = String(d.getDate()).padStart(2, '0')
+    setFim(`${y}-${m}-${dia}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo, inicio])
+
+  async function salvar() {
+    setError(null)
+    setSaving(true)
+    const { error: upErr } = await supabase
+      .from('clientes')
+      .update({
+        contrato_tipo: tipo || null,
+        contrato_inicio: inicio || null,
+        contrato_fim: fim || null,
+        contrato_status: status || null,
+        contrato_responsavel_id: responsavelId || null,
+      })
+      .eq('id', cliente.id)
+    if (upErr) {
+      setError(upErr.message)
+      setSaving(false)
+      return
+    }
+    // Log manual do evento (o trigger auto-log ainda nao cobre essas
+    // colunas — pode adicionar em migration futura se quiser)
+    await supabase.from('cliente_eventos').insert({
+      cliente_id: cliente.id,
+      tipo: 'servico',
+      titulo: 'Contrato atualizado',
+      descricao: `${labelContratoTipo(tipo)} · ${status} · ${inicio || '?'} → ${fim || '?'}`,
+      meta: {
+        contrato_tipo: tipo,
+        contrato_inicio: inicio,
+        contrato_fim: fim,
+        contrato_status: status,
+        contrato_responsavel_id: responsavelId,
+      },
+    })
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">Editar Contrato</h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Atualize as informações do contrato do cliente.
+        </p>
+
+        {error && (
+          <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Tipo de Contrato
+            </label>
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            >
+              <option value="">—</option>
+              {CONTRATO_TIPOS.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Data Início
+              </label>
+              <input
+                type="date"
+                value={inicio}
+                onChange={(e) => setInicio(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Data Fim
+              </label>
+              <input
+                type="date"
+                value={fim}
+                onChange={(e) => setFim(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Status do Contrato
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            >
+              {CONTRATO_STATUS.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Responsável pela Renovação
+            </label>
+            <select
+              value={responsavelId}
+              onChange={(e) => setResponsavelId(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            >
+              <option value="">—</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={salvar} disabled={saving}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ============================================================
 // Status de Risco — 4 niveis com semaforo

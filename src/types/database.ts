@@ -168,6 +168,17 @@ export interface Cliente {
    * enum, e' text[] livre pra novos servicos entrarem sem migration.
    */
   servicos_contratados: string[]
+  /**
+   * Dados do contrato (migration 080). Vai alimentar o modulo
+   * Financeiro (v2) — alertas de renovacao, projecoes de MRR, etc.
+   * contrato_tipo: mensal|3_meses|6_meses|12_meses|anual|indefinido
+   * contrato_status: ativo|renovado|encerrado|pausado
+   */
+  contrato_tipo: string | null
+  contrato_inicio: string | null
+  contrato_fim: string | null
+  contrato_status: string | null
+  contrato_responsavel_id: string | null
   gestor_id: string | null
   account_manager_id: string | null
   social_media_id: string | null
