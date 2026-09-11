@@ -24,6 +24,7 @@ import { PlanejamentoMensalPanel } from '@/components/social/PlanejamentoMensalP
 import { CalendarioSocialPanel } from '@/components/social/CalendarioSocialPanel'
 import { MetricasSocialPanel } from '@/components/social/MetricasSocialPanel'
 import { IdeiasSocialPanel } from '@/components/social/IdeiasSocialPanel'
+import { ClienteFicha } from '@/pages/ClienteFicha'
 import { supabase } from '@/lib/supabase'
 import {
   cn,
@@ -53,6 +54,9 @@ import type {
 type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'crm' | 'log' | 'criacoes'
 type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas' | 'ideias'
 type Modo = 'trafego' | 'social'
+// Nova nav top-level do cliente. 'ficha' e' a visao comercial padrao;
+// 'operacional' abre as tabs originais do modo atual (trafego/social).
+type TopView = 'ficha' | 'operacional'
 
 const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLeft: string }> = {
   diaria: {
@@ -91,6 +95,7 @@ export default function ClienteDetalhe() {
   const [comentariosCount, setComentariosCount] = useState<Map<string, number>>(new Map())
   const [tab, setTab] = useState<Tab>('visao')
   const [socialTab, setSocialTab] = useState<SocialTab>('painel')
+  const [topView, setTopView] = useState<TopView>('ficha')
   // Mantém compatível com o resto do código que lê `modo`. Atualiza
   // sempre que a URL muda (navegação entre as 2 visões).
   const modo: Modo = modoUrl
@@ -270,8 +275,44 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
+      {/* Nova tab bar de topo: Ficha (comercial) vs Operacional (features
+          do modo trafego/social). Ficha e' o default. */}
+      <div className="mb-6 inline-flex rounded-lg border border-border bg-bg-soft p-1">
+        <button
+          onClick={() => setTopView('ficha')}
+          className={cn(
+            'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
+            topView === 'ficha'
+              ? 'bg-bg-elev text-brand-300 shadow-sm'
+              : 'text-muted hover:text-zinc-200',
+          )}
+        >
+          📇 Ficha
+        </button>
+        <button
+          onClick={() => setTopView('operacional')}
+          className={cn(
+            'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
+            topView === 'operacional'
+              ? 'bg-bg-elev text-brand-300 shadow-sm'
+              : 'text-muted hover:text-zinc-200',
+          )}
+        >
+          {modo === 'social' ? '📱 Operacional Social' : '📊 Operacional Tráfego'}
+        </button>
+      </div>
+
+      {/* Ficha view — visao comercial padrao */}
+      {topView === 'ficha' && (
+        <ClienteFicha
+          cliente={cliente}
+          onChanged={load}
+          onEdit={() => setEditOpen(true)}
+        />
+      )}
+
       {/* Modo Tráfego: header + tabs originais */}
-      {modo === 'trafego' && (
+      {topView === 'operacional' && modo === 'trafego' && (
         <>
           <ClienteHeader cliente={cliente} onChanged={load} onEdit={() => setEditOpen(true)} />
           <div className="mb-6 flex gap-1 border-b border-border">
@@ -302,7 +343,7 @@ export default function ClienteDetalhe() {
       )}
 
       {/* Modo Social Media: header SM + tabs SM */}
-      {modo === 'social' && (
+      {topView === 'operacional' && modo === 'social' && (
         <>
           <SocialClienteHeader
             cliente={cliente}
@@ -377,7 +418,7 @@ export default function ClienteDetalhe() {
         </>
       )}
 
-      {modo === 'trafego' && tab === 'visao' && (
+      {topView === 'operacional' && modo === 'trafego' && tab === 'visao' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card>
             <CardHeader>
@@ -428,7 +469,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {modo === 'trafego' && tab === 'tarefas' && (
+      {topView === 'operacional' && modo === 'trafego' && tab === 'tarefas' && (
         <div className="space-y-5">
           <div className="flex items-center justify-end">
             <Button
@@ -479,7 +520,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {modo === 'trafego' && tab === 'ativos' && (
+      {topView === 'operacional' && modo === 'trafego' && tab === 'ativos' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {TIPOS_ATIVO.map((tipo) => {
             const a = ativosByTipo.get(tipo)
@@ -490,15 +531,15 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {modo === 'trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
+      {topView === 'operacional' && modo === 'trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
 
-      {modo === 'trafego' && tab === 'metas' && (
+      {topView === 'operacional' && modo === 'trafego' && tab === 'metas' && (
         <MetasPanel clienteId={cliente.id} cliente={cliente} />
       )}
 
-      {modo === 'trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
+      {topView === 'operacional' && modo === 'trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
 
-      {modo === 'trafego' && tab === 'log' && (
+      {topView === 'operacional' && modo === 'trafego' && tab === 'log' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <Select
