@@ -909,6 +909,27 @@ function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
   return dados
 }
 
+/**
+ * Nice numbers pra eixo Y: retorna [max_ajustado, ticks[]] onde os
+ * ticks sao numeros redondos sem duplicatas.
+ *
+ * Ex: valor bruto 3 -> max=3, ticks=[0,1,2,3]
+ *     valor bruto 7 -> max=8, ticks=[0,2,4,6,8]
+ *     valor bruto 23 -> max=25, ticks=[0,5,10,15,20,25]
+ */
+function niceScale(maxValor: number): { max: number; ticks: number[] } {
+  if (maxValor <= 0) return { max: 1, ticks: [0, 1] }
+  // Passos "bonitos" — arredonda pra multiplos que produzem ticks limpos
+  const passos = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]
+  const alvoTicks = 5
+  const stepIdeal = maxValor / alvoTicks
+  const step = passos.find((p) => p >= stepIdeal) ?? Math.ceil(stepIdeal / 100) * 100
+  const max = Math.ceil(maxValor / step) * step
+  const ticks: number[] = []
+  for (let v = 0; v <= max; v += step) ticks.push(v)
+  return { max, ticks }
+}
+
 function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
   const dados = useMemo(() => calculaEvolucao(clientes), [clientes])
 
@@ -916,24 +937,31 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
     return null
   }
 
-  // Escalas do chart
-  const maxBar = Math.max(1, ...dados.map((d) => Math.max(d.novos, d.churns)))
-  const maxBase = Math.max(1, ...dados.map((d) => d.baseAtiva))
+  // Escalas com nice numbers pra tirar duplicatas e ficar redondo
+  const maxBarRaw = Math.max(1, ...dados.map((d) => Math.max(d.novos, d.churns)))
+  const maxBaseRaw = Math.max(1, ...dados.map((d) => d.baseAtiva))
+  const escalaBar = niceScale(maxBarRaw)
+  const escalaBase = niceScale(maxBaseRaw)
+  const maxBar = escalaBar.max
+  const maxBase = escalaBase.max
+  const yTicks = escalaBar.ticks
+  const yBaseTicks = escalaBase.ticks
 
+  // Aspect ratio mais compacto — reduz altura quando dados sao poucos
   const W = 900
-  const H = 260
-  const padL = 40
-  const padR = 55
-  const padT = 20
+  const H = 220
+  const padL = 42
+  const padR = 42
+  const padT = 16
   const padB = 32
   const chartW = W - padL - padR
   const chartH = H - padT - padB
   const colW = chartW / dados.length
-  const barW = colW * 0.28
+  const barW = colW * 0.32
 
-  // Ticks eixo esquerdo (0 → maxBar arredondado)
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * maxBar))
-  const yBaseTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * maxBase))
+  // Empty state: se TODO mundo esta zerado, mostra mensagem
+  const semDados = maxBarRaw === 1 && maxBaseRaw === 1 &&
+    dados.every((d) => d.novos === 0 && d.churns === 0 && d.baseAtiva === 0)
 
   // Points do polyline
   const linePoints = dados
@@ -955,99 +983,125 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
           Ano corrente
         </span>
       </div>
-      <p className="mb-2 text-[11px] text-muted">
-        Barras verdes = clientes novos no mês; vermelhas = churns; linha azul = base
-        ativa no fim do mês.
+      <p className="mb-3 text-[11px] text-muted">
+        Barras verdes = clientes novos no mês · vermelhas = churns · linha azul = base ativa no fim
+        do mês.
       </p>
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[700px] w-full">
-          {/* Grid lines + labels eixo esquerdo (barras) */}
-          {yTicks.map((t, i) => {
-            const y = padT + chartH - (i / 4) * chartH
-            return (
-              <g key={`y1-${i}`}>
-                <line
-                  x1={padL}
-                  x2={padL + chartW}
-                  y1={y}
-                  y2={y}
-                  stroke="rgb(38 38 46)"
-                  strokeDasharray="2 4"
-                />
-                <text x={padL - 8} y={y + 3} textAnchor="end" fontSize="9" fill="rgb(113 113 122)">
+
+      {semDados ? (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-border bg-bg-soft/30 py-16 text-center">
+          <div>
+            <p className="text-xs text-muted">Sem movimentação no ano corrente ainda.</p>
+            <p className="mt-1 text-[10px] text-muted italic">
+              Cadastre clientes ou registre churns pra alimentar o gráfico.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[640px] w-full">
+            {/* Grid lines + labels eixo esquerdo (barras) — usa ticks nice */}
+            {yTicks.map((t, i) => {
+              const y = padT + chartH - (t / maxBar) * chartH
+              return (
+                <g key={`y1-${i}`}>
+                  <line
+                    x1={padL}
+                    x2={padL + chartW}
+                    y1={y}
+                    y2={y}
+                    stroke="rgb(38 38 46)"
+                    strokeDasharray="2 3"
+                    strokeOpacity="0.6"
+                  />
+                  <text
+                    x={padL - 8}
+                    y={y + 3}
+                    textAnchor="end"
+                    fontSize="10"
+                    fill="rgb(113 113 122)"
+                  >
+                    {t}
+                  </text>
+                </g>
+              )
+            })}
+
+            {/* Labels eixo direito (base ativa) — em sky pra combinar com a linha */}
+            {yBaseTicks.map((t, i) => {
+              const y = padT + chartH - (t / maxBase) * chartH
+              return (
+                <text
+                  key={`y2-${i}`}
+                  x={padL + chartW + 8}
+                  y={y + 3}
+                  textAnchor="start"
+                  fontSize="10"
+                  fill="rgb(56 189 248)"
+                  opacity="0.7"
+                >
                   {t}
                 </text>
-              </g>
-            )
-          })}
+              )
+            })}
 
-          {/* Labels eixo direito (base ativa) */}
-          {yBaseTicks.map((t, i) => {
-            const y = padT + chartH - (i / 4) * chartH
-            return (
-              <text
-                key={`y2-${i}`}
-                x={padL + chartW + 8}
-                y={y + 3}
-                textAnchor="start"
-                fontSize="9"
-                fill="rgb(113 113 122)"
-              >
-                {t}
-              </text>
-            )
-          })}
+            {/* Barras */}
+            {dados.map((d, i) => {
+              const xCenter = padL + colW * i + colW / 2
+              const xLeftBar = xCenter - barW - 2
+              const xRightBar = xCenter + 2
+              const novosH = maxBar > 0 ? (d.novos / maxBar) * chartH : 0
+              const churnsH = maxBar > 0 ? (d.churns / maxBar) * chartH : 0
+              return (
+                <g key={`col-${i}`}>
+                  {d.novos > 0 && (
+                    <rect
+                      x={xLeftBar}
+                      y={padT + chartH - novosH}
+                      width={barW}
+                      height={novosH}
+                      fill="rgb(16 185 129)"
+                      rx="2"
+                    />
+                  )}
+                  {d.churns > 0 && (
+                    <rect
+                      x={xRightBar}
+                      y={padT + chartH - churnsH}
+                      width={barW}
+                      height={churnsH}
+                      fill="rgb(239 68 68)"
+                      rx="2"
+                    />
+                  )}
+                  <text
+                    x={xCenter}
+                    y={H - 8}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fill="rgb(161 161 170)"
+                  >
+                    {d.mesLabel}
+                  </text>
+                </g>
+              )
+            })}
 
-          {/* Barras */}
-          {dados.map((d, i) => {
-            const xLeft = padL + colW * i + colW * 0.15
-            const novosH = maxBar > 0 ? (d.novos / maxBar) * chartH : 0
-            const churnsH = maxBar > 0 ? (d.churns / maxBar) * chartH : 0
-            return (
-              <g key={`col-${i}`}>
-                <rect
-                  x={xLeft}
-                  y={padT + chartH - novosH}
-                  width={barW}
-                  height={novosH}
-                  fill="rgb(16 185 129)"
-                  rx="2"
-                />
-                <rect
-                  x={xLeft + barW + 4}
-                  y={padT + chartH - churnsH}
-                  width={barW}
-                  height={churnsH}
-                  fill="rgb(239 68 68)"
-                  rx="2"
-                />
-                <text
-                  x={padL + colW * i + colW / 2}
-                  y={H - 10}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fill="rgb(161 161 170)"
-                >
-                  {d.mesLabel}
-                </text>
-              </g>
-            )
-          })}
-
-          {/* Linha Base Ativa */}
-          <polyline
-            points={linePoints}
-            fill="none"
-            stroke="rgb(56 189 248)"
-            strokeWidth="2"
-          />
-          {dados.map((d, i) => {
-            const x = padL + colW * i + colW / 2
-            const y = padT + chartH - (d.baseAtiva / maxBase) * chartH
-            return <circle key={`dot-${i}`} cx={x} cy={y} r="3" fill="rgb(56 189 248)" />
-          })}
-        </svg>
-      </div>
+            {/* Linha Base Ativa */}
+            <polyline
+              points={linePoints}
+              fill="none"
+              stroke="rgb(56 189 248)"
+              strokeWidth="2"
+            />
+            {dados.map((d, i) => {
+              const x = padL + colW * i + colW / 2
+              const y = padT + chartH - (d.baseAtiva / maxBase) * chartH
+              return <circle key={`dot-${i}`} cx={x} cy={y} r="3" fill="rgb(56 189 248)" />
+            })}
+          </svg>
+        </div>
+      )}
 
       {/* Legenda */}
       <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
