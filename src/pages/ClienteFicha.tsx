@@ -54,6 +54,8 @@ import {
   Settings,
   FileCheck,
   Activity,
+  Copy,
+  ExternalLink,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -967,31 +969,32 @@ function EnviarNpsBtn({
   cliente: Cliente
   onCriado: () => void
 }) {
-  const [aberto, setAberto] = useState(false)
+  const [dropdownAberto, setDropdownAberto] = useState(false)
   const [gerando, setGerando] = useState<string | null>(null)
+  const [modalDados, setModalDados] = useState<{
+    token: string
+    tipo: 'onboarding' | 'operacao'
+    criadoEm: Date
+  } | null>(null)
 
   async function gerarLink(tipo: 'onboarding' | 'operacao') {
     setGerando(tipo)
     const { data, error } = await supabase
       .from('nps_surveys')
       .insert({ cliente_id: cliente.id, tipo })
-      .select('token')
+      .select('token, criado_em')
       .single()
     setGerando(null)
-    setAberto(false)
+    setDropdownAberto(false)
     if (error) {
       alert(`Erro: ${error.message}`)
       return
     }
-    const url = `${window.location.origin}/publico/nps/${data.token}`
-    try {
-      await navigator.clipboard.writeText(url)
-      alert(
-        `Link do NPS ${tipo === 'onboarding' ? 'Onboarding' : 'Operação'} copiado!\n\n${url}\n\nEnvie pro cliente responder.`,
-      )
-    } catch {
-      prompt('Copie o link do NPS:', url)
-    }
+    setModalDados({
+      token: data.token,
+      tipo,
+      criadoEm: new Date(data.criado_em),
+    })
     onCriado()
   }
 
@@ -999,7 +1002,7 @@ function EnviarNpsBtn({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setAberto((v) => !v)}
+        onClick={() => setDropdownAberto((v) => !v)}
         className="flex w-full flex-col items-start gap-1 rounded-lg border border-border bg-bg-soft px-3 py-3 text-left text-zinc-200 transition-colors hover:bg-bg-elev"
       >
         <div className="flex items-center gap-2">
@@ -1008,11 +1011,11 @@ function EnviarNpsBtn({
         </div>
         <span className="text-[10px] text-muted">Gera link público</span>
       </button>
-      {aberto && (
+      {dropdownAberto && (
         <>
           <div
             className="fixed inset-0 z-40"
-            onClick={() => setAberto(false)}
+            onClick={() => setDropdownAberto(false)}
           />
           <div className="absolute left-0 top-full mt-1 z-50 w-52 rounded-lg border border-border bg-bg-card shadow-xl">
             <button
@@ -1043,6 +1046,183 @@ function EnviarNpsBtn({
           </div>
         </>
       )}
+
+      {modalDados && (
+        <EnviarNpsModal
+          cliente={cliente}
+          token={modalDados.token}
+          tipo={modalDados.tipo}
+          criadoEm={modalDados.criadoEm}
+          onClose={() => setModalDados(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// Modal — Enviar Pesquisa NPS (aparece depois de gerar o token)
+// ============================================================
+//
+// Copia estilo do print: link gerado + validade + botao WhatsApp +
+// botao testar + mensagem sugerida em bloco separado. Validade
+// declarativa (15 dias) — informativa, nao enforcada no banco.
+
+const DIAS_VALIDADE_NPS = 15
+
+function EnviarNpsModal({
+  cliente,
+  token,
+  tipo,
+  criadoEm,
+  onClose,
+}: {
+  cliente: Cliente
+  token: string
+  tipo: 'onboarding' | 'operacao'
+  criadoEm: Date
+  onClose: () => void
+}) {
+  const [copiadoLink, setCopiadoLink] = useState(false)
+  const [copiadoWpp, setCopiadoWpp] = useState(false)
+
+  const url = `${window.location.origin}/publico/nps/${token}`
+  const mensagem = `Olá! Gostaríamos de saber sua opinião sobre nossos serviços. Por favor, avalie-nos através do link: ${url}\n\nSua avaliação é muito importante para nós! 🙏`
+
+  const expiraEm = new Date(criadoEm)
+  expiraEm.setDate(expiraEm.getDate() + DIAS_VALIDADE_NPS)
+  const expiraStr = `${expiraEm.toLocaleDateString('pt-BR')} às ${expiraEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+
+  async function copiarLink() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiadoLink(true)
+      setTimeout(() => setCopiadoLink(false), 2000)
+    } catch {
+      /* fallback: mostra prompt */
+      prompt('Copie o link:', url)
+    }
+  }
+
+  async function copiarParaWhatsApp() {
+    try {
+      await navigator.clipboard.writeText(mensagem)
+      setCopiadoWpp(true)
+      setTimeout(() => setCopiadoWpp(false), 2000)
+    } catch {
+      prompt('Copie a mensagem:', mensagem)
+    }
+  }
+
+  function testarLink() {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Send size={14} className="text-brand-300" />
+            <h3 className="text-sm font-semibold text-zinc-100">
+              Enviar Pesquisa NPS
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Gere um link público para <span className="text-zinc-200">{cliente.nome}</span>{' '}
+          avaliar os serviços — modelo{' '}
+          <span className="text-brand-300">
+            {tipo === 'onboarding' ? 'Onboarding' : 'Operação'}
+          </span>
+          .
+        </p>
+
+        {/* Link gerado */}
+        <div className="mb-3">
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Link gerado:
+          </label>
+          <div className="flex items-stretch gap-2">
+            <input
+              type="text"
+              readOnly
+              value={url}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 min-w-0 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={copiarLink}
+              className={cn(
+                'grid h-auto w-10 place-items-center rounded-md border transition-colors',
+                copiadoLink
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                  : 'border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-brand-300',
+              )}
+              title="Copiar link"
+            >
+              {copiadoLink ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+            </button>
+          </div>
+          <p className="mt-2 text-center text-[11px] text-muted">
+            Link válido até {expiraStr}
+          </p>
+        </div>
+
+        {/* Acoes rapidas */}
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={copiarParaWhatsApp}
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors',
+              copiadoWpp
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
+                : 'border-border bg-bg-soft text-zinc-200 hover:border-brand-500/40 hover:text-brand-300',
+            )}
+          >
+            {copiadoWpp ? (
+              <>
+                <CheckCircle2 size={12} /> Copiado!
+              </>
+            ) : (
+              <>
+                <MessageCircle size={12} /> Copiar p/ WhatsApp
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={testarLink}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300"
+          >
+            <ExternalLink size={12} /> Testar Link
+          </button>
+        </div>
+
+        {/* Mensagem sugerida */}
+        <div className="rounded-lg border border-border bg-bg-soft/40 p-3">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Mensagem sugerida:
+          </p>
+          <p className="text-[11px] text-zinc-300 leading-relaxed italic whitespace-pre-wrap">
+            "{mensagem}"
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
