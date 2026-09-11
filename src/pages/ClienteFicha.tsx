@@ -150,6 +150,8 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   const [savingRisco, setSavingRisco] = useState(false)
   const [servicosModalOpen, setServicosModalOpen] = useState(false)
   const [contatoModalOpen, setContatoModalOpen] = useState(false)
+  const [expansaoModalOpen, setExpansaoModalOpen] = useState(false)
+  const [perdaModalOpen, setPerdaModalOpen] = useState(false)
   const [eventos, setEventos] = useState<ClienteEvento[]>([])
   const [loadingEventos, setLoadingEventos] = useState(true)
 
@@ -465,16 +467,15 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           <AcaoBtn
             icon={<TrendingUp size={14} />}
             label="Registrar Expansão"
-            hint="Log de MRR+ (v2)"
-            disabled
-            onClick={() => alert('Registrar expansão — v2')}
+            hint="Upsell / novo serviço"
+            onClick={() => setExpansaoModalOpen(true)}
           />
           <AcaoBtn
             icon={<TrendingDown size={14} />}
             label="Registrar Perda"
-            hint="Log de MRR- (v2)"
-            disabled
-            onClick={() => alert('Registrar perda — v2')}
+            hint="Downsell / redução"
+            tone="warning"
+            onClick={() => setPerdaModalOpen(true)}
           />
         </div>
       </div>
@@ -559,6 +560,34 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           onClose={() => setContatoModalOpen(false)}
           onSaved={() => {
             setContatoModalOpen(false)
+            loadEventos()
+          }}
+        />
+      )}
+
+      {/* Modal — registrar expansao (upsell) */}
+      {expansaoModalOpen && (
+        <ExpansaoPerdaModal
+          cliente={cliente}
+          direcao="expansao"
+          onClose={() => setExpansaoModalOpen(false)}
+          onSaved={() => {
+            setExpansaoModalOpen(false)
+            onChanged()
+            loadEventos()
+          }}
+        />
+      )}
+
+      {/* Modal — registrar perda (downsell) */}
+      {perdaModalOpen && (
+        <ExpansaoPerdaModal
+          cliente={cliente}
+          direcao="perda"
+          onClose={() => setPerdaModalOpen(false)}
+          onSaved={() => {
+            setPerdaModalOpen(false)
+            onChanged()
             loadEventos()
           }}
         />
@@ -992,6 +1021,345 @@ function tempoRelativo(iso: string): string {
   if (meses < 12) return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`
   const anos = Math.floor(meses / 12)
   return `há ${anos} ${anos === 1 ? 'ano' : 'anos'}`
+}
+
+// ============================================================
+// Modal — Registrar Expansao / Perda
+// ============================================================
+//
+// Um so modal atende os 2 casos porque a estrutura e' identica (valor,
+// motivo, notas, flags recorrente/TCV, servicos_contratados). Muda so
+// o SINAL do valor (perda subtrai do MRR) e alguns rotulos.
+
+function ExpansaoPerdaModal({
+  cliente,
+  direcao,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  direcao: 'expansao' | 'perda'
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [data, setData] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [valor, setValor] = useState<string>('')
+  const [motivo, setMotivo] = useState('')
+  const [notas, setNotas] = useState('')
+  const [recorrente, setRecorrente] = useState(true)
+  const [tcv, setTcv] = useState(false)
+  const [servicosAdicionar, setServicosAdicionar] = useState<string[]>([])
+  const [servicosRemover, setServicosRemover] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Servicos ja contratados vs disponiveis
+  const jaContratados = cliente.servicos_contratados ?? []
+  const disponiveis = SERVICOS_CATALOGO.filter((s) => !jaContratados.includes(s.key))
+  const contratados = SERVICOS_CATALOGO.filter((s) => jaContratados.includes(s.key))
+
+  const ehExpansao = direcao === 'expansao'
+  const titulo = ehExpansao ? 'Registrar Expansão' : 'Registrar Perda'
+  const subLabel = ehExpansao
+    ? 'Registre uma expansão de receita deste cliente.'
+    : 'Registre uma redução ou perda de receita deste cliente.'
+  const valorLabel = ehExpansao ? 'Valor da Expansão (R$) *' : 'Valor da Perda (R$) *'
+  const motivoPh = ehExpansao ? 'Ex: Novo serviço contratado' : 'Ex: Cliente cancelou landing page'
+  const btnLabel = ehExpansao ? 'Registrar Expansão' : 'Registrar Perda'
+  const btnCls = ehExpansao ? 'bg-emerald-500' : 'bg-red-500'
+
+  function toggleServico(key: string, tipo: 'add' | 'remove') {
+    if (tipo === 'add') {
+      setServicosAdicionar((p) =>
+        p.includes(key) ? p.filter((k) => k !== key) : [...p, key],
+      )
+    } else {
+      setServicosRemover((p) =>
+        p.includes(key) ? p.filter((k) => k !== key) : [...p, key],
+      )
+    }
+  }
+
+  async function salvar() {
+    setError(null)
+    const valorNum = Number(valor)
+    if (isNaN(valorNum) || valorNum <= 0) {
+      setError('Valor precisa ser maior que zero')
+      return
+    }
+    setSaving(true)
+    const sinal = ehExpansao ? 1 : -1
+
+    // 1) Insert evento
+    const { error: evErr } = await supabase.from('cliente_eventos').insert({
+      cliente_id: cliente.id,
+      tipo: ehExpansao ? 'expansao' : 'perda',
+      titulo: ehExpansao
+        ? `Expansão · ${motivo.trim() || 'sem motivo'}`
+        : `Perda · ${motivo.trim() || 'sem motivo'}`,
+      descricao: notas.trim() || null,
+      meta: {
+        valor: valorNum,
+        data,
+        motivo: motivo.trim() || null,
+        recorrente,
+        tcv,
+        servicos_adicionados: servicosAdicionar,
+        servicos_removidos: servicosRemover,
+      },
+    })
+    if (evErr) {
+      setError(evErr.message)
+      setSaving(false)
+      return
+    }
+
+    // 2) Atualiza clientes se necessario
+    const updates: Record<string, unknown> = {}
+    // MRR so muda se recorrente e nao TCV (TCV nao mexe no MRR mensal
+    // conforme sub-texto do modal — o valor total vai pra NRR/Expansao,
+    // mas o mensal segue igual)
+    if (recorrente && !tcv) {
+      const novoMRR = (cliente.verba_mensal ?? 0) + sinal * valorNum
+      updates.verba_mensal = Math.max(0, novoMRR)
+    }
+    // Servicos
+    const novosServicos = [
+      ...jaContratados.filter((k) => !servicosRemover.includes(k)),
+      ...servicosAdicionar.filter((k) => !jaContratados.includes(k)),
+    ]
+    if (
+      servicosAdicionar.length > 0 ||
+      servicosRemover.length > 0
+    ) {
+      updates.servicos_contratados = novosServicos
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const { error: upErr } = await supabase
+        .from('clientes')
+        .update(updates)
+        .eq('id', cliente.id)
+      if (upErr) {
+        setError(`Evento salvo mas cliente nao atualizou: ${upErr.message}`)
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">{titulo}</h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">{subLabel}</p>
+
+        {error && (
+          <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Data *
+            </label>
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              {valorLabel}
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              placeholder="0,00"
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Motivo
+            </label>
+            <input
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder={motivoPh}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Notas
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Observações adicionais..."
+              rows={3}
+              className="w-full resize-none rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Flags */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+            <input
+              type="checkbox"
+              checked={recorrente}
+              onChange={(e) => setRecorrente(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-brand-500 cursor-pointer"
+            />
+            <div>
+              <span className="text-xs font-medium text-zinc-100">
+                {ehExpansao ? 'Expansão recorrente' : 'Perda recorrente'}
+              </span>
+              <p className="text-[10px] text-muted">
+                {recorrente
+                  ? 'Adiciona ao MRR mensal a partir da data.'
+                  : 'Receita apenas neste mês (ex: CRM, Identidade Visual, projeto pontual).'}
+              </p>
+            </div>
+          </label>
+
+          {ehExpansao && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={tcv}
+                onChange={(e) => setTcv(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 accent-brand-500 cursor-pointer"
+              />
+              <div>
+                <span className="text-xs font-medium text-zinc-100">
+                  Venda TCV (caixa coletado 100% no ato)
+                </span>
+                <p className="text-[10px] text-muted">
+                  Marque quando o contrato foi pago integralmente no ato da venda. O
+                  valor mensal acima continua sendo usado apenas para organização
+                  de MRR; o valor total do contrato será contabilizado
+                  integralmente em NRR e Expansão.
+                </p>
+              </div>
+            </label>
+          )}
+
+          {/* Servicos */}
+          {ehExpansao && disponiveis.length > 0 && (
+            <div className="rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Adicionar serviços contratados
+              </p>
+              <p className="mt-0.5 mb-2 text-[10px] text-muted">
+                Opcional. Marque os serviços novos vendidos junto com essa
+                expansão.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {disponiveis.map((s) => {
+                  const Icon = s.icon
+                  const marcado = servicosAdicionar.includes(s.key)
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => toggleServico(s.key, 'add')}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors',
+                        marcado
+                          ? s.cor
+                          : 'border-border bg-bg-elev text-zinc-300 hover:border-brand-500/40',
+                      )}
+                    >
+                      <Icon size={9} />
+                      {s.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {!ehExpansao && contratados.length > 0 && (
+            <div className="rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Remover serviços contratados
+              </p>
+              <p className="mt-0.5 mb-2 text-[10px] text-muted">
+                Opcional. Marque os serviços que o cliente deixou de contratar.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {contratados.map((s) => {
+                  const Icon = s.icon
+                  const marcado = servicosRemover.includes(s.key)
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => toggleServico(s.key, 'remove')}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors',
+                        marcado
+                          ? 'border-red-500/50 bg-red-500/15 text-red-200 line-through'
+                          : 'border-border bg-bg-elev text-zinc-300 hover:border-red-500/40',
+                      )}
+                    >
+                      <Icon size={9} />
+                      {s.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <button
+            type="button"
+            onClick={salvar}
+            disabled={saving}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50',
+              btnCls,
+            )}
+          >
+            {saving ? 'Registrando…' : btnLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function TimelineAlteracoes({
