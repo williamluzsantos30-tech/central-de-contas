@@ -16,6 +16,7 @@ import {
   Sun,
   Moon,
   Activity,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -54,8 +55,19 @@ const nav: Group[] = [
   { kind: 'item', item: { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true } },
   {
     kind: 'folder',
+    key: 'operacional',
+    label: 'Operacional',
+    icon: TrendingUp,
+    defaultOpen: true,
+    // Sem modulo — visao executiva e' meta-modulo, cruza tudo
+    items: [
+      { to: '/operacional/visao', label: 'Visão Executiva', icon: TrendingUp },
+    ],
+  },
+  {
+    kind: 'folder',
     key: 'trafego',
-    label: 'Operacional Tráfego',
+    label: 'Tráfego',
     icon: Megaphone,
     defaultOpen: true,
     modulo: 'trafego',
@@ -72,7 +84,7 @@ const nav: Group[] = [
   {
     kind: 'folder',
     key: 'webdesign',
-    label: 'Operacional Webdesign',
+    label: 'Webdesign',
     icon: Palette,
     defaultOpen: true,
     modulo: 'webdesign',
@@ -86,7 +98,7 @@ const nav: Group[] = [
   {
     kind: 'folder',
     key: 'social_media',
-    label: 'Operacional Social Media',
+    label: 'Social Media',
     icon: Share2,
     defaultOpen: true,
     modulo: 'social_media',
