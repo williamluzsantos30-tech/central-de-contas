@@ -49,6 +49,11 @@ import {
   MessageCircle,
   Paperclip,
   RefreshCw,
+  Trash2,
+  ArrowRight,
+  Settings,
+  FileCheck,
+  Activity,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -992,19 +997,77 @@ function ContatoModal({
 // Timeline de Alterações
 // ============================================================
 
+// Config visual por tipo de evento. Cada tipo tem sua propria bolinha
+// colorida (mesma paleta usada na referencia visual).
 const eventoTipoConfig: Record<
   string,
-  { cor: string; icon: React.ComponentType<{ size?: number; className?: string }> }
+  {
+    corBg: string
+    corIcon: string
+    icon: React.ComponentType<{ size?: number; className?: string }>
+    tituloDisplay?: string // sobrescreve o titulo salvo no banco (opcional)
+  }
 > = {
-  contato: { cor: 'text-sky-300', icon: Phone },
-  nps: { cor: 'text-amber-300', icon: Smile },
-  risco: { cor: 'text-red-300', icon: AlertTriangle },
-  jornada: { cor: 'text-brand-300', icon: TrendingUp },
-  servico: { cor: 'text-emerald-300', icon: CheckCircle2 },
-  mrr: { cor: 'text-emerald-300', icon: DollarSign },
-  responsavel: { cor: 'text-violet-300', icon: Users },
-  expansao: { cor: 'text-emerald-300', icon: TrendingUp },
-  perda: { cor: 'text-red-300', icon: TrendingDown },
+  contato: {
+    corBg: 'bg-sky-500/15',
+    corIcon: 'text-sky-300',
+    icon: Phone,
+    tituloDisplay: 'Comunicação',
+  },
+  nps: {
+    corBg: 'bg-violet-500/15',
+    corIcon: 'text-violet-300',
+    icon: MessageCircle,
+    tituloDisplay: 'NPS Registrado',
+  },
+  risco: {
+    corBg: 'bg-red-500/15',
+    corIcon: 'text-red-300',
+    icon: AlertTriangle,
+    tituloDisplay: 'Risco Alterado',
+  },
+  jornada: {
+    corBg: 'bg-emerald-500/15',
+    corIcon: 'text-emerald-300',
+    icon: TrendingUp,
+    tituloDisplay: 'Jornada Alterada',
+  },
+  servico: {
+    corBg: 'bg-zinc-500/15',
+    corIcon: 'text-zinc-300',
+    icon: Settings,
+    tituloDisplay: 'Serviços Atualizados',
+  },
+  mrr: {
+    corBg: 'bg-emerald-500/15',
+    corIcon: 'text-emerald-300',
+    icon: DollarSign,
+    tituloDisplay: 'MRR Atualizado',
+  },
+  responsavel: {
+    corBg: 'bg-violet-500/15',
+    corIcon: 'text-violet-300',
+    icon: Users,
+    tituloDisplay: 'Responsável Alterado',
+  },
+  expansao: {
+    corBg: 'bg-emerald-500/15',
+    corIcon: 'text-emerald-300',
+    icon: DollarSign,
+    tituloDisplay: 'Expansão Registrada',
+  },
+  perda: {
+    corBg: 'bg-red-500/15',
+    corIcon: 'text-red-300',
+    icon: TrendingDown,
+    tituloDisplay: 'Perda Registrada',
+  },
+  briefing: {
+    corBg: 'bg-orange-500/15',
+    corIcon: 'text-orange-300',
+    icon: Activity,
+    tituloDisplay: 'Briefing Recebido',
+  },
 }
 
 function tempoRelativo(iso: string): string {
@@ -1016,11 +1079,42 @@ function tempoRelativo(iso: string): string {
   const h = Math.floor(min / 60)
   if (h < 24) return `há ${h}h`
   const dias = Math.floor(h / 24)
-  if (dias < 30) return `há ${dias}d`
-  const meses = Math.floor(dias / 30)
-  if (meses < 12) return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`
-  const anos = Math.floor(meses / 12)
+  if (dias < 30) return `há ${dias} dias`
+  const meses = dias / 30
+  if (meses < 12) {
+    const arred = Math.round(meses)
+    if (arred === 1) return 'há cerca de 1 mês'
+    if (Math.abs(meses - arred) > 0.15) {
+      return `há cerca de ${arred} ${arred === 1 ? 'mês' : 'meses'}`
+    }
+    return `há ${arred} ${arred === 1 ? 'mês' : 'meses'}`
+  }
+  const anos = Math.round(meses / 12)
   return `há ${anos} ${anos === 1 ? 'ano' : 'anos'}`
+}
+
+// Rotulos legiveis pra keys de servicos_contratados
+function labelServico(key: string): string {
+  const s = SERVICOS_CATALOGO.find((x) => x.key === key)
+  return s?.label ?? key
+}
+
+// Classificacao NPS
+function classificarNps(nps: number): { label: string; cor: string } {
+  if (nps >= 9) return { label: 'Alto', cor: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200' }
+  if (nps >= 7) return { label: 'Médio', cor: 'border-amber-500/50 bg-amber-500/15 text-amber-200' }
+  return { label: 'Baixo', cor: 'border-red-500/50 bg-red-500/15 text-red-200' }
+}
+
+function formatBRLShort(v: number | string | null | undefined): string {
+  if (v === null || v === undefined) return '—'
+  const n = typeof v === 'string' ? Number(v) : v
+  if (isNaN(n)) return '—'
+  return n.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  })
 }
 
 // ============================================================
@@ -1373,6 +1467,16 @@ function TimelineAlteracoes({
   onReload: () => void
   onRegistrarContato: () => void
 }) {
+  async function deletar(id: string) {
+    if (!confirm('Excluir esse evento da timeline? A ação não pode ser desfeita.')) return
+    const { error } = await supabase.from('cliente_eventos').delete().eq('id', id)
+    if (error) {
+      alert(`Erro: ${error.message}`)
+      return
+    }
+    onReload()
+  }
+
   return (
     <div className="rounded-xl border border-border bg-bg-card p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -1405,72 +1509,236 @@ function TimelineAlteracoes({
         </p>
       ) : (
         <ul className="space-y-2">
-          {eventos.map((ev) => {
-            const cfg = eventoTipoConfig[ev.tipo] ?? {
-              cor: 'text-muted',
-              icon: Clock,
-            }
-            const Icon = cfg.icon
-            const meta = (ev.meta ?? {}) as Record<string, unknown>
-            const proximoPasso = typeof meta.proximo_passo === 'string' ? meta.proximo_passo : null
-            return (
-              <li
-                key={ev.id}
-                className="flex gap-3 rounded-lg border border-border bg-bg-soft/40 p-3"
-              >
-                <span
-                  className={cn(
-                    'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-bg-elev border border-border',
-                    cfg.cor,
-                  )}
-                >
-                  <Icon size={12} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-xs font-semibold text-zinc-100">
-                      {ev.titulo}
-                    </p>
-                    <span className="text-[10px] text-muted">
-                      {tempoRelativo(ev.criado_em)}
-                    </span>
-                  </div>
-                  {ev.descricao && (
-                    <p className="mt-1 text-[11px] text-muted whitespace-pre-wrap">
-                      {ev.descricao}
-                    </p>
-                  )}
-                  {proximoPasso && (
-                    <p className="mt-1.5 text-[10px] text-brand-300">
-                      → Próximo passo: {proximoPasso}
-                    </p>
-                  )}
-                  {ev.arquivos && ev.arquivos.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {ev.arquivos.map((url, i) => (
-                        <a
-                          key={url}
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-brand-300"
-                        >
-                          <Paperclip size={9} /> Anexo {i + 1}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  {ev.autor?.nome && (
-                    <p className="mt-1 text-[10px] text-muted italic">
-                      por {ev.autor.nome}
-                    </p>
-                  )}
-                </div>
-              </li>
-            )
-          })}
+          {eventos.map((ev) => (
+            <EventoLinha key={ev.id} evento={ev} onDelete={() => deletar(ev.id)} />
+          ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+// ==========================================================
+// Linha individual da Timeline — renderiza icone circular +
+// titulo + descrição + badges de diff + anexos + delete
+// ==========================================================
+
+function EventoLinha({
+  evento,
+  onDelete,
+}: {
+  evento: ClienteEvento
+  onDelete: () => void
+}) {
+  const cfg = eventoTipoConfig[evento.tipo] ?? {
+    corBg: 'bg-zinc-500/15',
+    corIcon: 'text-zinc-300',
+    icon: Clock,
+  }
+  const Icon = cfg.icon
+  const meta = (evento.meta ?? {}) as Record<string, unknown>
+  const proximoPasso = typeof meta.proximo_passo === 'string' ? meta.proximo_passo : null
+  const titulo = cfg.tituloDisplay ?? evento.titulo
+
+  return (
+    <li className="group flex gap-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-3">
+      {/* Bolinha do icone */}
+      <span
+        className={cn(
+          'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+          cfg.corBg,
+          cfg.corIcon,
+        )}
+      >
+        <Icon size={14} />
+      </span>
+
+      {/* Conteudo */}
+      <div className="min-w-0 flex-1">
+        {/* Linha 1: titulo + badge extra + tempo + delete */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-zinc-100">{titulo}</p>
+          <div className="flex items-center gap-2">
+            {evento.tipo === 'nps' && typeof meta.para === 'number' && (
+              <span
+                className={cn(
+                  'rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
+                  classificarNps(meta.para as number).cor,
+                )}
+              >
+                {classificarNps(meta.para as number).label}
+              </span>
+            )}
+            <span className="text-[10px] text-muted whitespace-nowrap">
+              {tempoRelativo(evento.criado_em)}
+            </span>
+            <button
+              onClick={onDelete}
+              className="grid h-5 w-5 place-items-center rounded text-muted opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
+              title="Excluir evento"
+            >
+              <Trash2 size={10} />
+            </button>
+          </div>
+        </div>
+
+        {/* Linha 2: descricao curta (manual) */}
+        {evento.descricao && evento.tipo !== 'servico' && evento.tipo !== 'mrr' &&
+          evento.tipo !== 'jornada' && evento.tipo !== 'nps' && (
+            <p className="mt-1 text-[11px] text-muted whitespace-pre-wrap">
+              {evento.descricao}
+            </p>
+          )}
+
+        {/* Linha 3: renderizacao especifica por tipo */}
+        <RenderDiffPorTipo evento={evento} />
+
+        {/* Proximo passo */}
+        {proximoPasso && (
+          <p className="mt-1.5 text-[10px] text-brand-300">
+            → Próximo passo: {proximoPasso}
+          </p>
+        )}
+
+        {/* Anexos */}
+        {evento.arquivos && evento.arquivos.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {evento.arquivos.map((url, i) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-brand-300"
+              >
+                <Paperclip size={9} /> Anexo {i + 1}
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Autor */}
+        {evento.autor?.nome && (
+          <p className="mt-1 text-[10px] text-muted italic">
+            por {evento.autor.nome}
+          </p>
+        )}
+      </div>
+    </li>
+  )
+}
+
+// Renderiza diff especifico por tipo (badges de/para com seta)
+function RenderDiffPorTipo({ evento }: { evento: ClienteEvento }) {
+  const meta = (evento.meta ?? {}) as Record<string, unknown>
+
+  // Servicos: descricao "Adicionados: X. Removidos: Y" + badges antes/depois
+  if (evento.tipo === 'servico') {
+    const de = Array.isArray(meta.de) ? (meta.de as string[]) : []
+    const para = Array.isArray(meta.para) ? (meta.para as string[]) : []
+    const adicionados = para.filter((k) => !de.includes(k))
+    const removidos = de.filter((k) => !para.includes(k))
+    return (
+      <>
+        {(adicionados.length > 0 || removidos.length > 0) && (
+          <p className="mt-1 text-[11px] text-muted">
+            {adicionados.length > 0 && (
+              <>Adicionados: {adicionados.map(labelServico).join(', ')}. </>
+            )}
+            {removidos.length > 0 && (
+              <>Removidos: {removidos.map(labelServico).join(', ')}.</>
+            )}
+          </p>
+        )}
+        <DiffLine
+          de={de.length > 0 ? de.map(labelServico).join(', ') : '—'}
+          para={para.length > 0 ? para.map(labelServico).join(', ') : '—'}
+        />
+      </>
+    )
+  }
+
+  // NPS: mostra "NPS X/10 registrado via ..." + badge do valor
+  if (evento.tipo === 'nps') {
+    const para = typeof meta.para === 'number' ? meta.para : null
+    return (
+      <>
+        <p className="mt-1 text-[11px] text-muted">
+          NPS {para ?? '—'}/10 registrado
+        </p>
+        {para !== null && (
+          <div className="mt-1.5">
+            <span className="inline-block rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-200 tabular-nums">
+              {para}
+            </span>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // Jornada: badges de/para
+  if (evento.tipo === 'jornada') {
+    const de = meta.de ?? '—'
+    const para = meta.para ?? '—'
+    return (
+      <>
+        <p className="mt-1 text-[11px] text-muted">
+          Jornada alterada de "{String(de)}" para "{String(para)}"
+        </p>
+        <DiffLine de={String(de)} para={String(para)} />
+      </>
+    )
+  }
+
+  // MRR / Expansao / Perda: mostra R$ X → R$ Y
+  if (evento.tipo === 'mrr' || evento.tipo === 'expansao' || evento.tipo === 'perda') {
+    const de = meta.de as number | undefined
+    const para = meta.para as number | undefined
+    const valor = meta.valor as number | undefined
+    // Se e evento manual (expansao/perda), mostra o VALOR do movimento
+    // no lugar de/para. Se e evento automatico (mrr), mostra o diff.
+    if (evento.tipo === 'expansao' || evento.tipo === 'perda') {
+      if (typeof valor === 'number') {
+        return (
+          <p className="mt-1 text-[11px] text-muted">
+            {evento.tipo === 'expansao' ? 'Expansão' : 'Perda'} de{' '}
+            <span className="font-semibold text-zinc-100">{formatBRLShort(valor)}</span>{' '}
+            registrada
+          </p>
+        )
+      }
+    }
+    if (typeof de === 'number' && typeof para === 'number') {
+      return <DiffLine de={formatBRLShort(de)} para={formatBRLShort(para)} />
+    }
+    return null
+  }
+
+  // Risco: badge do status
+  if (evento.tipo === 'risco') {
+    const de = meta.de as string | undefined
+    const para = meta.para as string | undefined
+    if (de && para) {
+      return <DiffLine de={de} para={para} />
+    }
+    return null
+  }
+
+  return null
+}
+
+// Componente do "de → para" com badges
+function DiffLine({ de, para }: { de: string; para: string }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <span className="rounded bg-bg-elev border border-border px-2 py-0.5 text-[10px] text-muted line-through">
+        {de}
+      </span>
+      <ArrowRight size={10} className="text-muted" />
+      <span className="rounded bg-brand-500/15 border border-brand-500/40 px-2 py-0.5 text-[10px] font-medium text-brand-200">
+        {para}
+      </span>
     </div>
   )
 }
