@@ -300,12 +300,10 @@ function diasEntre(iniISO: string, fimISO: string): number {
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
 }
 
-/** Formata duracao: mostra em meses se >=1, senao em dias. */
-function formatDuracao(meses: number, dias: number): string {
-  if (meses >= 1) return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
-  if (dias === 0) return 'hoje'
-  if (dias === 1) return '1 dia'
-  return `${dias} dias`
+/** Formata duracao em meses. Sempre em unidade de mes (mesmo com 0). */
+function formatDuracao(meses: number, _dias: number): string {
+  void _dias
+  return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
 }
 
 function formatDateBR(iso: string | null): string {
@@ -535,9 +533,9 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
                 'text-3xl font-bold tabular-nums leading-none mt-1',
                 cliente.nps === null
                   ? 'text-zinc-500'
-                  : cliente.nps >= 8
+                  : cliente.nps >= 9
                     ? 'text-emerald-300'
-                    : cliente.nps >= 6
+                    : cliente.nps >= 7
                       ? 'text-amber-300'
                       : 'text-red-300',
               )}
@@ -547,9 +545,9 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             <p className="mt-1 text-[10px] text-muted">
               {cliente.nps === null
                 ? 'sem NPS'
-                : cliente.nps >= 8
+                : cliente.nps >= 9
                   ? 'Promotor'
-                  : cliente.nps >= 6
+                  : cliente.nps >= 7
                     ? 'Neutro'
                     : 'Detrator'}
             </p>
@@ -709,11 +707,7 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">
               {formatCurrency(ltvAtual)}
             </p>
-            {ltvAtual === 0 && tempoCasa < 1 ? (
-              <p className="mt-1 text-[10px] text-amber-300">
-                Cliente ainda não completou 1 mês.
-              </p>
-            ) : ltvDetalhado.temEventos ? (
+            {ltvDetalhado.temEventos ? (
               <p className="mt-1 text-[10px] text-muted">
                 Soma de {ltvDetalhado.periodos.length}{' '}
                 {ltvDetalhado.periodos.length === 1 ? 'período' : 'períodos'} de MRR
