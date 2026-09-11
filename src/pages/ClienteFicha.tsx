@@ -64,6 +64,7 @@ import { Button } from '@/components/ui/Button'
 import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { uploadToStorageSafe } from '@/lib/storage'
 import type { Cliente, ClienteEvento, Profile } from '@/types/database'
+import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
 
 // Meses entre uma ISO date e hoje
 function mesesDesde(iso: string | null): number {
@@ -840,6 +841,15 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         />
       )}
 
+      {/* Modal — historico de NPS respondidos */}
+      {npsHistoricoOpen && (
+        <NpsHistoricoModal
+          cliente={cliente}
+          surveys={surveysRespondidos}
+          onClose={() => setNpsHistoricoOpen(false)}
+        />
+      )}
+
       {/* Modal — editar contrato */}
       {contratoModalOpen && (
         <ContratoModal
@@ -1071,6 +1081,363 @@ function AcaoBtn({
 void Calendar
 void Smile
 void CheckCircle2
+
+// ============================================================
+// Historico de NPS — modal com respostas expansiveis por mes
+// ============================================================
+//
+// Header: KPI Media NPS + KPI count de Respostas
+// Lista: 1 card por survey respondido. Cada card:
+//   Score grande a esquerda com cor por classificacao
+//   Titulo com mes/ano
+//   Classificacao (Promotor/Neutro/Detrator)
+//   Tag do tipo (Onboarding/Operacao) + Chevron
+// Ao expandir: renderiza cada pergunta do template + resposta.
+//   escala5/10 -> dots coloridos preenchidos ate N + X/N
+//   opcoes     -> pill destacada com a opcao escolhida
+//   texto      -> bloco 'FEEDBACK DO CLIENTE' com quote
+
+function classificarNpsScore(score: number): {
+  label: string
+  cor: string
+  corTexto: string
+} {
+  if (score >= 9) {
+    return {
+      label: 'Promotor',
+      cor: 'border-emerald-500/50 bg-emerald-500/10',
+      corTexto: 'text-emerald-300',
+    }
+  }
+  if (score >= 7) {
+    return {
+      label: 'Neutro',
+      cor: 'border-amber-500/50 bg-amber-500/10',
+      corTexto: 'text-amber-300',
+    }
+  }
+  return {
+    label: 'Detrator',
+    cor: 'border-red-500/50 bg-red-500/10',
+    corTexto: 'text-red-300',
+  }
+}
+
+function NpsHistoricoModal({
+  cliente,
+  surveys,
+  onClose,
+}: {
+  cliente: Cliente
+  surveys: NpsSurveyRespondido[]
+  onClose: () => void
+}) {
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+
+  function toggleExpandir(id: string) {
+    setExpandidos((prev) => {
+      const nova = new Set(prev)
+      if (nova.has(id)) nova.delete(id)
+      else nova.add(id)
+      return nova
+    })
+  }
+
+  const totalResp = surveys.length
+  const mediaNps =
+    totalResp > 0
+      ? surveys.reduce((s, srv) => s + (srv.nps_score ?? 0), 0) / totalResp
+      : 0
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageCircle size={14} className="text-violet-300" />
+            <h3 className="text-sm font-semibold text-zinc-100">
+              Histórico de NPS - {cliente.nome}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+
+        {/* KPIs no topo */}
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-border bg-bg-soft/40 p-3">
+            <p className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted">
+              <TrendingUp size={9} /> Média NPS
+            </p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums text-zinc-100">
+              {totalResp === 0 ? '—' : mediaNps.toFixed(1)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg-soft/40 p-3">
+            <p className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted">
+              <TrendingUp size={9} /> Respostas
+            </p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums text-zinc-100">
+              {totalResp}
+            </p>
+          </div>
+        </div>
+
+        {/* Lista de respostas */}
+        {totalResp === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-bg-soft/30 py-8 text-center">
+            <p className="text-xs text-muted">
+              Ainda não há respostas de NPS registradas para este cliente.
+            </p>
+            <p className="mt-1 text-[10px] text-muted">
+              Envie um link de pesquisa através das Ações Rápidas.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {surveys.map((srv) => (
+              <NpsSurveyCard
+                key={srv.id}
+                survey={srv}
+                expandido={expandidos.has(srv.id)}
+                onToggle={() => toggleExpandir(srv.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NpsSurveyCard({
+  survey,
+  expandido,
+  onToggle,
+}: {
+  survey: NpsSurveyRespondido
+  expandido: boolean
+  onToggle: () => void
+}) {
+  const score = survey.nps_score ?? 0
+  const cls = classificarNpsScore(score)
+  const dataResp = new Date(survey.respondido_em)
+  const mesAno = dataResp.toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+  })
+  const mesAnoCap = mesAno.charAt(0).toUpperCase() + mesAno.slice(1)
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border transition-colors',
+        expandido ? 'border-brand-500/40' : 'border-border',
+        'bg-bg-soft/40',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 p-3 text-left"
+      >
+        {/* Score grande */}
+        <div
+          className={cn(
+            'grid h-14 w-14 shrink-0 place-items-center rounded-lg border tabular-nums',
+            cls.cor,
+          )}
+        >
+          <span className={cn('text-2xl font-bold', cls.corTexto)}>{score}</span>
+        </div>
+
+        {/* Titulo + classificacao */}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-zinc-100">{mesAnoCap}</p>
+          <p className={cn('text-[11px] font-medium', cls.corTexto)}>{cls.label}</p>
+        </div>
+
+        {/* Tag do tipo + chevron */}
+        <div className="flex items-center gap-2">
+          <span className="rounded border border-brand-500/40 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-200">
+            {survey.tipo === 'onboarding' ? 'Onboarding' : 'Operação'}
+          </span>
+          <span className="text-[10px] text-muted">Via link público</span>
+          <span
+            className={cn(
+              'transition-transform',
+              expandido ? 'rotate-180' : 'rotate-0',
+            )}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M3 4.5L6 7.5L9 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-muted"
+              />
+            </svg>
+          </span>
+        </div>
+      </button>
+
+      {/* Expandido: renderiza cada pergunta com resposta */}
+      {expandido && <NpsSurveyRespostas survey={survey} />}
+    </div>
+  )
+}
+
+function NpsSurveyRespostas({ survey }: { survey: NpsSurveyRespondido }) {
+  const template = useMemo(() => getTemplate(survey.tipo), [survey.tipo])
+  const respostas = (survey.respostas ?? {}) as Record<string, unknown>
+
+  // Achata todas as perguntas de todos os blocos, exclui a NPS principal
+  // (que ja aparece como score grande do card)
+  const perguntas = template.blocos.flatMap((b) => b.perguntas).filter((p) => !p.ehNpsPrincipal)
+
+  // Separa perguntas de texto (feedback) das quantitativas
+  const perguntasQuant = perguntas.filter((p) => p.tipo !== 'texto')
+  const perguntasTexto = perguntas.filter((p) => p.tipo === 'texto')
+
+  return (
+    <div className="border-t border-border px-3 py-3 space-y-2.5">
+      {perguntasQuant.map((p, i) => {
+        const resp = respostas[p.key]
+        if (resp === undefined || resp === null || resp === '') return null
+        return (
+          <div key={p.key} className="flex items-start justify-between gap-3">
+            <p className="text-[11px] text-zinc-200 leading-snug flex-1">
+              {i + 1}. {tituloResumido(p.titulo)}
+            </p>
+            <div className="shrink-0">
+              <RenderRespostaQuant pergunta={p} resposta={resp} />
+            </div>
+          </div>
+        )
+      })}
+
+      {perguntasTexto.map((p) => {
+        const resp = respostas[p.key]
+        if (typeof resp !== 'string' || !resp.trim()) return null
+        return (
+          <div
+            key={p.key}
+            className="mt-2 rounded-md border-l-2 border-amber-500/50 bg-amber-500/[0.03] px-3 py-2"
+          >
+            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
+              💬 Feedback do cliente
+            </p>
+            <p className="text-[11px] italic text-zinc-200 leading-relaxed">
+              "{resp}"
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Simplifica titulos longos pra caber na linha do historico. */
+function tituloResumido(t: string): string {
+  // Pega ate o primeiro '(' ou primeiros 60 chars
+  const parenIdx = t.indexOf('(')
+  const cortado = parenIdx > 20 ? t.slice(0, parenIdx).trim() : t
+  if (cortado.length <= 65) return cortado.replace(/\?$/, '')
+  return cortado.slice(0, 62).trim() + '…'
+}
+
+function RenderRespostaQuant({
+  pergunta,
+  resposta,
+}: {
+  pergunta: Pergunta
+  resposta: unknown
+}) {
+  if (pergunta.tipo === 'escala5') {
+    const n = typeof resposta === 'number' ? resposta : Number(resposta)
+    if (isNaN(n)) return <span className="text-[10px] text-muted">—</span>
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <span
+              key={i}
+              className={cn(
+                'h-2 w-2 rounded-full',
+                i <= n
+                  ? n >= 4
+                    ? 'bg-emerald-400'
+                    : n >= 3
+                      ? 'bg-amber-400'
+                      : 'bg-red-400'
+                  : 'bg-bg-elev border border-border',
+              )}
+            />
+          ))}
+        </div>
+        <span
+          className={cn(
+            'text-[10px] font-semibold tabular-nums',
+            n >= 4 ? 'text-emerald-300' : n >= 3 ? 'text-amber-300' : 'text-red-300',
+          )}
+        >
+          {n}/5
+        </span>
+      </div>
+    )
+  }
+
+  if (pergunta.tipo === 'escala10') {
+    const n = typeof resposta === 'number' ? resposta : Number(resposta)
+    if (isNaN(n)) return <span className="text-[10px] text-muted">—</span>
+    const cls = classificarNpsScore(n)
+    return (
+      <span
+        className={cn(
+          'rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums',
+          cls.cor,
+          cls.corTexto,
+        )}
+      >
+        {n}/10
+      </span>
+    )
+  }
+
+  if (pergunta.tipo === 'opcoes') {
+    const s = String(resposta)
+    // Cores contextuais pra opcoes conhecidas
+    const positivo = /acima|sim, com/i.test(s)
+    const negativo = /abaixo|não$|nao$/i.test(s)
+    const neutro = !positivo && !negativo
+    return (
+      <span
+        className={cn(
+          'rounded border px-2 py-0.5 text-[10px] font-medium',
+          positivo && 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200',
+          negativo && 'border-red-500/50 bg-red-500/15 text-red-200',
+          neutro && 'border-amber-500/50 bg-amber-500/15 text-amber-200',
+        )}
+      >
+        {s === '__outro__' ? 'Outro' : s}
+      </span>
+    )
+  }
+
+  return <span className="text-[10px] text-muted">—</span>
+}
 
 // ============================================================
 // Contrato — bloco na Ficha + modal de edicao
