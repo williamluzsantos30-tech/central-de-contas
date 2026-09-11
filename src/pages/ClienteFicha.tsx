@@ -111,6 +111,17 @@ interface LtvPeriodo {
   ehReducao: boolean
 }
 
+// Survey NPS respondido — linha simples de nps_surveys pra o historico
+interface NpsSurveyRespondido {
+  id: string
+  cliente_id: string
+  tipo: 'onboarding' | 'operacao'
+  nps_score: number | null
+  respostas: Record<string, unknown> | null
+  criado_em: string
+  respondido_em: string
+}
+
 interface LtvDetalhado {
   ltvTotal: number
   mrrInicial: number
@@ -172,7 +183,7 @@ function calcularLtvDetalhado(
       mrrAtualPeriodo += mov.valor
       const sinal = mov.valor >= 0 ? '+' : '-'
       composicaoAtual.push(
-        `${sinal} ${mov.motivo ?? mov.tipo}: ${formatBRLShort(Math.abs(mov.valor))}`,
+        `${sinal} ${describeMovimentacao(mov)}: ${formatBRLShort(Math.abs(mov.valor))}`,
       )
       continue
     }
@@ -199,8 +210,12 @@ function calcularLtvDetalhado(
     const anterior = mrrAtualPeriodo
     mrrAtualPeriodo = Math.max(0, mrrAtualPeriodo + mov.valor)
     composicaoAtual.length = 0 // resetar composicao do periodo novo
+    // Preferimos mostrar SERVICOS adicionados/removidos, senao cai no
+    // motivo textual do evento. Isso deixa o breakdown mais claro:
+    //   "+ Social Media: R$ 1.500" > "+ Nova venda: R$ 1.500"
+    const labelMov = describeMovimentacao(mov)
     composicaoAtual.push(
-      `${mov.valor >= 0 ? '+' : '-'} ${mov.motivo ?? mov.tipo}: ${formatBRLShort(Math.abs(mov.valor))}`,
+      `${mov.valor >= 0 ? '+' : '-'} ${labelMov}: ${formatBRLShort(Math.abs(mov.valor))}`,
       `= ${formatBRLShort(mrrAtualPeriodo)}`,
     )
     inicioAtual = mov.data
@@ -232,6 +247,38 @@ function calcularLtvDetalhado(
     periodos,
     temEventos: movimentacoes.length > 0,
   }
+}
+
+/**
+ * Retorna label legivel de uma movimentacao (expansao/perda).
+ * Prioriza os NOMES dos servicos adicionados/removidos. Se nao houver,
+ * cai no motivo. Se nao houver motivo, no tipo do evento.
+ */
+function describeMovimentacao(mov: {
+  motivo: string | null
+  tipo: 'expansao' | 'perda'
+  servicosAdicionados: string[]
+  servicosRemovidos: string[]
+}): string {
+  if (mov.tipo === 'expansao' && mov.servicosAdicionados.length > 0) {
+    // Prefere labels do catalogo pra ficar "Social Media" em vez de
+    // "social_media"
+    return mov.servicosAdicionados
+      .map((k) => {
+        const s = SERVICOS_CATALOGO.find((x) => x.key === k)
+        return s?.label ?? k
+      })
+      .join(', ')
+  }
+  if (mov.tipo === 'perda' && mov.servicosRemovidos.length > 0) {
+    return mov.servicosRemovidos
+      .map((k) => {
+        const s = SERVICOS_CATALOGO.find((x) => x.key === k)
+        return s?.label ?? k
+      })
+      .join(', ')
+  }
+  return mov.motivo ?? (mov.tipo === 'expansao' ? 'Expansão' : 'Redução')
 }
 
 /** Retorna meses inteiros truncados entre 2 datas ISO. */
@@ -336,7 +383,9 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   const tempoCasa = useMemo(() => mesesDesde(cliente.data_inicio), [cliente.data_inicio])
   const [ltvModalOpen, setLtvModalOpen] = useState(false)
 
-  const [savingRisco, setSavingRisco] = useState(false)
+  const [riscoModalOpen, setRiscoModalOpen] = useState(false)
+  const [npsHistoricoOpen, setNpsHistoricoOpen] = useState(false)
+  const [surveysRespondidos, setSurveysRespondidos] = useState<NpsSurveyRespondido[]>([])
   const [servicosModalOpen, setServicosModalOpen] = useState(false)
   const [contatoModalOpen, setContatoModalOpen] = useState(false)
   const [expansaoModalOpen, setExpansaoModalOpen] = useState(false)
@@ -356,10 +405,33 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
     setLoadingEventos(false)
   }
 
+  async function loadNpsRespondidos() {
+    const { data } = await supabase
+      .from('nps_surveys')
+      .select('*')
+      .eq('cliente_id', cliente.id)
+      .not('respondido_em', 'is', null)
+      .order('respondido_em', { ascending: false })
+    setSurveysRespondidos((data as NpsSurveyRespondido[]) ?? [])
+  }
+
   useEffect(() => {
     loadEventos()
+    loadNpsRespondidos()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente.id])
+
+  // Ciclo NPS: recolhimento a cada 2 meses. Verifica se ja passou.
+  const ultimoNpsRespondidoEm = surveysRespondidos[0]?.respondido_em ?? null
+  const npsPrecisaRenovar = useMemo(() => {
+    if (!ultimoNpsRespondidoEm) {
+      // Nunca respondeu — se ja passou 2 meses desde entrada, precisa
+      return tempoCasa >= 2
+    }
+    const d = new Date(ultimoNpsRespondidoEm)
+    const meses = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+    return meses >= 2
+  }, [ultimoNpsRespondidoEm, tempoCasa])
 
   // LTV detalhado — soma MRR × meses respeitando as expansoes/reducoes
   // recorrentes logadas em cliente_eventos. Se nao ha eventos, usa
@@ -393,24 +465,7 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
     (k) => !SERVICOS_CATALOGO.find((s) => s.key === k),
   )
 
-  async function marcarRisco() {
-    if (cliente.status === 'atencao') {
-      alert('Cliente já está marcado como em risco (Atenção).')
-      return
-    }
-    if (!confirm('Marcar este cliente como em RISCO (Atenção)?')) return
-    setSavingRisco(true)
-    const { error } = await supabase
-      .from('clientes')
-      .update({ status: 'atencao' })
-      .eq('id', cliente.id)
-    setSavingRisco(false)
-    if (error) {
-      alert(`Erro: ${error.message}`)
-      return
-    }
-    onChanged()
-  }
+  // Atualizacao de status/semaforo agora vai via RiscoStatusModal
 
   const status = statusTone[cliente.status]
 
@@ -457,8 +512,21 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             </div>
           </div>
 
-          {/* Canto direito: NPS */}
-          <div className="rounded-lg border border-border bg-bg-soft/60 px-4 py-2 text-right">
+          {/* Canto direito: NPS — clicavel, abre historico */}
+          <button
+            type="button"
+            onClick={() => setNpsHistoricoOpen(true)}
+            className="group relative rounded-lg border border-border bg-bg-soft/60 px-4 py-2 text-right hover:border-brand-500/40 transition-colors"
+            title="Ver histórico de NPS"
+          >
+            {npsPrecisaRenovar && (
+              <span
+                className="absolute -top-2 -right-2 rounded-full border border-amber-500/50 bg-amber-500/20 px-2 py-0.5 text-[9px] font-semibold text-amber-200"
+                title="Já se passaram 2 meses desde o último NPS — hora de recolher"
+              >
+                📩 Recolher
+              </span>
+            )}
             <p className="text-[9px] uppercase tracking-wider text-muted">NPS do mês</p>
             <p
               className={cn(
@@ -483,7 +551,10 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
                     ? 'Neutro'
                     : 'Detrator'}
             </p>
-          </div>
+            <p className="mt-1 text-[9px] text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity">
+              Ver histórico →
+            </p>
+          </button>
         </div>
 
         {/* Grid info principal */}
@@ -674,11 +745,10 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           <EnviarNpsBtn cliente={cliente} onCriado={loadEventos} />
           <AcaoBtn
             icon={<AlertTriangle size={14} />}
-            label={cliente.status === 'atencao' ? 'Já em risco' : 'Marcar Risco'}
-            hint="Muda status pra Atenção"
-            tone="warning"
-            disabled={savingRisco || cliente.status === 'atencao'}
-            onClick={marcarRisco}
+            label={labelStatusRisco(cliente.semaforo)}
+            hint="Estável / Atenção / Risco / Crítico"
+            tone={cliente.semaforo && cliente.semaforo !== 'verde' ? 'warning' : 'neutral'}
+            onClick={() => setRiscoModalOpen(true)}
           />
           <AcaoBtn
             icon={<TrendingUp size={14} />}
@@ -776,6 +846,19 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           onClose={() => setContatoModalOpen(false)}
           onSaved={() => {
             setContatoModalOpen(false)
+            loadEventos()
+          }}
+        />
+      )}
+
+      {/* Modal — atualizar status de risco */}
+      {riscoModalOpen && (
+        <RiscoStatusModal
+          cliente={cliente}
+          onClose={() => setRiscoModalOpen(false)}
+          onSaved={() => {
+            setRiscoModalOpen(false)
+            onChanged()
             loadEventos()
           }}
         />
@@ -986,6 +1069,269 @@ function AcaoBtn({
 void Calendar
 void Smile
 void CheckCircle2
+
+// ============================================================
+// Status de Risco — 4 niveis com semaforo
+// ============================================================
+
+interface StatusRiscoDef {
+  key: 'verde' | 'amarelo' | 'laranja' | 'vermelho'
+  label: string
+  descricao: string
+  dot: string
+  border: string
+  bg: string
+  texto: string
+  statusEnum: 'ativo' | 'atencao' // como mapeia pro campo clientes.status
+}
+
+const STATUS_RISCO: StatusRiscoDef[] = [
+  {
+    key: 'verde',
+    label: 'Estável',
+    descricao: 'Cliente em bom estado, sem sinais de risco',
+    dot: 'bg-emerald-400',
+    border: 'border-emerald-500/50',
+    bg: 'bg-emerald-500/10',
+    texto: 'text-emerald-200',
+    statusEnum: 'ativo',
+  },
+  {
+    key: 'amarelo',
+    label: 'Atenção',
+    descricao: 'Sinais iniciais de risco — merece monitoramento',
+    dot: 'bg-amber-400',
+    border: 'border-amber-500/50',
+    bg: 'bg-amber-500/10',
+    texto: 'text-amber-200',
+    statusEnum: 'atencao',
+  },
+  {
+    key: 'laranja',
+    label: 'Risco',
+    descricao: 'Risco confirmado — intervencao imediata',
+    dot: 'bg-orange-400',
+    border: 'border-orange-500/50',
+    bg: 'bg-orange-500/10',
+    texto: 'text-orange-200',
+    statusEnum: 'atencao',
+  },
+  {
+    key: 'vermelho',
+    label: 'Crítico',
+    descricao: 'Cliente prestes a sair — envolver lideranca',
+    dot: 'bg-red-400',
+    border: 'border-red-500/50',
+    bg: 'bg-red-500/10',
+    texto: 'text-red-200',
+    statusEnum: 'atencao',
+  },
+]
+
+const MOTIVOS_RISCO = [
+  'Resultado insatisfatório',
+  'Problemas de atendimento',
+  'Atraso nas entregas',
+  'Desalinhamento estratégico',
+  'Dificuldades financeiras',
+  'Insatisfação geral',
+  'Outro',
+] as const
+
+function labelStatusRisco(semaforo: string | null | undefined): string {
+  const cfg = STATUS_RISCO.find((s) => s.key === semaforo)
+  return cfg ? cfg.label : 'Marcar Risco'
+}
+
+function RiscoStatusModal({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [semaforo, setSemaforo] = useState<StatusRiscoDef['key']>(
+    (cliente.semaforo as StatusRiscoDef['key']) ?? 'verde',
+  )
+  const [motivo, setMotivo] = useState<string>('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const cfg = STATUS_RISCO.find((s) => s.key === semaforo)!
+  const precisaMotivo = semaforo !== 'verde'
+
+  async function salvar() {
+    setError(null)
+    if (precisaMotivo && !motivo) {
+      setError('Selecione o motivo')
+      return
+    }
+    setSaving(true)
+
+    // Atualiza cliente — status derivado do semaforo (verde=ativo,
+    // amarelo/laranja/vermelho=atencao)
+    const { error: upErr } = await supabase
+      .from('clientes')
+      .update({
+        semaforo,
+        status: cfg.statusEnum,
+      })
+      .eq('id', cliente.id)
+    if (upErr) {
+      setError(upErr.message)
+      setSaving(false)
+      return
+    }
+
+    // Insere evento manual com metadata rica (o trigger auto-log
+    // tambem vai criar eventos automaticos de status/semaforo)
+    if (semaforo !== (cliente.semaforo ?? 'verde')) {
+      const { error: evErr } = await supabase.from('cliente_eventos').insert({
+        cliente_id: cliente.id,
+        tipo: 'risco',
+        titulo: `Status: ${cfg.label}`,
+        descricao: notas.trim() || motivo || null,
+        meta: {
+          semaforo_novo: semaforo,
+          semaforo_antigo: cliente.semaforo,
+          motivo: precisaMotivo ? motivo : null,
+        },
+      })
+      if (evErr) {
+        setError(evErr.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">
+            Atualizar Status de Risco
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          O status de risco reflete a saúde operacional do cliente.
+        </p>
+
+        {error && (
+          <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {/* Status (dropdown estilizado com dots coloridos) */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Status de Risco *
+            </label>
+            <div className="space-y-1">
+              {STATUS_RISCO.map((s) => (
+                <label
+                  key={s.key}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition-colors',
+                    semaforo === s.key
+                      ? `${s.border} ${s.bg}`
+                      : 'border-border bg-bg-soft/40 hover:border-brand-500/30',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="semaforo"
+                    checked={semaforo === s.key}
+                    onChange={() => setSemaforo(s.key)}
+                    className="mt-1 accent-brand-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('h-2 w-2 rounded-full', s.dot)} />
+                      <span
+                        className={cn(
+                          'text-xs font-semibold',
+                          semaforo === s.key ? s.texto : 'text-zinc-100',
+                        )}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted">{s.descricao}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Motivo (so aparece se != estavel) */}
+          {precisaMotivo && (
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Motivo *
+              </label>
+              <select
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+              >
+                <option value="">Selecione o motivo</option>
+                {MOTIVOS_RISCO.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Notas — opcional */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Notas
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Observações sobre o status..."
+              rows={3}
+              className="w-full resize-none rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={salvar} disabled={saving}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ============================================================
 // Botao Enviar NPS — dropdown com Onboarding vs Operacao
