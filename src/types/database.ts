@@ -240,6 +240,24 @@ export interface Cliente {
   social_media?: Profile | null
 }
 
+/**
+ * Timeline de alterações do cliente (migration 077).
+ * Fonte manual (registros na Ficha) + automática (trigger em
+ * clientes UPDATE). Lida na aba Ficha, ordenado por criado_em desc.
+ */
+export interface ClienteEvento {
+  id: string
+  cliente_id: string
+  tipo: string
+  titulo: string
+  descricao: string | null
+  meta: Record<string, unknown> | null
+  arquivos: string[]
+  criado_por: string | null
+  criado_em: string
+  autor?: Profile | null
+}
+
 export interface ClientePerfilSetup {
   cliente_id: string
   foto_status: PerfilItemStatus

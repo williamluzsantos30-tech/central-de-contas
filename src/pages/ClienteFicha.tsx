@@ -22,7 +22,7 @@
  * Callback onChanged() dispara reload no ClienteDetalhe (pai) —
  * necessario quando muda status via "Marcar Risco".
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Pencil,
   Phone,
@@ -44,13 +44,19 @@ import {
   Palette,
   Leaf,
   X,
+  Mail,
+  Video,
+  MessageCircle,
+  Paperclip,
+  RefreshCw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
-import type { Cliente } from '@/types/database'
+import { uploadToStorageSafe } from '@/lib/storage'
+import type { Cliente, ClienteEvento } from '@/types/database'
 
 // Meses entre uma ISO date e hoje
 function mesesDesde(iso: string | null): number {
@@ -143,6 +149,40 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
 
   const [savingRisco, setSavingRisco] = useState(false)
   const [servicosModalOpen, setServicosModalOpen] = useState(false)
+  const [contatoModalOpen, setContatoModalOpen] = useState(false)
+  const [eventos, setEventos] = useState<ClienteEvento[]>([])
+  const [loadingEventos, setLoadingEventos] = useState(true)
+
+  async function loadEventos() {
+    setLoadingEventos(true)
+    const { data } = await supabase
+      .from('cliente_eventos')
+      .select('*, autor:profiles!criado_por(*)')
+      .eq('cliente_id', cliente.id)
+      .order('criado_em', { ascending: false })
+      .limit(50)
+    setEventos((data as ClienteEvento[]) ?? [])
+    setLoadingEventos(false)
+  }
+
+  useEffect(() => {
+    loadEventos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente.id])
+
+  // Ultimo contato = evento tipo='contato' mais recente
+  const ultimoContato = useMemo(() => {
+    const c = eventos.find((e) => e.tipo === 'contato')
+    if (!c) return null
+    const dataContato =
+      (c.meta as { data_contato?: string })?.data_contato ?? c.criado_em
+    const tipoLabel =
+      (c.meta as { tipo_contato?: string })?.tipo_contato ?? '—'
+    const hoje = new Date()
+    const d = new Date(dataContato)
+    const dias = Math.floor((hoje.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+    return { data: dataContato, tipoLabel, diasAtras: dias }
+  }, [eventos])
 
   // Servicos que o cliente TEM contratados (mapeados pelo catalogo pra
   // ter icone/cor). Servicos "orfaos" (nao existem no catalogo) sao
@@ -259,11 +299,37 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           />
           <InfoField label="Social Media" value={cliente.social_media?.nome ?? '—'} />
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Último Contato
-            </p>
-            <p className="mt-1 text-sm text-zinc-100">—</p>
-            <p className="text-[10px] text-muted italic">v2 — tracking pendente</p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Último Contato
+              </p>
+              <button
+                type="button"
+                onClick={() => setContatoModalOpen(true)}
+                className="grid h-4 w-4 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+                title="Registrar novo contato"
+              >
+                <Phone size={9} />
+              </button>
+            </div>
+            {ultimoContato ? (
+              <>
+                <p className="mt-1 text-sm text-zinc-100">
+                  {formatDateBR(ultimoContato.data)}
+                </p>
+                <p className="text-[10px] text-muted">
+                  {ultimoContato.tipoLabel} · {ultimoContato.diasAtras < 0 ? 'hoje' : `há ${ultimoContato.diasAtras} dias`}
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setContatoModalOpen(true)}
+                className="mt-1 text-xs text-muted hover:text-brand-300 italic underline"
+              >
+                nunca registrado — registrar
+              </button>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -465,20 +531,13 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         </p>
       </div>
 
-      {/* ============= Timeline (placeholder) ============= */}
-      <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-5">
-        <div className="mb-2 flex items-center gap-2">
-          <Clock size={14} className="text-muted" />
-          <h3 className="text-sm font-semibold text-zinc-100">Timeline de Alterações</h3>
-          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-amber-300">
-            v2
-          </span>
-        </div>
-        <p className="text-xs text-muted">
-          Log de eventos do cliente (NPS registrado, contato, mudança de jornada, alteração
-          de serviços). Precisa tabela cliente_eventos. v2.
-        </p>
-      </div>
+      {/* ============= Timeline real ============= */}
+      <TimelineAlteracoes
+        eventos={eventos}
+        loading={loadingEventos}
+        onReload={loadEventos}
+        onRegistrarContato={() => setContatoModalOpen(true)}
+      />
 
       {/* Modal — editar servicos contratados */}
       {servicosModalOpen && (
@@ -488,6 +547,19 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           onSaved={() => {
             setServicosModalOpen(false)
             onChanged()
+            loadEventos()
+          }}
+        />
+      )}
+
+      {/* Modal — registrar novo contato */}
+      {contatoModalOpen && (
+        <ContatoModal
+          cliente={cliente}
+          onClose={() => setContatoModalOpen(false)}
+          onSaved={() => {
+            setContatoModalOpen(false)
+            loadEventos()
           }}
         />
       )}
@@ -656,8 +728,381 @@ function AcaoBtn({
 }
 
 // Suppress unused warnings for icons imported for future use
-void Phone
 void Calendar
-void Users
 void Smile
 void CheckCircle2
+
+// ============================================================
+// Modal — Registrar Contato
+// ============================================================
+
+const TIPOS_CONTATO = [
+  { value: 'call', label: 'Call', icon: Phone },
+  { value: 'email', label: 'Email', icon: Mail },
+  { value: 'reuniao', label: 'Reunião', icon: Video },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+] as const
+
+function ContatoModal({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [tipo, setTipo] = useState<string>('')
+  const [dataContato, setDataContato] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [resumo, setResumo] = useState('')
+  const [proximoPasso, setProximoPasso] = useState('')
+  const [arquivos, setArquivos] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    const uploaded: string[] = []
+    for (const f of Array.from(files)) {
+      const url = await uploadToStorageSafe(f, `cliente-eventos/${cliente.id}`)
+      if (url) uploaded.push(url)
+    }
+    setArquivos((prev) => [...prev, ...uploaded])
+    setUploading(false)
+  }
+
+  async function salvar() {
+    setError(null)
+    if (!tipo) {
+      setError('Escolha o tipo de contato')
+      return
+    }
+    if (resumo.trim().length < 3) {
+      setError('Escreva um resumo do que foi discutido')
+      return
+    }
+    setSaving(true)
+    const tipoLabel = TIPOS_CONTATO.find((t) => t.value === tipo)?.label ?? tipo
+    const { error: err } = await supabase.from('cliente_eventos').insert({
+      cliente_id: cliente.id,
+      tipo: 'contato',
+      titulo: `Contato via ${tipoLabel}`,
+      descricao: resumo.trim(),
+      meta: {
+        tipo_contato: tipoLabel,
+        data_contato: dataContato,
+        proximo_passo: proximoPasso.trim() || null,
+      },
+      arquivos,
+    })
+    setSaving(false)
+    if (err) {
+      setError(err.message)
+      return
+    }
+    onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">Registrar Contato</h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Documente uma interação com o cliente.
+        </p>
+
+        {error && (
+          <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {/* Tipo */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Tipo de Contato *
+            </label>
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            >
+              <option value="">Selecione o tipo</option>
+              {TIPOS_CONTATO.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Data */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Data do Contato
+            </label>
+            <input
+              type="date"
+              value={dataContato}
+              onChange={(e) => setDataContato(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Resumo */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Resumo *
+            </label>
+            <textarea
+              value={resumo}
+              onChange={(e) => setResumo(e.target.value)}
+              placeholder="O que foi discutido..."
+              rows={4}
+              className="w-full resize-none rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Próximo Passo */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Próximo Passo
+            </label>
+            <input
+              value={proximoPasso}
+              onChange={(e) => setProximoPasso(e.target.value)}
+              placeholder="Ação combinada para o próximo contato"
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Anexos */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Anexos
+            </label>
+            <p className="mb-2 text-[10px] text-muted">
+              Prints de conversas, exportações do WhatsApp, PDFs, áudios — até 20MB por arquivo.
+            </p>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-bg-soft/40 px-3 py-3 text-xs text-muted hover:border-brand-500/40 hover:text-brand-300">
+              <Paperclip size={12} />
+              {uploading ? 'Enviando…' : 'Adicionar arquivos'}
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => handleUpload(e.target.files)}
+                disabled={uploading}
+              />
+            </label>
+            {arquivos.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {arquivos.map((url, i) => (
+                  <li
+                    key={url}
+                    className="flex items-center gap-2 rounded border border-border bg-bg-soft/40 px-2 py-1 text-[10px] text-zinc-200"
+                  >
+                    <Paperclip size={9} />
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate hover:text-brand-300"
+                    >
+                      Anexo {i + 1}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setArquivos((prev) => prev.filter((_, j) => j !== i))
+                      }
+                      className="ml-auto text-muted hover:text-red-300"
+                    >
+                      <X size={10} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={salvar} disabled={saving || uploading}>
+            {saving ? 'Registrando…' : 'Registrar'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Timeline de Alterações
+// ============================================================
+
+const eventoTipoConfig: Record<
+  string,
+  { cor: string; icon: React.ComponentType<{ size?: number; className?: string }> }
+> = {
+  contato: { cor: 'text-sky-300', icon: Phone },
+  nps: { cor: 'text-amber-300', icon: Smile },
+  risco: { cor: 'text-red-300', icon: AlertTriangle },
+  jornada: { cor: 'text-brand-300', icon: TrendingUp },
+  servico: { cor: 'text-emerald-300', icon: CheckCircle2 },
+  mrr: { cor: 'text-emerald-300', icon: DollarSign },
+  responsavel: { cor: 'text-violet-300', icon: Users },
+  expansao: { cor: 'text-emerald-300', icon: TrendingUp },
+  perda: { cor: 'text-red-300', icon: TrendingDown },
+}
+
+function tempoRelativo(iso: string): string {
+  const d = new Date(iso)
+  const diff = Date.now() - d.getTime()
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return 'agora'
+  if (min < 60) return `há ${min}min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `há ${h}h`
+  const dias = Math.floor(h / 24)
+  if (dias < 30) return `há ${dias}d`
+  const meses = Math.floor(dias / 30)
+  if (meses < 12) return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`
+  const anos = Math.floor(meses / 12)
+  return `há ${anos} ${anos === 1 ? 'ano' : 'anos'}`
+}
+
+function TimelineAlteracoes({
+  eventos,
+  loading,
+  onReload,
+  onRegistrarContato,
+}: {
+  eventos: ClienteEvento[]
+  loading: boolean
+  onReload: () => void
+  onRegistrarContato: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Clock size={14} className="text-brand-300" />
+          <h3 className="text-sm font-semibold text-zinc-100">
+            Timeline de Alterações
+          </h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onReload}
+            className="grid h-7 w-7 place-items-center rounded-md border border-border bg-bg-soft text-muted hover:text-zinc-100"
+            title="Recarregar"
+          >
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <Button size="sm" variant="outline" onClick={onRegistrarContato}>
+            <Phone size={11} /> Registrar Contato
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="py-6 text-center text-xs text-muted">Carregando…</p>
+      ) : eventos.length === 0 ? (
+        <p className="py-6 text-center text-xs text-muted italic">
+          Sem eventos ainda. Registre um contato ou edite o cliente pra começar
+          a alimentar a timeline.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {eventos.map((ev) => {
+            const cfg = eventoTipoConfig[ev.tipo] ?? {
+              cor: 'text-muted',
+              icon: Clock,
+            }
+            const Icon = cfg.icon
+            const meta = (ev.meta ?? {}) as Record<string, unknown>
+            const proximoPasso = typeof meta.proximo_passo === 'string' ? meta.proximo_passo : null
+            return (
+              <li
+                key={ev.id}
+                className="flex gap-3 rounded-lg border border-border bg-bg-soft/40 p-3"
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-bg-elev border border-border',
+                    cfg.cor,
+                  )}
+                >
+                  <Icon size={12} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-xs font-semibold text-zinc-100">
+                      {ev.titulo}
+                    </p>
+                    <span className="text-[10px] text-muted">
+                      {tempoRelativo(ev.criado_em)}
+                    </span>
+                  </div>
+                  {ev.descricao && (
+                    <p className="mt-1 text-[11px] text-muted whitespace-pre-wrap">
+                      {ev.descricao}
+                    </p>
+                  )}
+                  {proximoPasso && (
+                    <p className="mt-1.5 text-[10px] text-brand-300">
+                      → Próximo passo: {proximoPasso}
+                    </p>
+                  )}
+                  {ev.arquivos && ev.arquivos.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {ev.arquivos.map((url, i) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded border border-border bg-bg-soft px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-brand-300"
+                        >
+                          <Paperclip size={9} /> Anexo {i + 1}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {ev.autor?.nome && (
+                    <p className="mt-1 text-[10px] text-muted italic">
+                      por {ev.autor.nome}
+                    </p>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
