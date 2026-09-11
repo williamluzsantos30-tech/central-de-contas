@@ -103,6 +103,7 @@ interface LtvPeriodo {
   fim: string
   mrr: number
   meses: number
+  dias: number // dias exatos no periodo — usado quando meses = 0
   subtotal: number
   composicao: string[]
   ehEntrada: boolean
@@ -177,19 +178,22 @@ function calcularLtvDetalhado(
     }
 
     const meses = mesesEntre(inicioAtual, mov.data)
-    if (meses > 0) {
-      periodos.push({
-        inicio: inicioAtual,
-        fim: mov.data,
-        mrr: mrrAtualPeriodo,
-        meses,
-        subtotal: mrrAtualPeriodo * meses,
-        composicao: [...composicaoAtual],
-        ehEntrada: periodos.length === 0,
-        ehExpansao: false,
-        ehReducao: false,
-      })
-    }
+    const dias = diasEntre(inicioAtual, mov.data)
+    // Sempre empurra o periodo — mesmo com 0 meses. Isso torna
+    // visivel o breakdown pra cliente novo que ainda nao acumulou
+    // um mes completo (subtotal fica 0 mas a linha aparece).
+    periodos.push({
+      inicio: inicioAtual,
+      fim: mov.data,
+      mrr: mrrAtualPeriodo,
+      meses,
+      dias,
+      subtotal: mrrAtualPeriodo * meses,
+      composicao: [...composicaoAtual],
+      ehEntrada: periodos.length === 0,
+      ehExpansao: false,
+      ehReducao: false,
+    })
 
     // Aplica delta
     const anterior = mrrAtualPeriodo
@@ -203,21 +207,22 @@ function calcularLtvDetalhado(
     void anterior
   }
 
-  // Fecha ultimo periodo ate hoje/churn
+  // Fecha ultimo periodo ate hoje/churn — sempre empurra (mesmo com 0
+  // meses acumulados), pra cliente novo ter estrutura visivel.
   const mesesFinal = mesesEntre(inicioAtual, dataFim)
-  if (mesesFinal > 0) {
-    periodos.push({
-      inicio: inicioAtual,
-      fim: dataFim,
-      mrr: mrrAtualPeriodo,
-      meses: mesesFinal,
-      subtotal: mrrAtualPeriodo * mesesFinal,
-      composicao: [...composicaoAtual],
-      ehEntrada: periodos.length === 0,
-      ehExpansao: movimentacoes.length > 0 && mrrAtualPeriodo > mrrInicial,
-      ehReducao: movimentacoes.length > 0 && mrrAtualPeriodo < mrrInicial,
-    })
-  }
+  const diasFinal = diasEntre(inicioAtual, dataFim)
+  periodos.push({
+    inicio: inicioAtual,
+    fim: dataFim,
+    mrr: mrrAtualPeriodo,
+    meses: mesesFinal,
+    dias: diasFinal,
+    subtotal: mrrAtualPeriodo * mesesFinal,
+    composicao: [...composicaoAtual],
+    ehEntrada: periodos.length === 0,
+    ehExpansao: movimentacoes.length > 0 && mrrAtualPeriodo > mrrInicial,
+    ehReducao: movimentacoes.length > 0 && mrrAtualPeriodo < mrrInicial,
+  })
 
   const ltvTotal = periodos.reduce((s, p) => s + p.subtotal, 0)
 
@@ -236,6 +241,23 @@ function mesesEntre(iniISO: string, fimISO: string): number {
   if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return 0
   const diffMs = fim.getTime() - ini.getTime()
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)))
+}
+
+/** Retorna dias inteiros entre 2 datas ISO. */
+function diasEntre(iniISO: string, fimISO: string): number {
+  const ini = new Date(iniISO)
+  const fim = new Date(fimISO)
+  if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return 0
+  const diffMs = fim.getTime() - ini.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+}
+
+/** Formata duracao: mostra em meses se >=1, senao em dias. */
+function formatDuracao(meses: number, dias: number): string {
+  if (meses >= 1) return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
+  if (dias === 0) return 'hoje'
+  if (dias === 1) return '1 dia'
+  return `${dias} dias`
 }
 
 function formatDateBR(iso: string | null): string {
@@ -593,7 +615,10 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
               Tempo de Casa
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">
-              {Math.floor(tempoCasa)} {Math.floor(tempoCasa) === 1 ? 'mês' : 'meses'}
+              {formatDuracao(
+                Math.floor(tempoCasa),
+                diasEntre(cliente.data_inicio, new Date().toISOString()),
+              )}
             </p>
           </div>
           <div>
@@ -611,7 +636,11 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">
               {formatCurrency(ltvAtual)}
             </p>
-            {ltvDetalhado.temEventos ? (
+            {ltvAtual === 0 && tempoCasa < 1 ? (
+              <p className="mt-1 text-[10px] text-amber-300">
+                Cliente ainda não completou 1 mês.
+              </p>
+            ) : ltvDetalhado.temEventos ? (
               <p className="mt-1 text-[10px] text-muted">
                 Soma de {ltvDetalhado.periodos.length}{' '}
                 {ltvDetalhado.periodos.length === 1 ? 'período' : 'períodos'} de MRR
@@ -1972,7 +2001,10 @@ function LtvDetalheModal({
               <Clock size={9} /> Tempo de Casa
             </p>
             <p className="mt-1.5 text-lg font-bold tabular-nums text-zinc-100">
-              {Math.floor(tempoCasa)} meses
+              {formatDuracao(
+                Math.floor(tempoCasa),
+                diasEntre(cliente.data_inicio, new Date().toISOString()),
+              )}
             </p>
           </div>
           <div className="rounded-lg border border-border bg-bg-soft/40 p-3 text-center">
@@ -2072,8 +2104,13 @@ function LtvDetalheModal({
                       ))}
                     </ul>
                   </td>
-                  <td className="px-3 py-2.5 text-right align-top tabular-nums text-zinc-100">
-                    {p.meses}
+                  <td className="px-3 py-2.5 text-right align-top text-zinc-100">
+                    <p className="tabular-nums font-medium">{p.meses}</p>
+                    {p.meses === 0 && p.dias > 0 && (
+                      <p className="mt-0.5 text-[9px] text-muted tabular-nums">
+                        ({p.dias} {p.dias === 1 ? 'dia' : 'dias'})
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right align-top tabular-nums font-semibold text-zinc-100">
                     {formatBRLShort(p.subtotal)}
