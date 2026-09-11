@@ -159,6 +159,15 @@ export interface Cliente {
   squad: string | null
   tipo: TipoCliente | null
   modulos: ModuloCliente[]
+  /**
+   * Servicos comerciais contratados pelo cliente (migration 076).
+   * Separado de modulos — modulos e' routing operacional, servicos_
+   * contratados e' realidade comercial. Editavel via modal na Ficha.
+   * Valores conhecidos: trafego_pago, social_media, landing_page,
+   * comercial_crm, identidade_visual, salvia. Extensivel — nao ha
+   * enum, e' text[] livre pra novos servicos entrarem sem migration.
+   */
+  servicos_contratados: string[]
   gestor_id: string | null
   account_manager_id: string | null
   social_media_id: string | null

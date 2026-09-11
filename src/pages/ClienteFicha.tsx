@@ -38,6 +38,12 @@ import {
   CheckCircle2,
   FileText,
   Link as LinkIcon,
+  Megaphone,
+  Instagram,
+  LayoutGrid,
+  Palette,
+  Leaf,
+  X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -63,6 +69,55 @@ function formatDateBR(iso: string | null): string {
   return d.toLocaleDateString('pt-BR')
 }
 
+// Catalogo de servicos contratados. Adicionar aqui pra habilitar
+// um novo servico em toda a UI. `key` casa com o valor guardado no
+// array `clientes.servicos_contratados`.
+interface ServicoDef {
+  key: string
+  label: string
+  icon: React.ComponentType<{ size?: number; className?: string }>
+  cor: string // classes Tailwind da badge
+}
+
+const SERVICOS_CATALOGO: ServicoDef[] = [
+  {
+    key: 'trafego_pago',
+    label: 'Tráfego Pago',
+    icon: Megaphone,
+    cor: 'border-orange-500/40 bg-orange-500/10 text-orange-200',
+  },
+  {
+    key: 'social_media',
+    label: 'Social Media',
+    icon: Instagram,
+    cor: 'border-pink-500/40 bg-pink-500/10 text-pink-200',
+  },
+  {
+    key: 'landing_page',
+    label: 'Landing Page',
+    icon: LayoutGrid,
+    cor: 'border-violet-500/40 bg-violet-500/10 text-violet-200',
+  },
+  {
+    key: 'comercial_crm',
+    label: 'Comercial/CRM',
+    icon: Users,
+    cor: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+  },
+  {
+    key: 'identidade_visual',
+    label: 'Identidade Visual',
+    icon: Palette,
+    cor: 'border-rose-500/40 bg-rose-500/10 text-rose-200',
+  },
+  {
+    key: 'salvia',
+    label: 'Salvia',
+    icon: Leaf,
+    cor: 'border-lime-500/40 bg-lime-500/10 text-lime-200',
+  },
+]
+
 const statusTone: Record<Cliente['status'], { label: string; className: string }> = {
   ativo: { label: 'Ativo', className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' },
   atencao: {
@@ -87,6 +142,16 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   )
 
   const [savingRisco, setSavingRisco] = useState(false)
+  const [servicosModalOpen, setServicosModalOpen] = useState(false)
+
+  // Servicos que o cliente TEM contratados (mapeados pelo catalogo pra
+  // ter icone/cor). Servicos "orfaos" (nao existem no catalogo) sao
+  // exibidos como chip generico no fim, com aviso.
+  const servicosAtuais = cliente.servicos_contratados ?? []
+  const servicosMapeados = SERVICOS_CATALOGO.filter((s) => servicosAtuais.includes(s.key))
+  const servicosOrfaos = servicosAtuais.filter(
+    (k) => !SERVICOS_CATALOGO.find((s) => s.key === k),
+  )
 
   async function marcarRisco() {
     if (cliente.status === 'atencao') {
@@ -201,18 +266,55 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             <p className="text-[10px] text-muted italic">v2 — tracking pendente</p>
           </div>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Serviços Contratados
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Serviços Contratados
+              </p>
+              <button
+                type="button"
+                onClick={() => setServicosModalOpen(true)}
+                className="grid h-4 w-4 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+                title="Editar serviços"
+              >
+                <Pencil size={9} />
+              </button>
+            </div>
             <div className="mt-1 flex flex-wrap gap-1">
-              {cliente.modulos && cliente.modulos.length > 0 ? (
-                cliente.modulos.map((m) => (
-                  <Badge key={m} tone="brand" className="!text-[10px]">
-                    {m === 'trafego' ? 'Tráfego Pago' : m === 'social_media' ? 'Social Media' : m}
-                  </Badge>
-                ))
+              {servicosMapeados.length > 0 || servicosOrfaos.length > 0 ? (
+                <>
+                  {servicosMapeados.map((s) => {
+                    const Icon = s.icon
+                    return (
+                      <span
+                        key={s.key}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium',
+                          s.cor,
+                        )}
+                      >
+                        <Icon size={9} />
+                        {s.label}
+                      </span>
+                    )
+                  })}
+                  {servicosOrfaos.map((k) => (
+                    <span
+                      key={k}
+                      className="inline-flex items-center rounded border border-border bg-bg-soft px-1.5 py-0.5 text-[10px] font-medium text-zinc-300"
+                      title="Serviço sem definição no catálogo — pode ter sido removido"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </>
               ) : (
-                <span className="text-xs text-muted">—</span>
+                <button
+                  type="button"
+                  onClick={() => setServicosModalOpen(true)}
+                  className="text-xs text-muted hover:text-brand-300 italic underline"
+                >
+                  nenhum — adicionar
+                </button>
               )}
             </div>
           </div>
@@ -376,6 +478,113 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
           Log de eventos do cliente (NPS registrado, contato, mudança de jornada, alteração
           de serviços). Precisa tabela cliente_eventos. v2.
         </p>
+      </div>
+
+      {/* Modal — editar servicos contratados */}
+      {servicosModalOpen && (
+        <ServicosModal
+          cliente={cliente}
+          onClose={() => setServicosModalOpen(false)}
+          onSaved={() => {
+            setServicosModalOpen(false)
+            onChanged()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// -------- Modal Servicos Contratados --------
+function ServicosModal({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [selected, setSelected] = useState<string[]>(
+    cliente.servicos_contratados ?? [],
+  )
+  const [saving, setSaving] = useState(false)
+
+  function toggle(key: string) {
+    setSelected((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    )
+  }
+
+  async function salvar() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('clientes')
+      .update({ servicos_contratados: selected })
+      .eq('id', cliente.id)
+    setSaving(false)
+    if (error) {
+      alert(`Erro: ${error.message}`)
+      return
+    }
+    onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">Serviços Contratados</h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Selecione os serviços que este cliente contratou.
+        </p>
+        <div className="space-y-1.5">
+          {SERVICOS_CATALOGO.map((s) => {
+            const Icon = s.icon
+            const isChecked = selected.includes(s.key)
+            return (
+              <label
+                key={s.key}
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
+                  isChecked
+                    ? s.cor
+                    : 'border-border bg-bg-soft/40 text-zinc-200 hover:border-brand-500/30',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggle(s.key)}
+                  className="h-3.5 w-3.5 accent-brand-500 cursor-pointer"
+                />
+                <Icon size={13} />
+                <span className="text-xs font-medium">{s.label}</span>
+              </label>
+            )
+          })}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={salvar} disabled={saving}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </div>
       </div>
     </div>
   )
