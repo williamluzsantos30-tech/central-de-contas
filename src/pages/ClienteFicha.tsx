@@ -73,6 +73,169 @@ function mesesDesde(iso: string | null): number {
   return Math.max(0, diffMs / (1000 * 60 * 60 * 24 * 30.44))
 }
 
+/**
+ * Calcula LTV corretamente respeitando expansoes/reducoes recorrentes.
+ *
+ *   LTV = Σ (MRR do periodo × Meses no periodo)
+ *
+ * Retorna:
+ *   ltvTotal        — soma total
+ *   mrrInicial      — MRR reconstruido pra data_inicio (retro-engenharia
+ *                     a partir do MRR atual e dos deltas recorrentes)
+ *   periodos        — cada intervalo com seu MRR vigente:
+ *                     { inicio, fim, mrr, meses, subtotal, composicao }
+ *                     composicao guarda a lista de mudancas (Ticket
+ *                     inicial, + Social Media R\$ 1.500, etc) pra
+ *                     renderizar o breakdown que aparece no modal.
+ *   temEventos      — false quando nao ha expansoes/reducoes registradas
+ *                     (nesse caso periodos = [1 unico] com MRR atual)
+ *
+ * IMPORTANTE: eventos disponiveis so cobrem o periodo em que o log
+ * ja estava ativo. Se o cliente teve expansoes ANTES da plataforma
+ * comecar a rastrear, o MRR inicial reconstruido vai ser igual ao
+ * MRR atual (subestima). Isso e uma limitacao aceitavel — a v2 poderia
+ * pedir pro user cadastrar historico manualmente.
+ */
+interface LtvPeriodo {
+  inicio: string
+  fim: string
+  mrr: number
+  meses: number
+  subtotal: number
+  composicao: string[]
+  ehEntrada: boolean
+  ehExpansao: boolean
+  ehReducao: boolean
+}
+
+interface LtvDetalhado {
+  ltvTotal: number
+  mrrInicial: number
+  periodos: LtvPeriodo[]
+  temEventos: boolean
+}
+
+function calcularLtvDetalhado(
+  cliente: Cliente,
+  eventos: ClienteEvento[],
+): LtvDetalhado {
+  const mrrAtual = cliente.verba_mensal ?? 0
+  const dataInicio = cliente.data_inicio
+  const dataFim = cliente.arquivado_em ?? new Date().toISOString()
+
+  // Filtra so eventos recorrentes (nao TCV) tipo expansao/perda em ordem
+  // cronologica. Excluir os auto-logs 'mrr' porque duplicariam.
+  const movimentacoes = eventos
+    .filter((ev) => {
+      if (ev.tipo !== 'expansao' && ev.tipo !== 'perda') return false
+      const meta = (ev.meta ?? {}) as Record<string, unknown>
+      // recorrente default true (se undefined, assume que sim)
+      const recorrente = meta.recorrente !== false
+      const tcv = meta.tcv === true
+      return recorrente && !tcv && typeof meta.valor === 'number'
+    })
+    .map((ev) => {
+      const meta = (ev.meta ?? {}) as Record<string, unknown>
+      const dataEv =
+        (typeof meta.data === 'string' ? meta.data : null) ?? ev.criado_em
+      return {
+        data: dataEv,
+        valor: (meta.valor as number) * (ev.tipo === 'expansao' ? 1 : -1),
+        motivo: (meta.motivo as string) ?? null,
+        tipo: ev.tipo as 'expansao' | 'perda',
+        servicosAdicionados:
+          (meta.servicos_adicionados as string[] | undefined) ?? [],
+        servicosRemovidos:
+          (meta.servicos_removidos as string[] | undefined) ?? [],
+      }
+    })
+    .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime())
+
+  // Reconstroi MRR inicial: MRR atual - sum(deltas)
+  const totalDelta = movimentacoes.reduce((s, m) => s + m.valor, 0)
+  const mrrInicial = Math.max(0, mrrAtual - totalDelta)
+
+  // Monta periodos
+  const periodos: LtvPeriodo[] = []
+  let inicioAtual = dataInicio
+  let mrrAtualPeriodo = mrrInicial
+  const composicaoAtual: string[] = [`Ticket inicial: ${formatBRLShort(mrrInicial)}`]
+
+  for (const mov of movimentacoes) {
+    // Nao cria periodo se o evento e ANTES da data_inicio (dado ruim,
+    // ignora com seguranca)
+    if (new Date(mov.data) <= new Date(inicioAtual)) {
+      // Se data igual, aplica direto sem criar periodo vazio
+      mrrAtualPeriodo += mov.valor
+      const sinal = mov.valor >= 0 ? '+' : '-'
+      composicaoAtual.push(
+        `${sinal} ${mov.motivo ?? mov.tipo}: ${formatBRLShort(Math.abs(mov.valor))}`,
+      )
+      continue
+    }
+
+    const meses = mesesEntre(inicioAtual, mov.data)
+    if (meses > 0) {
+      periodos.push({
+        inicio: inicioAtual,
+        fim: mov.data,
+        mrr: mrrAtualPeriodo,
+        meses,
+        subtotal: mrrAtualPeriodo * meses,
+        composicao: [...composicaoAtual],
+        ehEntrada: periodos.length === 0,
+        ehExpansao: false,
+        ehReducao: false,
+      })
+    }
+
+    // Aplica delta
+    const anterior = mrrAtualPeriodo
+    mrrAtualPeriodo = Math.max(0, mrrAtualPeriodo + mov.valor)
+    composicaoAtual.length = 0 // resetar composicao do periodo novo
+    composicaoAtual.push(
+      `${mov.valor >= 0 ? '+' : '-'} ${mov.motivo ?? mov.tipo}: ${formatBRLShort(Math.abs(mov.valor))}`,
+      `= ${formatBRLShort(mrrAtualPeriodo)}`,
+    )
+    inicioAtual = mov.data
+    void anterior
+  }
+
+  // Fecha ultimo periodo ate hoje/churn
+  const mesesFinal = mesesEntre(inicioAtual, dataFim)
+  if (mesesFinal > 0) {
+    periodos.push({
+      inicio: inicioAtual,
+      fim: dataFim,
+      mrr: mrrAtualPeriodo,
+      meses: mesesFinal,
+      subtotal: mrrAtualPeriodo * mesesFinal,
+      composicao: [...composicaoAtual],
+      ehEntrada: periodos.length === 0,
+      ehExpansao: movimentacoes.length > 0 && mrrAtualPeriodo > mrrInicial,
+      ehReducao: movimentacoes.length > 0 && mrrAtualPeriodo < mrrInicial,
+    })
+  }
+
+  const ltvTotal = periodos.reduce((s, p) => s + p.subtotal, 0)
+
+  return {
+    ltvTotal,
+    mrrInicial,
+    periodos,
+    temEventos: movimentacoes.length > 0,
+  }
+}
+
+/** Retorna meses inteiros truncados entre 2 datas ISO. */
+function mesesEntre(iniISO: string, fimISO: string): number {
+  const ini = new Date(iniISO)
+  const fim = new Date(fimISO)
+  if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return 0
+  const diffMs = fim.getTime() - ini.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)))
+}
+
 function formatDateBR(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -147,10 +310,7 @@ interface Props {
 
 export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   const tempoCasa = useMemo(() => mesesDesde(cliente.data_inicio), [cliente.data_inicio])
-  const ltvAtual = useMemo(
-    () => (cliente.verba_mensal ?? 0) * tempoCasa,
-    [cliente.verba_mensal, tempoCasa],
-  )
+  const [ltvModalOpen, setLtvModalOpen] = useState(false)
 
   const [savingRisco, setSavingRisco] = useState(false)
   const [servicosModalOpen, setServicosModalOpen] = useState(false)
@@ -176,6 +336,15 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
     loadEventos()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente.id])
+
+  // LTV detalhado — soma MRR × meses respeitando as expansoes/reducoes
+  // recorrentes logadas em cliente_eventos. Se nao ha eventos, usa
+  // fallback ticket × tempo (v1).
+  const ltvDetalhado = useMemo(
+    () => calcularLtvDetalhado(cliente, eventos),
+    [cliente, eventos],
+  )
+  const ltvAtual = ltvDetalhado.ltvTotal
 
   // Ultimo contato = evento tipo='contato' mais recente
   const ultimoContato = useMemo(() => {
@@ -403,9 +572,18 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
 
       {/* ============= LTV Atual ============= */}
       <div className="rounded-xl border border-border bg-bg-card p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <DollarSign size={14} className="text-emerald-300" />
-          <h3 className="text-sm font-semibold text-zinc-100">LTV Atual</h3>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <DollarSign size={14} className="text-emerald-300" />
+            <h3 className="text-sm font-semibold text-zinc-100">LTV Atual</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLtvModalOpen(true)}
+            className="text-[11px] text-brand-300 hover:underline"
+          >
+            Ver cálculo detalhado →
+          </button>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
@@ -431,6 +609,14 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">
               {formatCurrency(ltvAtual)}
             </p>
+            {ltvDetalhado.temEventos ? (
+              <p className="mt-1 text-[10px] text-muted">
+                Soma de {ltvDetalhado.periodos.length}{' '}
+                {ltvDetalhado.periodos.length === 1 ? 'período' : 'períodos'} de MRR
+              </p>
+            ) : (
+              <p className="mt-1 text-[10px] text-muted">Ticket × Tempo de casa</p>
+            )}
           </div>
         </div>
       </div>
@@ -584,10 +770,21 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         />
       )}
 
+      {/* Modal — detalhamento do LTV */}
+      {ltvModalOpen && (
+        <LtvDetalheModal
+          cliente={cliente}
+          detalhe={ltvDetalhado}
+          tempoCasa={tempoCasa}
+          onClose={() => setLtvModalOpen(false)}
+        />
+      )}
+
       {/* Modal — registrar perda de receita (Reducao vs Churn) */}
       {perdaModalOpen && (
         <PerdaReceitaModal
           cliente={cliente}
+          ltvDetalhado={ltvDetalhado}
           onClose={() => setPerdaModalOpen(false)}
           onSaved={() => {
             setPerdaModalOpen(false)
@@ -1462,6 +1659,191 @@ function ExpansaoPerdaModal({
 }
 
 // ============================================================
+// Modal — Detalhamento do LTV Atual
+// ============================================================
+
+function LtvDetalheModal({
+  cliente,
+  detalhe,
+  tempoCasa,
+  onClose,
+}: {
+  cliente: Cliente
+  detalhe: LtvDetalhado
+  tempoCasa: number
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <DollarSign size={14} className="text-emerald-300" />
+            <h3 className="text-sm font-semibold text-zinc-100">
+              LTV Atual — {cliente.nome}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Detalhamento do cálculo de Lifetime Value.
+        </p>
+
+        {/* KPIs topo */}
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-border bg-bg-soft/40 p-3 text-center">
+            <p className="flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider text-muted">
+              <Clock size={9} /> Tempo de Casa
+            </p>
+            <p className="mt-1.5 text-lg font-bold tabular-nums text-zinc-100">
+              {Math.floor(tempoCasa)} meses
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg-soft/40 p-3 text-center">
+            <p className="flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider text-muted">
+              <DollarSign size={9} /> Ticket Atual
+            </p>
+            <p className="mt-1.5 text-lg font-bold tabular-nums text-zinc-100">
+              {formatBRLShort(cliente.verba_mensal ?? 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-center">
+            <p className="flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider text-emerald-300">
+              <TrendingUp size={9} /> LTV Atual
+            </p>
+            <p className="mt-1.5 text-lg font-bold tabular-nums text-emerald-300">
+              {formatBRLShort(detalhe.ltvTotal)}
+            </p>
+          </div>
+        </div>
+
+        {/* Explicacao */}
+        <div className="mb-4 rounded-lg border border-border bg-bg-soft/40 p-3">
+          <p className="text-[11px] font-semibold text-zinc-100 mb-1.5">
+            💡 Como calculamos o LTV Atual
+          </p>
+          <p className="text-[11px] text-muted leading-relaxed">
+            O LTV (Lifetime Value) é calculado somando o valor gerado em cada
+            período de MRR vigente, respeitando a data das expansões. Cliente
+            desde <span className="text-zinc-100">{formatDateBR(cliente.data_inicio)}</span>.
+          </p>
+          <span className="mt-2 inline-flex items-center gap-1 rounded border border-border bg-bg-elev px-2 py-0.5 text-[10px] font-medium text-zinc-200">
+            <CheckCircle2 size={9} /> Inclui expansões
+          </span>
+        </div>
+
+        {/* Formula */}
+        <div className="mb-4">
+          <p className="mb-1.5 text-[11px] text-muted">Fórmula aplicada:</p>
+          <div className="rounded-md border border-border bg-bg-soft/60 px-3 py-2 font-mono text-[11px] text-brand-200">
+            LTV = Σ (MRR do período × Meses no período)
+          </div>
+        </div>
+
+        {/* Tabela de periodos */}
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-bg-soft/40 text-[9px] uppercase tracking-wider text-muted">
+                <th className="px-3 py-2 text-left font-semibold">Período</th>
+                <th className="px-3 py-2 text-left font-semibold">Composição do MRR</th>
+                <th className="px-3 py-2 text-right font-semibold">Meses</th>
+                <th className="px-3 py-2 text-right font-semibold">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detalhe.periodos.map((p, i) => (
+                <tr key={i} className="border-b border-border/60 last:border-b-0">
+                  <td className="px-3 py-2.5 align-top">
+                    <p className="tabular-nums text-zinc-200">
+                      {formatDateBR(p.inicio)} <span className="text-muted">→</span>{' '}
+                      {formatDateBR(p.fim)}
+                    </p>
+                    {p.ehEntrada && (
+                      <span className="mt-1 inline-block rounded border border-border bg-bg-soft px-1.5 py-0.5 text-[9px] font-medium text-zinc-300">
+                        Entrada
+                      </span>
+                    )}
+                    {p.ehExpansao && (
+                      <span className="mt-1 inline-block rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-200">
+                        + Expansão recorrente
+                      </span>
+                    )}
+                    {p.ehReducao && (
+                      <span className="mt-1 inline-block rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-200">
+                        − Redução recorrente
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 align-top">
+                    <ul className="space-y-0.5">
+                      {p.composicao.map((c, j) => (
+                        <li
+                          key={j}
+                          className={cn(
+                            'text-[11px]',
+                            c.startsWith('+')
+                              ? 'text-emerald-300'
+                              : c.startsWith('-')
+                                ? 'text-red-300'
+                                : c.startsWith('=')
+                                  ? 'font-semibold text-zinc-100'
+                                  : 'text-zinc-300',
+                          )}
+                        >
+                          {c}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-3 py-2.5 text-right align-top tabular-nums text-zinc-100">
+                    {p.meses}
+                  </td>
+                  <td className="px-3 py-2.5 text-right align-top tabular-nums font-semibold text-zinc-100">
+                    {formatBRLShort(p.subtotal)}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-bg-soft/60 font-bold">
+                <td className="px-3 py-2.5 text-zinc-100" colSpan={2}>
+                  Total
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-zinc-100">
+                  {detalhe.periodos.reduce((s, p) => s + p.meses, 0)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-300">
+                  {formatBRLShort(detalhe.ltvTotal)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {!detalhe.temEventos && (
+          <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+            <AlertTriangle size={10} className="inline mr-1" />
+            Este cliente ainda não tem expansões/reduções registradas na
+            plataforma. LTV calculado como ticket atual × tempo de casa. Quando
+            registrar expansões, o cálculo por períodos entra automático.
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // Modal — Registrar Perda de Receita
 // ============================================================
 //
@@ -1486,10 +1868,12 @@ const MOTIVOS_PERDA = [
 
 function PerdaReceitaModal({
   cliente,
+  ltvDetalhado,
   onClose,
   onSaved,
 }: {
   cliente: Cliente
+  ltvDetalhado: LtvDetalhado
   onClose: () => void
   onSaved: () => void
 }) {
@@ -1506,7 +1890,9 @@ function PerdaReceitaModal({
   // Calculos exibidos no header
   const ticket = cliente.verba_mensal ?? 0
   const tempoCasa = mesesDesde(cliente.data_inicio)
-  const ltvAtual = ticket * tempoCasa
+  // LTV usa o calculo detalhado (soma periodos) — fallback pra ticket
+  // × tempo se nao ha eventos
+  const ltvAtual = ltvDetalhado.ltvTotal
 
   const jaContratados = cliente.servicos_contratados ?? []
   const contratados = SERVICOS_CATALOGO.filter((s) => jaContratados.includes(s.key))
