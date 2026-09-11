@@ -297,8 +297,12 @@ export default function VisaoExecutiva() {
     }
   }, [clientesFiltrados, mesISO, eventosMov])
 
-  // Classificacao do "farol" pro banner de alerta
-  const temAlerta = kpis.saldo < 0 || kpis.emRisco > 0 || kpis.churnRate > 0.05
+  // Farol do banner de alerta — dispara quando qualquer meta comercial
+  // e' quebrada. Metas fixadas pelo user:
+  //   NRR   >= 95%   (abaixo = nao esta crescendo)
+  //   Churn <  10%   (acima = meta nao atingida)
+  const temAlerta =
+    kpis.nrr < 0.95 || kpis.churnRate >= 0.1 || kpis.saldo < 0 || kpis.emRisco > 0
 
   return (
     <div>
@@ -391,19 +395,21 @@ export default function VisaoExecutiva() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                {kpis.nrr < 1 && (
+                {/* Mostra so o que ESTA fora da meta — nao polui com KPIs OK */}
+                {kpis.nrr < 0.95 && (
                   <span className="flex items-center gap-1 text-red-200">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    NRR {formatPct(kpis.nrr)}
+                    NRR {formatPct(kpis.nrr)} <span className="opacity-70">(meta ≥ 95%)</span>
                   </span>
                 )}
-                {kpis.churnRate > 0 && (
+                {kpis.churnRate >= 0.1 && (
                   <span className="flex items-center gap-1 text-red-200">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    Churn {formatPct(kpis.churnRate)}
+                    Churn {formatPct(kpis.churnRate)}{' '}
+                    <span className="opacity-70">(meta &lt; 10%)</span>
                   </span>
                 )}
-                {kpis.saldo !== 0 && (
+                {kpis.saldo < 0 && (
                   <span className="flex items-center gap-1 text-red-200">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
                     Saldo {formatBRLSigned(kpis.saldo)}
@@ -440,12 +446,14 @@ export default function VisaoExecutiva() {
               <SubKpi
                 titulo="NRR"
                 valor={formatPct(kpis.nrr)}
-                tone={kpis.nrr >= 1 ? 'emerald' : kpis.nrr >= 0.95 ? 'amber' : 'red'}
+                sub="meta ≥ 95%"
+                tone={kpis.nrr >= 0.95 ? 'emerald' : kpis.nrr >= 0.9 ? 'amber' : 'red'}
               />
               <SubKpi
                 titulo="Churn Rate"
                 valor={formatPct(kpis.churnRate)}
-                tone={kpis.churnRate === 0 ? 'emerald' : kpis.churnRate < 0.03 ? 'amber' : 'red'}
+                sub="meta < 10%"
+                tone={kpis.churnRate < 0.05 ? 'emerald' : kpis.churnRate < 0.1 ? 'amber' : 'red'}
               />
               <SubKpi
                 titulo="MRR em Risco"
@@ -725,15 +733,24 @@ function FiltroPill({
   )
 }
 
-function SubKpi({ titulo, valor, tone }: { titulo: string; valor: string; tone: Tone }) {
+function SubKpi({
+  titulo,
+  valor,
+  tone,
+  sub,
+}: {
+  titulo: string
+  valor: string
+  tone: Tone
+  sub?: string
+}) {
   return (
     <div>
-      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
-        {titulo}
-      </p>
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">{titulo}</p>
       <p className={cn('mt-1 text-2xl font-bold tabular-nums leading-none', toneText[tone])}>
         {valor}
       </p>
+      {sub && <p className="mt-1.5 text-[9px] uppercase tracking-wider text-muted">{sub}</p>}
     </div>
   )
 }
@@ -1219,7 +1236,8 @@ function calculaScoreSquads(clientes: Cliente[], mesISO: string, mrrMedioSquad: 
     let score = 0
     const badges: { label: string; positive: boolean }[] = []
 
-    if (nrr >= 1) {
+    if (nrr >= 0.95) {
+      // Meta atingida — NRR acima de 95%
       score += 2
       badges.push({ label: '+2 NRR', positive: true })
     }
@@ -1391,14 +1409,16 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
-                squad.nrr >= 1 ? 'text-emerald-300' : squad.nrr >= 0.95 ? 'text-amber-300' : 'text-red-300',
+                squad.nrr >= 0.95 ? 'text-emerald-300' : squad.nrr >= 0.9 ? 'text-amber-300' : 'text-red-300',
               )}
             >
               {(squad.nrr * 100).toFixed(1)}%
             </span>
           </div>
           <p className="mt-0.5 text-[10px] text-muted">
-            {squad.nrr >= 1 ? 'Meta atingida' : `Faltam ${((1 - squad.nrr) * 100).toFixed(1)}pp`}
+            {squad.nrr >= 0.95
+              ? 'Meta atingida (≥ 95%)'
+              : `Faltam ${((0.95 - squad.nrr) * 100).toFixed(1)}pp para meta`}
           </p>
         </div>
         <div>
