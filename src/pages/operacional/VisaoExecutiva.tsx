@@ -13,7 +13,10 @@
  *   Execucao Operacional: Clientes em Risco, Tempo Medio Vida,
  *                          Onboarding Finalizado, NPS Medio
  *   Lifetime Value: LTV Medio, LT Medio
- *   Acoes por Status: Verde / Amarelo / Vermelho com sugestoes
+ *   Evolucao de Clientes: bar chart + tabela historica ano corrente
+ *   Score e Saude por Squad: cards por squad com score de -3 a +8
+ *   Acoes Sugeridas: Verde / Amarelo / Vermelho — pra aplicar em cada
+ *                     nivel de squad classificado acima
  *
  * Metricas derivadas de clientes.* (sem tabela historica ainda):
  *   MRR              = SUM verba_mensal WHERE status='ativo'
@@ -539,7 +542,15 @@ export default function VisaoExecutiva() {
             </div>
           </div>
 
-          {/* Acoes por Status */}
+          {/* Evolucao de Clientes */}
+          <EvolucaoClientes clientes={clientesFiltrados} />
+
+          {/* Score e Saude por Squad */}
+          <ScoreSaudeSquads clientes={clientesFiltrados} mesISO={mesISO} />
+
+          {/* Acoes Sugeridas — fica DEPOIS dos squads porque as sugestoes
+              se aplicam por squad classificado. Ordem: primeiro voce ve
+              quem esta bem/mal, depois o que fazer com cada nivel. */}
           <div className="mt-6">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
               Ações Sugeridas
@@ -577,12 +588,6 @@ export default function VisaoExecutiva() {
               />
             </div>
           </div>
-
-          {/* Evolucao de Clientes */}
-          <EvolucaoClientes clientes={clientesFiltrados} />
-
-          {/* Score e Saude por Squad */}
-          <ScoreSaudeSquads clientes={clientesFiltrados} mesISO={mesISO} />
 
           {/* Rodape com placeholders v2 */}
           <div className="mt-8 rounded-xl border border-dashed border-border bg-bg-soft/30 p-4">
