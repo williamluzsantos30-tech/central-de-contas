@@ -584,11 +584,10 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         />
       )}
 
-      {/* Modal — registrar perda (downsell) */}
+      {/* Modal — registrar perda de receita (Reducao vs Churn) */}
       {perdaModalOpen && (
-        <ExpansaoPerdaModal
+        <PerdaReceitaModal
           cliente={cliente}
-          direcao="perda"
           onClose={() => setPerdaModalOpen(false)}
           onSaved={() => {
             setPerdaModalOpen(false)
@@ -1057,10 +1056,16 @@ const eventoTipoConfig: Record<
     tituloDisplay: 'Expansão Registrada',
   },
   perda: {
+    corBg: 'bg-amber-500/15',
+    corIcon: 'text-amber-300',
+    icon: TrendingDown,
+    tituloDisplay: 'Redução Registrada',
+  },
+  churn: {
     corBg: 'bg-red-500/15',
     corIcon: 'text-red-300',
-    icon: TrendingDown,
-    tituloDisplay: 'Perda Registrada',
+    icon: Users,
+    tituloDisplay: 'Churn Registrado',
   },
   briefing: {
     corBg: 'bg-orange-500/15',
@@ -1456,6 +1461,430 @@ function ExpansaoPerdaModal({
   )
 }
 
+// ============================================================
+// Modal — Registrar Perda de Receita
+// ============================================================
+//
+// Sub-tipos:
+//   REDUCAO — cliente cancelou 1+ servico mas continua na base.
+//             Reduz MRR se recorrente, remove servicos, gera evento
+//             tipo='perda'
+//   CHURN   — cliente saiu completo. Muda status pra 'churn',
+//             congela LTV, gera evento tipo='churn' com o LTV
+//             congelado no meta. O trigger sync_arquivado_em cuida
+//             de setar clientes.arquivado_em automaticamente.
+
+const MOTIVOS_PERDA = [
+  'Resultado insatisfatório',
+  'Problemas de atendimento',
+  'Preço',
+  'Mudança de estratégia',
+  'Dificuldades financeiras',
+  'Encerramento da clínica',
+  'Outro',
+] as const
+
+function PerdaReceitaModal({
+  cliente,
+  onClose,
+  onSaved,
+}: {
+  cliente: Cliente
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [subtipo, setSubtipo] = useState<'reducao' | 'churn'>('reducao')
+  const [data, setData] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [motivo, setMotivo] = useState<string>('')
+  const [valor, setValor] = useState<string>(String(cliente.verba_mensal ?? ''))
+  const [notas, setNotas] = useState('')
+  const [servicosRemover, setServicosRemover] = useState<string[]>([])
+  const [recorrente, setRecorrente] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Calculos exibidos no header
+  const ticket = cliente.verba_mensal ?? 0
+  const tempoCasa = mesesDesde(cliente.data_inicio)
+  const ltvAtual = ticket * tempoCasa
+
+  const jaContratados = cliente.servicos_contratados ?? []
+  const contratados = SERVICOS_CATALOGO.filter((s) => jaContratados.includes(s.key))
+
+  function toggleServico(key: string) {
+    setServicosRemover((p) =>
+      p.includes(key) ? p.filter((k) => k !== key) : [...p, key],
+    )
+  }
+
+  async function salvar() {
+    setError(null)
+    if (!motivo) {
+      setError('Escolha o motivo')
+      return
+    }
+    setSaving(true)
+
+    if (subtipo === 'churn') {
+      // Snapshot do LTV pra congelar. Evento com tipo='churn' e meta rica.
+      const { error: evErr } = await supabase.from('cliente_eventos').insert({
+        cliente_id: cliente.id,
+        tipo: 'churn',
+        titulo: `Churn · ${motivo}`,
+        descricao: notas.trim() || null,
+        meta: {
+          motivo,
+          data,
+          valor_perdido: Number(valor) || ticket,
+          ltv_congelado: ltvAtual,
+          ticket_mensal_no_churn: ticket,
+          tempo_de_casa_meses: Math.floor(tempoCasa),
+        },
+      })
+      if (evErr) {
+        setError(evErr.message)
+        setSaving(false)
+        return
+      }
+      // Update: muda status pra churn (o trigger sync_arquivado_em
+      // deve setar arquivado_em; se nao houver esse trigger no banco
+      // novo, precisamos setar aqui explicitamente).
+      const { error: upErr } = await supabase
+        .from('clientes')
+        .update({ status: 'churn', arquivado_em: new Date().toISOString() })
+        .eq('id', cliente.id)
+      if (upErr) {
+        setError(`Evento salvo mas cliente nao atualizou: ${upErr.message}`)
+        setSaving(false)
+        return
+      }
+    } else {
+      // Reducao
+      const valorNum = Number(valor)
+      if (isNaN(valorNum) || valorNum <= 0) {
+        setError('Valor da redução precisa ser maior que zero')
+        setSaving(false)
+        return
+      }
+      const { error: evErr } = await supabase.from('cliente_eventos').insert({
+        cliente_id: cliente.id,
+        tipo: 'perda',
+        titulo: `Redução · ${motivo}`,
+        descricao: notas.trim() || null,
+        meta: {
+          motivo,
+          data,
+          valor: valorNum,
+          recorrente,
+          servicos_removidos: servicosRemover,
+        },
+      })
+      if (evErr) {
+        setError(evErr.message)
+        setSaving(false)
+        return
+      }
+      const updates: Record<string, unknown> = {}
+      if (recorrente) {
+        updates.verba_mensal = Math.max(0, (cliente.verba_mensal ?? 0) - valorNum)
+      }
+      if (servicosRemover.length > 0) {
+        updates.servicos_contratados = jaContratados.filter(
+          (k) => !servicosRemover.includes(k),
+        )
+      }
+      if (Object.keys(updates).length > 0) {
+        const { error: upErr } = await supabase
+          .from('clientes')
+          .update(updates)
+          .eq('id', cliente.id)
+        if (upErr) {
+          setError(`Evento salvo mas cliente nao atualizou: ${upErr.message}`)
+          setSaving(false)
+          return
+        }
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+  }
+
+  const ehChurn = subtipo === 'churn'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">
+            Registrar Perda de Receita
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <X size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          Registre uma perda de receita para este cliente.
+        </p>
+
+        {/* Header stats — Ticket + Tempo Casa + LTV */}
+        <div className="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-border bg-bg-soft/40 p-3">
+          <div className="text-center">
+            <p className="text-[9px] uppercase tracking-wider text-muted">Ticket Mensal</p>
+            <p className="mt-1 text-sm font-bold tabular-nums text-zinc-100">
+              {formatCurrency(ticket)}
+            </p>
+          </div>
+          <div className="text-center border-x border-border">
+            <p className="text-[9px] uppercase tracking-wider text-muted">Tempo de Casa</p>
+            <p className="mt-1 text-sm font-bold tabular-nums text-zinc-100">
+              {Math.floor(tempoCasa)} meses
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] uppercase tracking-wider text-muted">LTV Atual</p>
+            <p className="mt-1 text-sm font-bold tabular-nums text-emerald-300">
+              {formatCurrency(ltvAtual)}
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        {/* Tipo de Perda — Redução vs Churn */}
+        <div className="mb-3">
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Tipo de Perda *
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setSubtipo('reducao')}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                subtipo === 'reducao'
+                  ? 'border-amber-500/60 bg-amber-500/10'
+                  : 'border-border bg-bg-soft/40 hover:border-amber-500/30',
+              )}
+            >
+              <div className="mb-1 flex items-center gap-1.5">
+                <TrendingDown size={13} className="text-amber-300" />
+                <span className="text-xs font-semibold text-zinc-100">Redução</span>
+              </div>
+              <p className="text-[10px] text-muted leading-snug">
+                Cancelou serviço(s) mas continua cliente
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubtipo('churn')}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                subtipo === 'churn'
+                  ? 'border-red-500/60 bg-red-500/10'
+                  : 'border-border bg-bg-soft/40 hover:border-red-500/30',
+              )}
+            >
+              <div className="mb-1 flex items-center gap-1.5">
+                <Users size={13} className="text-red-300" />
+                <span className="text-xs font-semibold text-zinc-100">Churn</span>
+              </div>
+              <p className="text-[10px] text-muted leading-snug">
+                Cliente encerrou contrato completamente
+              </p>
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Data */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              {ehChurn ? 'Data do Churn *' : 'Data da Redução *'}
+            </label>
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Motivo (dropdown com opcoes) */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Motivo *
+            </label>
+            <select
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            >
+              <option value="">Selecione o motivo</option>
+              {MOTIVOS_PERDA.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Valor (Reducao: valor da reducao. Churn: valor perdido = ticket) */}
+          {ehChurn ? (
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Valor Perdido (R$) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+              />
+              <p className="mt-1 text-[10px] text-muted">
+                Valor pré-preenchido com o ticket mensal atual. Ao confirmar, o
+                LTV de {formatCurrency(ltvAtual)} será congelado.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Valor da Redução (R$) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="0,00"
+                className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+              />
+            </div>
+          )}
+
+          {/* Notas */}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Notas
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder={ehChurn ? 'Observações sobre o churn...' : 'Observações adicionais...'}
+              rows={3}
+              className="w-full resize-none rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Reducao — recorrente e servicos */}
+          {!ehChurn && (
+            <>
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={recorrente}
+                  onChange={(e) => setRecorrente(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 accent-brand-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-medium text-zinc-100">
+                    Redução recorrente
+                  </span>
+                  <p className="text-[10px] text-muted">
+                    {recorrente
+                      ? 'Reduz o MRR mensal a partir da data.'
+                      : 'Perda pontual — não altera MRR.'}
+                  </p>
+                </div>
+              </label>
+
+              {contratados.length > 0 && (
+                <div className="rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Remover serviços contratados
+                  </p>
+                  <p className="mt-0.5 mb-2 text-[10px] text-muted">
+                    Opcional. Marque os serviços que o cliente deixou de contratar.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {contratados.map((s) => {
+                      const Icon = s.icon
+                      const marcado = servicosRemover.includes(s.key)
+                      return (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => toggleServico(s.key)}
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors',
+                            marcado
+                              ? 'border-red-500/50 bg-red-500/15 text-red-200 line-through'
+                              : 'border-border bg-bg-elev text-zinc-300 hover:border-red-500/40',
+                          )}
+                        >
+                          <Icon size={9} />
+                          {s.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Warning churn */}
+          {ehChurn && (
+            <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
+              <p className="flex items-start gap-1.5 text-[11px] text-red-200">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>
+                  <strong>Atenção:</strong> Registrar churn irá marcar o cliente
+                  como inativo, congelar o LTV realizado e removê-lo dos
+                  relatórios de clientes ativos.
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <button
+            type="button"
+            onClick={salvar}
+            disabled={saving}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50',
+              ehChurn ? 'bg-red-500' : 'bg-amber-500',
+            )}
+          >
+            {saving ? 'Registrando…' : ehChurn ? 'Registrar Churn' : 'Registrar Redução'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TimelineAlteracoes({
   eventos,
   loading,
@@ -1687,6 +2116,40 @@ function RenderDiffPorTipo({ evento }: { evento: ClienteEvento }) {
           Jornada alterada de "{String(de)}" para "{String(para)}"
         </p>
         <DiffLine de={String(de)} para={String(para)} />
+      </>
+    )
+  }
+
+  // Churn: mostra motivo + LTV congelado + tempo de casa
+  if (evento.tipo === 'churn') {
+    const motivo = typeof meta.motivo === 'string' ? meta.motivo : null
+    const ltv = typeof meta.ltv_congelado === 'number' ? meta.ltv_congelado : null
+    const tempo = typeof meta.tempo_de_casa_meses === 'number' ? meta.tempo_de_casa_meses : null
+    const valor = typeof meta.valor_perdido === 'number' ? meta.valor_perdido : null
+    return (
+      <>
+        {motivo && (
+          <p className="mt-1 text-[11px] text-muted">
+            Motivo: <span className="text-zinc-100">{motivo}</span>
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {valor !== null && (
+            <span className="inline-flex items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-200">
+              <TrendingDown size={9} /> {formatBRLShort(valor)}/mês perdido
+            </span>
+          )}
+          {ltv !== null && (
+            <span className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200">
+              LTV congelado: {formatBRLShort(ltv)}
+            </span>
+          )}
+          {tempo !== null && (
+            <span className="inline-flex items-center gap-1 rounded border border-border bg-bg-elev px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+              {tempo} meses de casa
+            </span>
+          )}
+        </div>
       </>
     )
   }
