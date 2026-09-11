@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Pencil, Eye } from 'lucide-react'
+import { Plus, Search, Pencil, Eye, Download, Users, DollarSign, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
-import { Badge } from '@/components/ui/Badge'
-import { Card, CardBody } from '@/components/ui/Card'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
 import { temAlgumCargo } from '@/lib/cargos'
 import {
@@ -23,6 +18,15 @@ import {
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Cliente, Profile } from '@/types/database'
+
+// Meses inteiros truncados entre uma ISO date e hoje. Usado como
+// "LT" (lifetime months) na tabela.
+function mesesCasa(iso: string | null): number {
+  if (!iso) return 0
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return 0
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+}
 
 export default function Clientes() {
   const { profile } = useAuth()
@@ -114,226 +118,220 @@ export default function Clientes() {
     })
   }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
+  // KPIs derivados da base filtrada — SOMENTE ativos (churn não conta pro MRR)
+  const kpis = useMemo(() => {
+    const ativos = filtered.filter((c) => !c.arquivado_em)
+    const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+    const ticket = ativos.length > 0 ? mrr / ativos.length : 0
+    const assess = ativos.filter((c) => c.tipo === 'assessoria').length
+    const consult = ativos.filter((c) => c.tipo === 'consultoria').length
+    return { count: ativos.length, mrr, ticket, assess, consult }
+  }, [filtered])
+
   return (
     <div>
       <PageHeader
-        title={mostrarArquivados ? 'Clientes arquivados' : 'Clientes'}
-        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'}${
-          mostrarArquivados
-            ? ' arquivados (churn)'
-            : escopo === 'meus'
-            ? ' atribuídos a você'
-            : ' cadastrados'
-        }`}
+        title={mostrarArquivados ? 'Clientes arquivados' : 'Lista de Clientes'}
+        description={mostrarArquivados ? 'Arquivados (churn)' : 'Clientes ativos na base'}
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus size={14} /> Novo cliente
-          </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => alert('Exportação em breve')}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300"
+            >
+              <Download size={12} /> Exportar
+            </button>
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              <Plus size={14} /> Novo cliente
+            </Button>
+          </div>
         }
       />
 
-      <Card className="mb-4">
-        <CardBody className="flex flex-wrap items-center gap-2">
-          {/* Toggle Apenas meus / Todo o time */}
-          <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
-            <button
-              onClick={() => setEscopo('meus')}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
-                escopo === 'meus'
-                  ? 'bg-bg-elev text-zinc-100 shadow-[0_2px_6px_-2px_rgba(0,0,0,0.4)]'
-                  : 'text-muted hover:text-zinc-200',
-              )}
-            >
-              Apenas meus
-            </button>
-            <button
-              onClick={() => setEscopo('todos')}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
-                escopo === 'todos'
-                  ? 'bg-bg-elev text-zinc-100 shadow-[0_2px_6px_-2px_rgba(0,0,0,0.4)]'
-                  : 'text-muted hover:text-zinc-200',
-              )}
-            >
-              Todo o time
-            </button>
+      {/* BASE DE CLIENTES — bloco KPI enxuto */}
+      <div className="mb-4 rounded-xl border border-border bg-bg-card p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Base de Clientes
+        </p>
+        <div className="mt-2 flex items-baseline gap-3">
+          <p className="text-5xl font-bold tabular-nums leading-none text-emerald-300">
+            {kpis.count}
+          </p>
+          <p className="text-xs text-muted">
+            {kpis.count === 1 ? 'cliente ativo filtrado' : 'clientes ativos filtrados'}
+          </p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 md:grid-cols-4">
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+              <DollarSign size={9} className="inline mr-0.5" /> MRR Total
+            </p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-zinc-100">
+              {formatCurrency(kpis.mrr)}
+            </p>
           </div>
-
-          <div className="relative flex-1 min-w-48">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <Input
-              className="pl-8"
-              placeholder="Buscar por nome..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+              <TrendingUp size={9} className="inline mr-0.5" /> Ticket Médio
+            </p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-zinc-100">
+              {formatCurrency(kpis.ticket)}
+            </p>
           </div>
-          <Select value={fSquad} onChange={(e) => setFSquad(e.target.value)} className="w-36">
-            <option value="">Todas squads</option>
-            {squadsAtivos.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-          <Select value={fGestor} onChange={(e) => setFGestor(e.target.value)} className="w-44">
-            <option value="">Todos gestores</option>
-            {gestores.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nome}
-              </option>
-            ))}
-          </Select>
-          <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="w-36">
-            <option value="">Todos status</option>
-            <option value="ativo">Ativo</option>
-            <option value="atencao">Atenção</option>
-            <option value="pausado">Pausado</option>
-            <option value="churn">Churn</option>
-          </Select>
-          <Select value={fJornada} onChange={(e) => setFJornada(e.target.value)} className="w-40">
-            <option value="">Todas jornadas</option>
-            {JORNADAS_CLIENTE.map((j) => (
-              <option key={j} value={j}>
-                {jornadaClienteLabel[j]}
-              </option>
-            ))}
-          </Select>
-          {podeVerArquivados && (
-            <button
-              type="button"
-              onClick={() => setMostrarArquivados((v) => !v)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors',
-                mostrarArquivados
-                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
-                  : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
-              )}
-              title="Mostrar apenas clientes arquivados (churn)"
-            >
-              {mostrarArquivados ? '↻ Voltar pra ativos' : '📁 Ver arquivados'}
-            </button>
-          )}
-        </CardBody>
-      </Card>
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+              <Users size={9} className="inline mr-0.5" /> Assessoria
+            </p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-zinc-100">{kpis.assess}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+              <Users size={9} className="inline mr-0.5" /> Consultoria
+            </p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-zinc-100">{kpis.consult}</p>
+          </div>
+        </div>
+      </div>
 
-      <Card>
-        <CardBody className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-bg-soft">
-                <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-                  <th className="px-4 py-2.5">Cliente</th>
-                  <th className="px-3 py-2.5">Squad</th>
-                  <th className="px-3 py-2.5">Account Manager</th>
-                  <th className="px-3 py-2.5">Gestor de Tráfego</th>
-                  <th className="px-3 py-2.5">Verba</th>
-                  <th className="px-3 py-2.5">Status</th>
-                  <th className="px-3 py-2.5">Jornada</th>
-                  <th className="px-3 py-2.5">Call alinhamento</th>
-                  <th className="px-3 py-2.5">Última atualização</th>
-                  <th className="px-3 py-2.5 text-right">&nbsp;</th>
+      {/* Filter row — chips estilo ClickUp */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* Toggle Meus/Time como pill segmentada */}
+        <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
+          <button
+            onClick={() => setEscopo('meus')}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
+              escopo === 'meus'
+                ? 'bg-bg-elev text-zinc-100'
+                : 'text-muted hover:text-zinc-200',
+            )}
+          >
+            Apenas meus
+          </button>
+          <button
+            onClick={() => setEscopo('todos')}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
+              escopo === 'todos' ? 'bg-bg-elev text-zinc-100' : 'text-muted hover:text-zinc-200',
+            )}
+          >
+            Todo o time
+          </button>
+        </div>
+        <ChipSelect
+          value={fSquad}
+          onChange={setFSquad}
+          placeholder="Todas as Squads"
+          options={squadsAtivos.map((s) => ({ value: s, label: s }))}
+        />
+        <ChipSelect
+          value={fGestor}
+          onChange={setFGestor}
+          placeholder="Todos os Gestores"
+          options={gestores.map((g) => ({ value: g.id, label: g.nome }))}
+        />
+        <ChipSelect
+          value={fStatus}
+          onChange={setFStatus}
+          placeholder="Todos os Status"
+          options={[
+            { value: 'ativo', label: 'Ativo' },
+            { value: 'atencao', label: 'Atenção' },
+            { value: 'pausado', label: 'Pausado' },
+            { value: 'churn', label: 'Churn' },
+          ]}
+        />
+        <ChipSelect
+          value={fJornada}
+          onChange={setFJornada}
+          placeholder="Todas as Jornadas"
+          options={JORNADAS_CLIENTE.map((j) => ({ value: j, label: jornadaClienteLabel[j] }))}
+        />
+        {podeVerArquivados && (
+          <button
+            type="button"
+            onClick={() => setMostrarArquivados((v) => !v)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors',
+              mostrarArquivados
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+                : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
+            )}
+          >
+            {mostrarArquivados ? 'Voltar pra ativos' : 'Ver arquivados'}
+          </button>
+        )}
+      </div>
+
+      {/* Search row */}
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar cliente..."
+            className="w-full rounded-lg border border-border bg-bg-soft/40 pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Tabela — clean, hover sutil, colunas essenciais */}
+      <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
+                <th className="px-4 py-3 font-semibold">Cliente</th>
+                <th className="px-3 py-3 font-semibold">Squad</th>
+                <th className="px-3 py-3 font-semibold">Account Manager</th>
+                <th className="px-3 py-3 font-semibold">Social Media</th>
+                <th className="px-3 py-3 font-semibold text-right">Ticket Mensal</th>
+                <th className="px-3 py-3 font-semibold text-right">LT</th>
+                <th className="px-3 py-3 font-semibold">Status</th>
+                <th className="px-3 py-3 font-semibold">Jornada</th>
+                <th className="px-3 py-3 font-semibold text-right">NPS</th>
+                <th className="px-3 py-3 font-semibold">Semáforo</th>
+                <th className="px-3 py-3 font-semibold">Última Atualização</th>
+                <th className="px-3 py-3 text-right">&nbsp;</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted">
+                    Carregando…
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
-                      Carregando...
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-muted">
-                      Nenhum cliente encontrado.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((c) => (
-                    <tr key={c.id} className="border-t border-border hover:bg-bg-soft">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/clientes/${c.id}`}
-                            className="text-sm font-medium text-zinc-100 hover:text-brand-300"
-                          >
-                            {c.nome}
-                          </Link>
-                          {c.tipo && (
-                            <Badge tone="neutral" className="shrink-0">
-                              {tipoClienteLabel[c.tipo]}
-                            </Badge>
-                          )}
-                        </div>
-                        {c.nicho && <p className="text-[11px] text-muted">{c.nicho}</p>}
-                      </td>
-                      <td className="px-3 py-3 text-sm whitespace-nowrap">{c.squad ?? '—'}</td>
-                      <td className="px-3 py-3 text-sm whitespace-nowrap">
-                        {c.account_manager?.nome ?? '—'}
-                      </td>
-                      <td className="px-3 py-3 text-sm whitespace-nowrap">
-                        {c.gestor?.nome ?? '—'}
-                      </td>
-                      <td className="px-3 py-3 text-sm font-medium text-emerald-300 whitespace-nowrap">
-                        {formatCurrency(
-                          (c.verba_google ?? 0) + (c.verba_meta ?? 0) || c.verba_mensal,
-                        )}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <Badge tone={statusTone(c.status)}>{statusClienteLabel[c.status]}</Badge>
-                      </td>
-                      <td className="px-3 py-3 text-sm whitespace-nowrap">
-                        {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <CallAlinhamentoCell
-                          clienteId={c.id}
-                          clienteNome={c.nome}
-                          proxima={c.proxima_call_alinhamento}
-                          ultima={c.ultima_call_alinhamento}
-                          gcalEventId={c.gcal_event_id}
-                          podeEditar={podeEditarCall}
-                          onChanged={load}
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-xs text-muted whitespace-nowrap">
-                        {formatDate(c.updated_at)}
-                      </td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap">
-                        <div className="inline-flex gap-1">
-                          <button
-                            onClick={() => {
-                              setEditing(c)
-                              setFormOpen(true)
-                            }}
-                            className="rounded p-1.5 text-muted hover:bg-bg-elev hover:text-brand-300"
-                            title="Editar"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <Link
-                            to={`/clientes/${c.id}`}
-                            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
-                            title="Abrir detalhes"
-                          >
-                            <Eye size={14} />
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardBody>
-      </Card>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted italic">
+                    Nenhum cliente encontrado com esses filtros.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((c) => (
+                  <ClienteRow
+                    key={c.id}
+                    cliente={c}
+                    onEditar={() => {
+                      setEditing(c)
+                      setFormOpen(true)
+                    }}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <ClienteForm
         open={formOpen}
@@ -348,15 +346,242 @@ export default function Clientes() {
   )
 }
 
-function statusTone(status: Cliente['status']): 'success' | 'warning' | 'danger' | 'neutral' {
-  switch (status) {
-    case 'ativo':
-      return 'success'
-    case 'atencao':
-      return 'warning'
-    case 'pausado':
-      return 'neutral'
-    case 'churn':
-      return 'danger'
-  }
+// ============================================================
+// Componentes auxiliares
+// ============================================================
+
+/** Chip select ClickUp-like — usa <select> nativo estilizado com
+ *  chevron custom via SVG data-uri. */
+function ChipSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="cursor-pointer appearance-none rounded-md border border-border bg-bg-soft pl-3 pr-8 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none transition-colors"
+      style={{
+        backgroundImage:
+          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 16 16\' fill=\'none\'%3E%3Cpath d=\'M4 6l4 4 4-4\' stroke=\'%23a1a1aa\' stroke-width=\'1.5\'/%3E%3C/svg%3E")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 10px center',
+      }}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
 }
+
+/** Chip de status — pill compacta com borda + bg alpha. */
+const STATUS_CHIP: Record<Cliente['status'], string> = {
+  ativo: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200',
+  atencao: 'border-amber-500/50 bg-amber-500/15 text-amber-200',
+  pausado: 'border-zinc-500/50 bg-zinc-500/15 text-zinc-200',
+  churn: 'border-red-500/50 bg-red-500/15 text-red-200',
+}
+
+/** Avatar circular com iniciais — usado no cliente e no AM/Social. */
+function AvatarInicial({
+  nome,
+  cor = 'brand',
+  size = 'sm',
+}: {
+  nome: string | null | undefined
+  cor?: 'brand' | 'zinc' | 'emerald' | 'violet' | 'pink'
+  size?: 'sm' | 'xs'
+}) {
+  if (!nome) return <span className="text-muted">—</span>
+  const inic = nome
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('')
+  const corCls = {
+    brand: 'bg-brand-500/15 border-brand-500/40 text-brand-300',
+    zinc: 'bg-zinc-500/15 border-zinc-500/40 text-zinc-300',
+    emerald: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300',
+    violet: 'bg-violet-500/15 border-violet-500/40 text-violet-300',
+    pink: 'bg-pink-500/15 border-pink-500/40 text-pink-300',
+  }[cor]
+  const sizeCls = size === 'xs' ? 'h-5 w-5 text-[9px]' : 'h-6 w-6 text-[10px]'
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center justify-center rounded-full border font-semibold tabular-nums',
+        corCls,
+        sizeCls,
+      )}
+      title={nome}
+    >
+      {inic}
+    </span>
+  )
+}
+
+/** Linha da tabela — extraída pra manter o map limpo. */
+function ClienteRow({
+  cliente: c,
+  onEditar,
+}: {
+  cliente: Cliente
+  onEditar: () => void
+}) {
+  const lt = mesesCasa(c.data_inicio)
+  const semaforoCor = {
+    verde: 'bg-emerald-400',
+    amarelo: 'bg-amber-400',
+    laranja: 'bg-orange-400',
+    vermelho: 'bg-red-400',
+  }[c.semaforo ?? 'verde']
+  const semaforoLabel = {
+    verde: 'Estável',
+    amarelo: 'Atenção',
+    laranja: 'Risco',
+    vermelho: 'Crítico',
+  }[c.semaforo ?? 'verde']
+
+  return (
+    <tr className="border-b border-border/60 last:border-b-0 hover:bg-bg-soft/40 transition-colors">
+      {/* Cliente */}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <AvatarInicial nome={c.nome} cor="brand" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Link
+                to={`/clientes/${c.id}`}
+                className="text-xs font-semibold text-zinc-100 hover:text-brand-300 truncate"
+              >
+                {c.nome}
+              </Link>
+              {c.tipo && (
+                <span className="inline-flex items-center rounded border border-border bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium text-zinc-300">
+                  {tipoClienteLabel[c.tipo]}
+                </span>
+              )}
+            </div>
+            {c.nicho && <p className="text-[10px] text-muted truncate">{c.nicho}</p>}
+          </div>
+        </div>
+      </td>
+
+      {/* Squad */}
+      <td className="px-3 py-3 whitespace-nowrap text-zinc-200">{c.squad ?? '—'}</td>
+
+      {/* AM */}
+      <td className="px-3 py-3 whitespace-nowrap">
+        {c.account_manager?.nome ? (
+          <div className="flex items-center gap-1.5">
+            <AvatarInicial nome={c.account_manager.nome} cor="violet" size="xs" />
+            <span className="text-zinc-200">{c.account_manager.nome}</span>
+          </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+
+      {/* Social Media */}
+      <td className="px-3 py-3 whitespace-nowrap">
+        {c.social_media?.nome ? (
+          <div className="flex items-center gap-1.5">
+            <AvatarInicial nome={c.social_media.nome} cor="pink" size="xs" />
+            <span className="text-zinc-200">{c.social_media.nome}</span>
+          </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+
+      {/* Ticket Mensal */}
+      <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums text-emerald-300">
+        {formatCurrency(c.verba_mensal ?? 0)}
+      </td>
+
+      {/* LT — lifetime months */}
+      <td className="px-3 py-3 whitespace-nowrap text-right tabular-nums text-zinc-200">
+        {lt}m
+      </td>
+
+      {/* Status */}
+      <td className="px-3 py-3 whitespace-nowrap">
+        <span
+          className={cn(
+            'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
+            STATUS_CHIP[c.status],
+          )}
+        >
+          {statusClienteLabel[c.status]}
+        </span>
+      </td>
+
+      {/* Jornada */}
+      <td className="px-3 py-3 whitespace-nowrap text-zinc-200">
+        {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}
+      </td>
+
+      {/* NPS */}
+      <td className="px-3 py-3 whitespace-nowrap text-right">
+        {typeof c.nps === 'number' ? (
+          <span
+            className={cn(
+              'font-semibold tabular-nums',
+              c.nps >= 9 ? 'text-emerald-300' : c.nps >= 7 ? 'text-amber-300' : 'text-red-300',
+            )}
+          >
+            {c.nps}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+
+      {/* Semáforo — dot só */}
+      <td className="px-3 py-3 whitespace-nowrap">
+        <span
+          className={cn('inline-block h-2 w-2 rounded-full', semaforoCor)}
+          title={semaforoLabel}
+        />
+      </td>
+
+      {/* Última atualização */}
+      <td className="px-3 py-3 whitespace-nowrap text-[10px] text-muted tabular-nums">
+        {formatDate(c.updated_at)}
+      </td>
+
+      {/* Ações — hover only */}
+      <td className="px-3 py-3 whitespace-nowrap text-right">
+        <div className="inline-flex gap-0.5">
+          <button
+            onClick={onEditar}
+            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+            title="Editar"
+          >
+            <Pencil size={12} />
+          </button>
+          <Link
+            to={`/clientes/${c.id}`}
+            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+            title="Abrir Ficha"
+          >
+            <Eye size={12} />
+          </Link>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
