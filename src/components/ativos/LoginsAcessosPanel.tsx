@@ -146,6 +146,14 @@ function LoginRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-zinc-100">{item.plataforma}</span>
+            {item.visivel_portal && (
+              <span
+                className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300"
+                title="Este login aparece no Portal do Cliente"
+              >
+                <Eye size={9} /> Portal
+              </span>
+            )}
             {item.url && (
               <a
                 href={item.url}
@@ -274,6 +282,7 @@ function LoginModal({
     senha: '',
     url: '',
     notas: '',
+    visivel_portal: false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -287,9 +296,10 @@ function LoginModal({
         senha: item.senha ?? '',
         url: item.url ?? '',
         notas: item.notas ?? '',
+        visivel_portal: item.visivel_portal ?? false,
       })
     } else {
-      setForm({ plataforma: '', login: '', senha: '', url: '', notas: '' })
+      setForm({ plataforma: '', login: '', senha: '', url: '', notas: '', visivel_portal: false })
     }
     setError(null)
   }, [open, item])
@@ -312,6 +322,7 @@ function LoginModal({
       senha: form.senha || null,
       url: form.url || null,
       notas: form.notas || null,
+      visivel_portal: form.visivel_portal,
     }
     const { error: err } = item
       ? await supabase.from('logins_acessos').update(payload).eq('id', item.id)
@@ -388,6 +399,21 @@ function LoginModal({
             className="min-h-[70px]"
           />
         </Field>
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+          <input
+            type="checkbox"
+            checked={form.visivel_portal}
+            onChange={(e) => setForm({ ...form, visivel_portal: e.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 accent-brand-500 cursor-pointer"
+          />
+          <div>
+            <span className="text-xs font-medium text-zinc-100">Visível no Portal do Cliente</span>
+            <p className="text-[10px] text-muted">
+              O cliente vê login, senha e URL deste acesso no link público do portal. Desligado
+              por padrão — só ligue pra credenciais que são do próprio cliente.
+            </p>
+          </div>
+        </label>
       </div>
     </Modal>
   )

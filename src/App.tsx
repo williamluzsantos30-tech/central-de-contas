@@ -19,6 +19,7 @@ import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
 import PublicoCalendario from '@/pages/PublicoCalendario'
 import PublicoNps from '@/pages/PublicoNps'
+import PublicoPortal from '@/pages/PublicoPortal'
 import PreviewCriacoesPanel from '@/pages/PreviewCriacoesPanel'
 import PreviewEdicaoVideo from '@/pages/PreviewEdicaoVideo'
 import VisaoExecutiva from '@/pages/operacional/VisaoExecutiva'
@@ -50,6 +51,7 @@ export default function App() {
           {/* Calendário público do cliente — link compartilhável, sem login */}
           <Route path="/publico/calendario/:token" element={<PublicoCalendario />} />
           <Route path="/publico/nps/:token" element={<PublicoNps />} />
+          <Route path="/publico/portal/:token" element={<PublicoPortal />} />
           <Route path="/preview/criacao-pdf" element={<PreviewCriacaoPDF />} />
           <Route path="/preview/criacoes-panel" element={<PreviewCriacoesPanel />} />
           <Route path="/preview/edicao-video" element={<PreviewEdicaoVideo />} />

@@ -55,6 +55,7 @@ import {
   Activity,
   Copy,
   ExternalLink,
+  Rocket,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -64,6 +65,7 @@ import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { uploadToStorageSafe } from '@/lib/storage'
 import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
+import { etapasParaModulos, progressoOnboarding } from '@/lib/onboardingTemplate'
 
 // Meses entre uma ISO date e hoje
 function mesesDesde(iso: string | null): number {
@@ -773,19 +775,11 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
         <LoginsAcessosPanel clienteId={cliente.id} />
       </div>
 
-      {/* ============= Portal do Cliente (placeholder) ============= */}
-      <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-5">
-        <div className="mb-2 flex items-center gap-2">
-          <LinkIcon size={14} className="text-muted" />
-          <h3 className="text-sm font-semibold text-zinc-100">Acesso ao Portal do Cliente</h3>
-          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-amber-300">
-            v2
-          </span>
-        </div>
-        <p className="text-xs text-muted">
-          Página read-only pro cliente ver evolução, briefing, aprovar planejamento. v2.
-        </p>
-      </div>
+      {/* ============= Onboarding — checklist editavel ============= */}
+      <OnboardingBloco cliente={cliente} onChanged={onChanged} />
+
+      {/* ============= Portal do Cliente — gerar/copiar link ============= */}
+      <PortalBloco cliente={cliente} onChanged={onChanged} />
 
       {/* ============= Timeline real ============= */}
       <TimelineAlteracoes
@@ -1419,6 +1413,248 @@ function RenderRespostaQuant({
 }
 
 // ============================================================
+// Onboarding — checklist que a equipe marca e o cliente ve no Portal
+// ============================================================
+//
+// Progresso em clientes.onboarding_etapas (jsonb). Template das etapas
+// em src/lib/onboardingTemplate.ts — filtra por modulos do cliente.
+// Click na etapa alterna concluido/pendente e grava concluido_em.
+
+function OnboardingBloco({
+  cliente,
+  onChanged,
+}: {
+  cliente: Cliente
+  onChanged: () => void
+}) {
+  const [saving, setSaving] = useState<string | null>(null)
+  const etapas = useMemo(() => etapasParaModulos(cliente.modulos), [cliente.modulos])
+  const progresso = useMemo(
+    () => progressoOnboarding(cliente.onboarding_etapas, cliente.modulos),
+    [cliente.onboarding_etapas, cliente.modulos],
+  )
+  const atual = cliente.onboarding_etapas ?? {}
+
+  async function toggle(key: string) {
+    setSaving(key)
+    const jaConcluida = !!atual[key]?.concluido_em
+    const novo = {
+      ...atual,
+      [key]: { concluido_em: jaConcluida ? null : new Date().toISOString() },
+    }
+    const { error } = await supabase
+      .from('clientes')
+      .update({ onboarding_etapas: novo })
+      .eq('id', cliente.id)
+    setSaving(null)
+    if (error) {
+      alert(`Erro: ${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-5">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Rocket size={14} className="text-brand-300" />
+          <h3 className="text-sm font-semibold text-zinc-100">Onboarding</h3>
+        </div>
+        <span className="text-xs text-muted tabular-nums">
+          {progresso.concluidas} de {progresso.total} etapas
+          {progresso.pct === 1 && (
+            <span className="ml-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-emerald-300">
+              completo
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-bg-elev">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+          style={{ width: `${Math.round(progresso.pct * 100)}%` }}
+        />
+      </div>
+      <p className="mb-3 text-[10px] text-muted">
+        Clique numa etapa pra marcar como concluída. O cliente acompanha esse progresso no
+        Portal.
+      </p>
+      <ol className="space-y-1.5">
+        {etapas.map((e, i) => {
+          const done = !!atual[e.key]?.concluido_em
+          const isSaving = saving === e.key
+          return (
+            <li key={e.key}>
+              <button
+                type="button"
+                onClick={() => toggle(e.key)}
+                disabled={isSaving}
+                className={cn(
+                  'flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                  done
+                    ? 'border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]'
+                    : 'border-border bg-bg-soft/30 hover:border-brand-500/40',
+                  isSaving && 'opacity-60',
+                )}
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+                    done ? 'bg-emerald-500 text-white' : 'border border-border text-muted',
+                  )}
+                >
+                  {done ? '✓' : i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p
+                      className={cn(
+                        'text-xs font-medium',
+                        done ? 'text-emerald-200 line-through opacity-80' : 'text-zinc-100',
+                      )}
+                    >
+                      {e.label}
+                    </p>
+                    {done && atual[e.key]?.concluido_em && (
+                      <span className="text-[10px] text-muted tabular-nums">
+                        {formatDateBR(atual[e.key].concluido_em)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-muted">{e.descricao}</p>
+                </div>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+// ============================================================
+// Portal do Cliente — gerar / copiar / regenerar link publico
+// ============================================================
+
+function PortalBloco({
+  cliente,
+  onChanged,
+}: {
+  cliente: Cliente
+  onChanged: () => void
+}) {
+  const [gerando, setGerando] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+  const url = cliente.portal_token
+    ? `${window.location.origin}/publico/portal/${cliente.portal_token}`
+    : null
+
+  async function gerar(regenerar: boolean) {
+    if (
+      regenerar &&
+      !confirm('Gerar um novo link? O link atual vai parar de funcionar imediatamente.')
+    )
+      return
+    setGerando(true)
+    const { error } = await supabase.rpc('gerar_portal_token', { p_cliente_id: cliente.id })
+    setGerando(false)
+    if (error) {
+      alert(`Erro: ${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  async function copiar() {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {
+      prompt('Copie o link:', url)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <LinkIcon size={14} className="text-brand-300" />
+        <h3 className="text-sm font-semibold text-zinc-100">Portal do Cliente</h3>
+      </div>
+      <p className="mb-4 text-[11px] text-muted">
+        Página pública onde o cliente acompanha jornada, onboarding, contrato, investimento,
+        resultados mensais, pagamento e os acessos que você liberou. Só leitura, sem login.
+      </p>
+
+      {url ? (
+        <>
+          <div className="flex items-stretch gap-2">
+            <input
+              type="text"
+              readOnly
+              value={url}
+              onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={copiar}
+              className={cn(
+                'grid w-10 place-items-center rounded-md border transition-colors',
+                copiado
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                  : 'border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-brand-300',
+              )}
+              title="Copiar link"
+            >
+              {copiado ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+            </button>
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="grid w-10 place-items-center rounded-md border border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-brand-300"
+              title="Abrir portal em nova aba"
+            >
+              <ExternalLink size={13} />
+            </a>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2">
+            <span className="text-[11px] text-amber-200">
+              Perdeu o controle do link? Gere um novo — invalida o antigo.
+            </span>
+            <button
+              type="button"
+              onClick={() => gerar(true)}
+              disabled={gerando}
+              className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+            >
+              <RefreshCw size={11} className={gerando ? 'animate-spin' : ''} />
+              {gerando ? 'Gerando…' : 'Gerar novo'}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-md border border-dashed border-border bg-bg-soft/40 p-4 text-center">
+          <p className="text-xs text-muted">Este cliente ainda não tem link do portal.</p>
+          <Button size="sm" onClick={() => gerar(false)} disabled={gerando} className="mt-3">
+            <LinkIcon size={12} />
+            {gerando ? 'Gerando…' : 'Gerar link do portal'}
+          </Button>
+        </div>
+      )}
+
+      <p className="mt-3 text-[10px] text-muted">
+        Logins aparecem no portal só se marcados como "Visível no Portal" em Logins e Acessos.
+        Dados de cobrança (PIX) ficam em Admin → Cobrança.
+      </p>
+    </div>
+  )
+}
+
+// ============================================================
 // Contrato — bloco na Ficha + modal de edicao
 // ============================================================
 //
@@ -1610,6 +1846,10 @@ function ContratoModal({
   const [fim, setFim] = useState(cliente.contrato_fim ?? '')
   const [status, setStatus] = useState(cliente.contrato_status ?? 'ativo')
   const [responsavelId, setResponsavelId] = useState(cliente.contrato_responsavel_id ?? '')
+  const [diaVencimento, setDiaVencimento] = useState<string>(
+    cliente.dia_vencimento ? String(cliente.dia_vencimento) : '',
+  )
+  const [formaPagamento, setFormaPagamento] = useState(cliente.forma_pagamento ?? '')
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1652,6 +1892,8 @@ function ContratoModal({
         contrato_fim: fim || null,
         contrato_status: status || null,
         contrato_responsavel_id: responsavelId || null,
+        dia_vencimento: diaVencimento ? Number(diaVencimento) : null,
+        forma_pagamento: formaPagamento || null,
       })
       .eq('id', cliente.id)
     if (upErr) {
@@ -1783,6 +2025,49 @@ function ContratoModal({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Cobranca — o que o Portal do Cliente mostra pra ele pagar */}
+          <div className="rounded-md border border-border bg-bg-soft/40 p-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Cobrança
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Dia do vencimento
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={diaVencimento}
+                  onChange={(e) => setDiaVencimento(e.target.value)}
+                  placeholder="ex: 10"
+                  className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Forma de pagamento
+                </label>
+                <select
+                  value={formaPagamento}
+                  onChange={(e) => setFormaPagamento(e.target.value)}
+                  className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+                >
+                  <option value="">—</option>
+                  <option value="pix">PIX</option>
+                  <option value="boleto">Boleto</option>
+                  <option value="cartao">Cartão</option>
+                  <option value="transferencia">Transferência</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-muted">
+              A chave PIX e os dados da agência ficam em Admin → Cobrança.
+            </p>
           </div>
         </div>
 

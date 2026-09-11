@@ -179,6 +179,20 @@ export interface Cliente {
   contrato_fim: string | null
   contrato_status: string | null
   contrato_responsavel_id: string | null
+  /**
+   * Portal do Cliente (migration 081). Token do link publico
+   * /publico/portal/<token>. Regerar via RPC gerar_portal_token.
+   */
+  portal_token: string | null
+  /**
+   * Progresso do onboarding: {etapa_key: {concluido_em}}. Template
+   * das etapas em src/lib/onboardingTemplate.ts.
+   */
+  onboarding_etapas: Record<string, { concluido_em: string | null }>
+  /** Cobranca — dia do mes (1-31) em que o pagamento vence. */
+  dia_vencimento: number | null
+  /** Cobranca — pix | boleto | cartao | transferencia | outro */
+  forma_pagamento: string | null
   gestor_id: string | null
   account_manager_id: string | null
   social_media_id: string | null
@@ -668,8 +682,30 @@ export interface LoginAcesso {
   senha: string | null
   url: string | null
   notas: string | null
+  /** Se true, aparece no Portal do Cliente (migration 081). Default false. */
+  visivel_portal: boolean
   created_at: string
   updated_at: string
+}
+
+/**
+ * Configuracoes globais da agencia (migration 081). Key/value jsonb.
+ * chave='cobranca' -> CobrancaAgencia.
+ */
+export interface ConfiguracaoAgencia {
+  chave: string
+  valor: Record<string, unknown>
+  atualizado_em: string
+  atualizado_por: string | null
+}
+
+export interface CobrancaAgencia {
+  pix_chave?: string
+  pix_tipo?: 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
+  pix_nome?: string
+  razao_social?: string
+  cnpj?: string
+  instrucoes?: string
 }
 
 export interface Otimizacao {
