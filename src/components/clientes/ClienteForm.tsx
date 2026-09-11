@@ -162,6 +162,26 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       setSaving(false)
       return
     }
+    if (!form.tipo) {
+      setError('Tipo de Serviço é obrigatório')
+      setSaving(false)
+      return
+    }
+    if (!form.squad) {
+      setError('Squad é obrigatório')
+      setSaving(false)
+      return
+    }
+    if (!form.account_manager_id) {
+      setError('Account Manager é obrigatório')
+      setSaving(false)
+      return
+    }
+    if (form.verba_mensal === '' || Number(form.verba_mensal) <= 0) {
+      setError('Ticket Mensal é obrigatório e precisa ser maior que zero')
+      setSaving(false)
+      return
+    }
     // Cliente em SM precisa ter Social Media responsável vinculado
     if (form.modulos.includes('social_media') && !form.social_media_id) {
       setError('Cliente em Social Media precisa ter um responsável vinculado.')
@@ -231,23 +251,33 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Nome" full>
+        <Field label="Nome *" full>
           <Input
             value={form.nome}
             onChange={(e) => setForm({ ...form, nome: e.target.value })}
             placeholder="Clínica Exemplo"
           />
         </Field>
-        <Field label="Nicho">
+        <Field label="Especialidade">
           <Input
             value={form.nicho}
             onChange={(e) => setForm({ ...form, nicho: e.target.value })}
-            placeholder="Dermato, Oftalmo..."
+            placeholder="Ex: Dermatologia, Cardiologia..."
           />
         </Field>
-        <Field label="Squad">
-          <Select value={form.squad} onChange={(e) => setForm({ ...form, squad: e.target.value })}>
+        <Field label="Tipo de Serviço *">
+          <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
             <option value="">—</option>
+            {TIPOS_CLIENTE.map((t) => (
+              <option key={t} value={t}>
+                {tipoClienteLabel[t]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Squad *">
+          <Select value={form.squad} onChange={(e) => setForm({ ...form, squad: e.target.value })}>
+            <option value="">Selecione o squad</option>
             {/* Se o cliente já tem um squad que não está ativo no banco, ainda mostra ele aqui */}
             {form.squad && !squadsAtivos.includes(form.squad) && (
               <option value={form.squad}>{form.squad} (desativado)</option>
@@ -259,22 +289,12 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             ))}
           </Select>
         </Field>
-        <Field label="Tipo">
-          <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-            <option value="">—</option>
-            {TIPOS_CLIENTE.map((t) => (
-              <option key={t} value={t}>
-                {tipoClienteLabel[t]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Account Manager">
+        <Field label="Account Manager *">
           <Select
             value={form.account_manager_id}
             onChange={(e) => setForm({ ...form, account_manager_id: e.target.value })}
           >
-            <option value="">—</option>
+            <option value="">Selecione o AM</option>
             {accountManagers.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.nome}
@@ -283,12 +303,12 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
           </Select>
         </Field>
         {temTrafego && (
-          <Field label="Gestor de Tráfego">
+          <Field label="Gestor de Tráfego (opcional)">
             <Select
               value={form.gestor_id}
               onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
             >
-              <option value="">—</option>
+              <option value="">Selecione (opcional)</option>
               {gestoresTrafego.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.nome}
@@ -298,12 +318,12 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
           </Field>
         )}
         {temSocial && (
-          <Field label="Social Media (responsável) *">
+          <Field label="Social Media (opcional)">
             <Select
               value={form.social_media_id}
               onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
             >
-              <option value="">— selecione —</option>
+              <option value="">Selecione (opcional)</option>
               {socialMedias.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.nome}
@@ -365,6 +385,19 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             </Select>
           </Field>
         )}
+        <Field label="Ticket Mensal (R$) *">
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.verba_mensal}
+            onChange={(e) => setForm({ ...form, verba_mensal: e.target.value })}
+            placeholder="0,00"
+          />
+          <p className="mt-1 text-[10px] text-muted">
+            Fee mensal que o cliente paga pra agência. Alimenta o MRR na Visão Executiva.
+          </p>
+        </Field>
         <Field label="Data de entrada">
           <Input
             type="date"
