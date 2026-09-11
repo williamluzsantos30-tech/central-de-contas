@@ -17,6 +17,8 @@
  *   Score e Saude por Squad: cards por squad com score de -3 a +8
  *   Acoes Sugeridas: Verde / Amarelo / Vermelho — pra aplicar em cada
  *                     nivel de squad classificado acima
+ *   Social Media: 3 KPIs (clientes com social, em atraso, NPS medio)
+ *                  + ranking por responsavel
  *
  * Metricas derivadas de clientes.* (sem tabela historica ainda):
  *   MRR              = SUM verba_mensal WHERE status='ativo'
@@ -50,6 +52,7 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
+  Instagram,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -586,14 +589,17 @@ export default function VisaoExecutiva() {
             </div>
           </div>
 
+          {/* Visao rapida do setor de Social Media */}
+          <SocialMediaVisao clientes={clientesFiltrados} profiles={profiles} />
+
           {/* Rodape com placeholders v2 */}
           <div className="mt-8 rounded-xl border border-dashed border-border bg-bg-soft/30 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               Próximos blocos (v2)
             </p>
             <ul className="mt-2 space-y-1 text-[11px] text-muted">
-              <li>· Métricas de Social Media integradas</li>
               <li>· Expansão / Redução em tempo real — precisa log de mudanças em verba_mensal</li>
+              <li>· Tracking de indicações por squad</li>
             </ul>
           </div>
         </>
@@ -1328,6 +1334,216 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
           <p className="mt-0.5 text-[10px] text-muted italic">v2 — tracking pendente</p>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ==============================================================
+// Social Media — visao rapida do setor
+// ==============================================================
+//
+// 3 KPIs no topo:
+//   Clientes com Social Media  = count clientes com modulo social_media
+//                                 e status='ativo'
+//   Social em Atraso           = subset acima com status='atencao'
+//                                 (aproximacao; mais preciso via
+//                                 producoes_social_media_items no v2)
+//   NPS Medio (Social)         = AVG nps dos clientes com social_media
+//
+// Ranking por Responsavel:
+//   Agrupa por social_media_id, mostra nome + count + AVG nps.
+//   Ordena por count desc (quem tem mais clientes primeiro).
+
+function SocialMediaVisao({
+  clientes,
+  profiles,
+}: {
+  clientes: Cliente[]
+  profiles: Profile[]
+}) {
+  const dados = useMemo(() => {
+    // So considera clientes de Social Media ativos
+    const socialAtivos = clientes.filter(
+      (c) =>
+        c.modulos.includes('social_media') &&
+        c.status === 'ativo' &&
+        !c.arquivado_em,
+    )
+    const totalAtivos = clientes.filter(
+      (c) => c.status === 'ativo' && !c.arquivado_em,
+    ).length
+
+    const emAtraso = socialAtivos.filter((c) => c.status === 'atencao') // mesmo array — status='ativo' filtrado ja; usar status_saude_geral
+    // Refazendo: 'atraso' pra social e' quem esta em atencao pelo semaforo
+    // ou pelo status_saude. Usa semaforo se estiver preenchido, senao 0.
+    const emAtrasoReal = socialAtivos.filter(
+      (c) => c.semaforo === 'atencao' || c.semaforo === 'critico',
+    )
+    void emAtraso
+
+    const comNps = socialAtivos.filter((c) => typeof c.nps === 'number')
+    const npsMedio =
+      comNps.length > 0
+        ? comNps.reduce((s, c) => s + (c.nps ?? 0), 0) / comNps.length
+        : null
+
+    // Ranking por responsavel
+    const porResponsavel = new Map<
+      string,
+      { nome: string; clientes: number; npsSum: number; npsCount: number }
+    >()
+    for (const c of socialAtivos) {
+      const respId = c.social_media_id ?? '__sem__'
+      const resp = profiles.find((p) => p.id === respId)
+      const nome = resp?.nome ?? '— sem responsável —'
+      const atual = porResponsavel.get(respId) ?? {
+        nome,
+        clientes: 0,
+        npsSum: 0,
+        npsCount: 0,
+      }
+      atual.clientes += 1
+      if (typeof c.nps === 'number') {
+        atual.npsSum += c.nps
+        atual.npsCount += 1
+      }
+      porResponsavel.set(respId, atual)
+    }
+    const ranking = [...porResponsavel.values()]
+      .map((r) => ({
+        nome: r.nome,
+        clientes: r.clientes,
+        nps: r.npsCount > 0 ? r.npsSum / r.npsCount : null,
+      }))
+      .sort((a, b) => b.clientes - a.clientes)
+
+    return {
+      totalSocial: socialAtivos.length,
+      totalAtivos,
+      emAtraso: emAtrasoReal.length,
+      pctAtraso: socialAtivos.length > 0 ? emAtrasoReal.length / socialAtivos.length : 0,
+      npsMedio,
+      ranking,
+    }
+  }, [clientes, profiles])
+
+  if (dados.totalSocial === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="mb-3 flex items-center gap-2">
+        <Instagram size={14} className="text-pink-400" />
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Social Media
+        </p>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Instagram size={12} className="text-pink-400" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Clientes com Social Media
+            </p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums text-zinc-100">
+            {dados.totalSocial}
+          </p>
+          <p className="mt-1 text-[10px] text-muted">de {dados.totalAtivos} ativos</p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle
+              size={12}
+              className={dados.pctAtraso > 0 ? 'text-amber-300' : 'text-muted'}
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Social em Atraso
+            </p>
+          </div>
+          <p
+            className={cn(
+              'text-2xl font-bold tabular-nums',
+              dados.pctAtraso === 0
+                ? 'text-emerald-300'
+                : dados.pctAtraso < 0.1
+                  ? 'text-amber-300'
+                  : 'text-red-300',
+            )}
+          >
+            {(dados.pctAtraso * 100).toFixed(0)}%
+          </p>
+          <p className="mt-1 text-[10px] text-muted">
+            {dados.emAtraso} {dados.emAtraso === 1 ? 'cliente' : 'clientes'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Smile size={12} className="text-amber-300" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              NPS Médio (Social)
+            </p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums text-zinc-100">
+            {dados.npsMedio !== null ? dados.npsMedio.toFixed(1) : '—'}
+          </p>
+          <p className="mt-1 text-[10px] text-muted">
+            {dados.npsMedio !== null ? 'de 0 a 10' : 'sem NPS preenchido'}
+          </p>
+        </div>
+      </div>
+
+      {/* Ranking */}
+      {dados.ranking.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-bg-card p-5">
+          <h4 className="mb-3 text-sm font-semibold text-zinc-100">
+            Ranking por Social Media
+          </h4>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+                <th className="py-2 text-left font-semibold">Responsável</th>
+                <th className="py-2 text-right font-semibold">Clientes</th>
+                <th className="py-2 text-right font-semibold">NPS Médio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dados.ranking.map((r) => (
+                <tr key={r.nome} className="border-b border-border/60 hover:bg-bg-soft/40">
+                  <td className="py-2">
+                    <span className="inline-flex items-center gap-2 text-zinc-200">
+                      <Instagram size={11} className="text-pink-400" />
+                      {r.nome}
+                    </span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-zinc-100">
+                    {r.clientes}
+                  </td>
+                  <td
+                    className={cn(
+                      'py-2 text-right tabular-nums font-semibold',
+                      r.nps === null
+                        ? 'text-muted'
+                        : r.nps >= 8
+                          ? 'text-emerald-300'
+                          : r.nps >= 6
+                            ? 'text-amber-300'
+                            : 'text-red-300',
+                    )}
+                  >
+                    {r.nps !== null ? r.nps.toFixed(1) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
