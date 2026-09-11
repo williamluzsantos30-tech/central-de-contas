@@ -640,13 +640,7 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
       <div className="rounded-xl border border-border bg-bg-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-zinc-100">Ações Rápidas</h3>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <AcaoBtn
-            icon={<Send size={14} />}
-            label="Enviar NPS"
-            hint="Link público (v2)"
-            disabled
-            onClick={() => alert('Envio de NPS por link público — v2')}
-          />
+          <EnviarNpsBtn cliente={cliente} onCriado={loadEventos} />
           <AcaoBtn
             icon={<AlertTriangle size={14} />}
             label={cliente.status === 'atencao' ? 'Já em risco' : 'Marcar Risco'}
@@ -961,6 +955,97 @@ function AcaoBtn({
 void Calendar
 void Smile
 void CheckCircle2
+
+// ============================================================
+// Botao Enviar NPS — dropdown com Onboarding vs Operacao
+// ============================================================
+
+function EnviarNpsBtn({
+  cliente,
+  onCriado,
+}: {
+  cliente: Cliente
+  onCriado: () => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [gerando, setGerando] = useState<string | null>(null)
+
+  async function gerarLink(tipo: 'onboarding' | 'operacao') {
+    setGerando(tipo)
+    const { data, error } = await supabase
+      .from('nps_surveys')
+      .insert({ cliente_id: cliente.id, tipo })
+      .select('token')
+      .single()
+    setGerando(null)
+    setAberto(false)
+    if (error) {
+      alert(`Erro: ${error.message}`)
+      return
+    }
+    const url = `${window.location.origin}/publico/nps/${data.token}`
+    try {
+      await navigator.clipboard.writeText(url)
+      alert(
+        `Link do NPS ${tipo === 'onboarding' ? 'Onboarding' : 'Operação'} copiado!\n\n${url}\n\nEnvie pro cliente responder.`,
+      )
+    } catch {
+      prompt('Copie o link do NPS:', url)
+    }
+    onCriado()
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="flex w-full flex-col items-start gap-1 rounded-lg border border-border bg-bg-soft px-3 py-3 text-left text-zinc-200 transition-colors hover:bg-bg-elev"
+      >
+        <div className="flex items-center gap-2">
+          <Send size={14} />
+          <span className="text-xs font-medium">Enviar NPS</span>
+        </div>
+        <span className="text-[10px] text-muted">Gera link público</span>
+      </button>
+      {aberto && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setAberto(false)}
+          />
+          <div className="absolute left-0 top-full mt-1 z-50 w-52 rounded-lg border border-border bg-bg-card shadow-xl">
+            <button
+              type="button"
+              onClick={() => gerarLink('onboarding')}
+              disabled={gerando !== null}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-bg-elev disabled:opacity-50"
+            >
+              <Send size={11} className="text-brand-300" />
+              <div>
+                <p className="font-medium">NPS Onboarding</p>
+                <p className="text-[10px] text-muted">Primeiros 30 dias</p>
+              </div>
+            </button>
+            <div className="border-t border-border" />
+            <button
+              type="button"
+              onClick={() => gerarLink('operacao')}
+              disabled={gerando !== null}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-bg-elev disabled:opacity-50"
+            >
+              <Send size={11} className="text-emerald-300" />
+              <div>
+                <p className="font-medium">NPS Operação</p>
+                <p className="text-[10px] text-muted">Cliente ativo</p>
+              </div>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 // ============================================================
 // Modal — Registrar Contato
