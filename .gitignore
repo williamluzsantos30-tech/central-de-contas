@@ -15,6 +15,12 @@ dist.zip
 .vite
 *.tsbuildinfo
 
+# Estado local do Supabase CLI — contem project-ref, host do banco,
+# email do dono da conta. Nada disso e senha, mas mapea a superficie
+# e nao pertence ao repo. Cada dev que rodar `supabase link` gera o
+# proprio localmente.
+supabase/.temp/
+
 # Configs locais de IDE / agente
 .claude
 .vscode
