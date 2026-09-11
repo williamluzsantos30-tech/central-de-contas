@@ -1,4 +1,4 @@
-/* Paleta domus.agn — editorial dark (off-black quente + emerald herói) */
+/* Paleta domus.agn — contemporaneo tech (near-black neutro + violet herói) */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,16 +14,15 @@
 :root,
 html.dark {
   color-scheme: dark;
-  /* Off-black quente — toque bege sutil pra combinar com serif Fraunces
-     e com o herói emerald. Nao e' cinza puro, tem 2-3 pontos de bias
-     nos canais R/G/B que deixa a sensacao "papel escuro" em vez de
-     "monitor". */
-  --bg: 15 14 17;          /* #0f0e11 */
-  --bg-soft: 21 20 24;     /* #151418 */
-  --bg-card: 26 24 30;     /* #1a181e */
-  --bg-elev: 32 29 36;     /* #201d24 */
-  --border: 44 41 48;      /* #2c2930 */
-  --border-soft: 34 31 38; /* #221f26 */
+  /* Near-black frio, escala zinc pura. Violet pop melhor em fundo
+     neutro do que em fundo quente. Mantem sensacao "monitor Framer/
+     ChatGPT" — moderno, contido, sem calor editorial. */
+  --bg: 10 10 11;          /* #0a0a0b */
+  --bg-soft: 17 17 20;     /* #111114 */
+  --bg-card: 23 23 28;     /* #17171c */
+  --bg-elev: 28 28 34;     /* #1c1c22 */
+  --border: 38 38 46;      /* #26262e */
+  --border-soft: 31 31 38; /* #1f1f26 */
 }
 
 html.light {

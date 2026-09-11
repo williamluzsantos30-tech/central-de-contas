@@ -35,7 +35,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-bg p-6">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-bg-card p-8 shadow-card">
         <div className="mb-6 flex items-baseline">
-          <span className="text-3xl font-serif font-semibold tracking-tight text-accent-50">
+          <span className="text-3xl font-serif font-semibold tracking-tight text-zinc-100">
             domus
           </span>
           <span className="text-3xl font-serif font-semibold tracking-tight text-brand-400">

@@ -22,34 +22,35 @@ export default {
           DEFAULT: 'rgb(var(--border) / <alpha-value>)',
           soft: 'rgb(var(--border-soft) / <alpha-value>)',
         },
-        // Emerald como cor principal (domus.agn — editorial dark).
-        // "seu negocio cresce aqui" sem ser obvio-cliche.
+        // Violet como cor principal (domus.agn — contemporaneo tech).
+        // Diferencia do "SaaS bancario" (azul) e diz "moderno" sem
+        // ser hype-startup-de-IA.
         brand: {
-          50: '#ecfdf5',
-          100: '#d1fae5',
-          200: '#a7f3d0',
-          300: '#6ee7b7',
-          400: '#34d399',
-          500: '#10b981',
-          600: '#059669',
-          700: '#047857',
-          800: '#065f46',
-          900: '#064e3b',
+          50: '#f5f3ff',
+          100: '#ede9fe',
+          200: '#ddd6fe',
+          300: '#c4b5fd',
+          400: '#a78bfa',
+          500: '#8b5cf6',
+          600: '#7c3aed',
+          700: '#6d28d9',
+          800: '#5b21b6',
+          900: '#4c1d95',
         },
-        // Accent de creme quente — usado em detalhes editoriais
-        // (labels de secao, dividers finos, o ".agn" do wordmark).
-        // Off-whites com toque bege pra o dark quente nao ficar frio.
+        // Accent cyan pale — usado com PARCIMONIA em elementos raros
+        // (glow em cards premium, hover states destacados). Nao e' pra
+        // ser onipresente — o violet e o herói, o cyan e o twist.
         accent: {
-          50: '#fafaf9',
-          100: '#f5f5f4',
-          200: '#e7e5e4',
-          300: '#d6d3d1',
-          400: '#a8a29e',
-          500: '#78716c',
-          600: '#57534e',
-          700: '#44403c',
-          800: '#292524',
-          900: '#1c1917',
+          50: '#ecfeff',
+          100: '#cffafe',
+          200: '#a5f3fc',
+          300: '#67e8f9',
+          400: '#22d3ee',
+          500: '#06b6d4',
+          600: '#0891b2',
+          700: '#0e7490',
+          800: '#155e75',
+          900: '#164e63',
         },
         success: '#16a34a',
         warning: '#eab308',

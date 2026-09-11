@@ -136,10 +136,10 @@ export function Sidebar() {
     <aside className="theme-dark fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
       <div className="flex h-16 items-center border-b border-border/80 bg-black px-5">
         {/* Wordmark temporario — substituir por SVG proprio quando o logo
-            estiver pronto. "domus" em creme quente, ".agn" em emerald
-            (o herói da paleta editorial dark). */}
+            estiver pronto. "domus" em branco frio, ".agn" em violet
+            (o herói da paleta contemporaneo tech). */}
         <div className="flex items-baseline">
-          <span className="text-2xl font-serif font-semibold tracking-tight text-accent-50">
+          <span className="text-2xl font-serif font-semibold tracking-tight text-zinc-100">
             domus
           </span>
           <span className="text-2xl font-serif font-semibold tracking-tight text-brand-400">
