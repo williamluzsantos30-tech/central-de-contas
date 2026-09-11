@@ -26,9 +26,10 @@
  *   LTV Medio        = ticket_medio × tempo_medio_vida
  *
  * O que ainda NAO faz (v2):
- *   - Grafico de Evolucao de Clientes (precisa snapshot mensal)
- *   - Score por Squad (falta definir formula com o user)
- *   - Expansao / Reducao (precisa log de mudancas em verba_mensal)
+ *   - Metricas de Social Media integradas
+ *   - Expansao / Reducao em tempo real (precisa log de mudancas em
+ *     verba_mensal)
+ *   - Tracking de indicacoes por squad
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -577,14 +578,18 @@ export default function VisaoExecutiva() {
             </div>
           </div>
 
+          {/* Evolucao de Clientes */}
+          <EvolucaoClientes clientes={clientesFiltrados} />
+
+          {/* Score e Saude por Squad */}
+          <ScoreSaudeSquads clientes={clientesFiltrados} mesISO={mesISO} />
+
           {/* Rodape com placeholders v2 */}
           <div className="mt-8 rounded-xl border border-dashed border-border bg-bg-soft/30 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               Próximos blocos (v2)
             </p>
             <ul className="mt-2 space-y-1 text-[11px] text-muted">
-              <li>· Evolução de Clientes (bar chart histórico) — precisa snapshot mensal</li>
-              <li>· Score e Saúde por Squad — falta definir a fórmula do score</li>
               <li>· Métricas de Social Media integradas</li>
               <li>· Expansão / Redução em tempo real — precisa log de mudanças em verba_mensal</li>
             </ul>
@@ -726,6 +731,565 @@ function BoxAcao({
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+// ==============================================================
+// Evolucao de Clientes — bar chart + tabela historica do ano
+// ==============================================================
+//
+// Derivado de data_inicio (entrada) + arquivado_em (churn). Nao
+// precisa snapshot mensal — reconstrucao 100% baseada em eventos.
+//
+// Por mes do ano corrente:
+//   NOVOS       = clientes com data_inicio dentro do mes
+//   CHURNS      = clientes com arquivado_em dentro do mes
+//   SALDO       = NOVOS - CHURNS
+//   BASE ATIVA  = quantos estavam ativos no ULTIMO dia do mes
+//                 (data_inicio <= fim AND (arquivado_em is null
+//                  OR arquivado_em > fim))
+//
+// Chart: SVG puro, 12 colunas (jan-dez), 2 barras por coluna
+// (emerald novos, red churns) + polyline sky pra Base Ativa.
+
+interface MesEvolucao {
+  mesLabel: string
+  mesIdx: number
+  novos: number
+  churns: number
+  saldo: number
+  baseAtiva: number
+}
+
+function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
+  const ano = new Date().getFullYear()
+  const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  const dados: MesEvolucao[] = []
+  const hoje = new Date()
+
+  for (let m = 0; m < 12; m++) {
+    const inicioMes = new Date(ano, m, 1)
+    const fimMes = new Date(ano, m + 1, 0, 23, 59, 59)
+
+    // Nao projeta pro futuro
+    if (inicioMes > hoje) break
+
+    const novos = clientes.filter((c) => {
+      const d = new Date(c.data_inicio)
+      return d >= inicioMes && d <= fimMes
+    }).length
+
+    const churns = clientes.filter((c) => {
+      if (!c.arquivado_em) return false
+      const d = new Date(c.arquivado_em)
+      return d >= inicioMes && d <= fimMes
+    }).length
+
+    const baseAtiva = clientes.filter((c) => {
+      const dIn = new Date(c.data_inicio)
+      if (dIn > fimMes) return false
+      if (!c.arquivado_em) return true
+      const dOut = new Date(c.arquivado_em)
+      return dOut > fimMes
+    }).length
+
+    dados.push({
+      mesLabel: `${nomes[m]}/${String(ano).slice(2)}`,
+      mesIdx: m,
+      novos,
+      churns,
+      saldo: novos - churns,
+      baseAtiva,
+    })
+  }
+  return dados
+}
+
+function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
+  const dados = useMemo(() => calculaEvolucao(clientes), [clientes])
+
+  if (dados.length === 0) {
+    return null
+  }
+
+  // Escalas do chart
+  const maxBar = Math.max(1, ...dados.map((d) => Math.max(d.novos, d.churns)))
+  const maxBase = Math.max(1, ...dados.map((d) => d.baseAtiva))
+
+  const W = 900
+  const H = 260
+  const padL = 40
+  const padR = 55
+  const padT = 20
+  const padB = 32
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const colW = chartW / dados.length
+  const barW = colW * 0.28
+
+  // Ticks eixo esquerdo (0 → maxBar arredondado)
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * maxBar))
+  const yBaseTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * maxBase))
+
+  // Points do polyline
+  const linePoints = dados
+    .map((d, i) => {
+      const x = padL + colW * i + colW / 2
+      const y = padT + chartH - (d.baseAtiva / maxBase) * chartH
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-bg-card p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={14} className="text-emerald-300" />
+          <h3 className="text-sm font-semibold text-zinc-100">Evolução de Clientes</h3>
+        </div>
+        <span className="rounded-md border border-border bg-bg-soft px-3 py-1 text-[11px] text-zinc-200">
+          Ano corrente
+        </span>
+      </div>
+      <p className="mb-2 text-[11px] text-muted">
+        Barras verdes = clientes novos no mês; vermelhas = churns; linha azul = base
+        ativa no fim do mês.
+      </p>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[700px] w-full">
+          {/* Grid lines + labels eixo esquerdo (barras) */}
+          {yTicks.map((t, i) => {
+            const y = padT + chartH - (i / 4) * chartH
+            return (
+              <g key={`y1-${i}`}>
+                <line
+                  x1={padL}
+                  x2={padL + chartW}
+                  y1={y}
+                  y2={y}
+                  stroke="rgb(38 38 46)"
+                  strokeDasharray="2 4"
+                />
+                <text x={padL - 8} y={y + 3} textAnchor="end" fontSize="9" fill="rgb(113 113 122)">
+                  {t}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Labels eixo direito (base ativa) */}
+          {yBaseTicks.map((t, i) => {
+            const y = padT + chartH - (i / 4) * chartH
+            return (
+              <text
+                key={`y2-${i}`}
+                x={padL + chartW + 8}
+                y={y + 3}
+                textAnchor="start"
+                fontSize="9"
+                fill="rgb(113 113 122)"
+              >
+                {t}
+              </text>
+            )
+          })}
+
+          {/* Barras */}
+          {dados.map((d, i) => {
+            const xLeft = padL + colW * i + colW * 0.15
+            const novosH = maxBar > 0 ? (d.novos / maxBar) * chartH : 0
+            const churnsH = maxBar > 0 ? (d.churns / maxBar) * chartH : 0
+            return (
+              <g key={`col-${i}`}>
+                <rect
+                  x={xLeft}
+                  y={padT + chartH - novosH}
+                  width={barW}
+                  height={novosH}
+                  fill="rgb(16 185 129)"
+                  rx="2"
+                />
+                <rect
+                  x={xLeft + barW + 4}
+                  y={padT + chartH - churnsH}
+                  width={barW}
+                  height={churnsH}
+                  fill="rgb(239 68 68)"
+                  rx="2"
+                />
+                <text
+                  x={padL + colW * i + colW / 2}
+                  y={H - 10}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill="rgb(161 161 170)"
+                >
+                  {d.mesLabel}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Linha Base Ativa */}
+          <polyline
+            points={linePoints}
+            fill="none"
+            stroke="rgb(56 189 248)"
+            strokeWidth="2"
+          />
+          {dados.map((d, i) => {
+            const x = padL + colW * i + colW / 2
+            const y = padT + chartH - (d.baseAtiva / maxBase) * chartH
+            return <circle key={`dot-${i}`} cx={x} cy={y} r="3" fill="rgb(56 189 248)" />
+          })}
+        </svg>
+      </div>
+
+      {/* Legenda */}
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+          Novos
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+          Churns
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1 w-4 rounded bg-sky-400" />
+          Base Ativa
+        </span>
+      </div>
+
+      {/* Tabela */}
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+              <th className="py-2 text-left font-semibold">Mês</th>
+              <th className="py-2 text-right font-semibold">Novos</th>
+              <th className="py-2 text-right font-semibold">Churns</th>
+              <th className="py-2 text-right font-semibold">Saldo</th>
+              <th className="py-2 text-right font-semibold">Base Ativa</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dados.map((d) => (
+              <tr key={d.mesIdx} className="border-b border-border/60 hover:bg-bg-soft/40">
+                <td className="py-2 text-zinc-300">{d.mesLabel}</td>
+                <td className="py-2 text-right tabular-nums text-emerald-300">{d.novos}</td>
+                <td className="py-2 text-right tabular-nums text-red-300">{d.churns}</td>
+                <td
+                  className={cn(
+                    'py-2 text-right tabular-nums font-semibold',
+                    d.saldo > 0 ? 'text-emerald-300' : d.saldo < 0 ? 'text-red-300' : 'text-zinc-400',
+                  )}
+                >
+                  {d.saldo > 0 ? '+' : ''}
+                  {d.saldo}
+                </td>
+                <td className="py-2 text-right tabular-nums text-zinc-100 font-semibold">
+                  {d.baseAtiva}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================
+// Score e Saúde por Squad
+// ==============================================================
+//
+// Formula do score (0-8, com penalizacoes negativas em cima):
+//   +2 se NRR >= 100% (retencao meta atingida)
+//   +2 se zero churn no mes selecionado
+//   +2 se zero clientes em atencao
+//   +2 se MRR do squad > media geral (squad puxando resultado)
+//   -2 se ha perda de MRR no mes (churn > 0)
+//   -1 se squad nao tem indicacoes registradas (v2 — placeholder 0)
+//
+// Score final vai de -3 (critico) a +8 (saudavel).
+// Classificacao: <=0 Critico, 1-4 Atencao, 5+ Saudavel.
+
+interface ScoreSquad {
+  nome: string
+  clientes: Cliente[]
+  mrr: number
+  nrr: number
+  churnsCount: number
+  emRiscoCount: number
+  revChurn: number
+  score: number
+  badges: { label: string; positive: boolean }[]
+  classificacao: 'critico' | 'atencao' | 'saudavel'
+}
+
+function calculaScoreSquads(clientes: Cliente[], mesISO: string, mrrMedioSquad: number): ScoreSquad[] {
+  const [y, m] = mesISO.split('-').map(Number)
+  const inicioMes = new Date(y, m - 1, 1)
+  const fimMes = new Date(y, m, 0, 23, 59, 59)
+
+  const byNome = new Map<string, Cliente[]>()
+  for (const c of clientes) {
+    const nome = c.squad ?? '(sem squad)'
+    if (!byNome.has(nome)) byNome.set(nome, [])
+    byNome.get(nome)!.push(c)
+  }
+
+  const resultados: ScoreSquad[] = []
+  for (const [nome, lista] of byNome) {
+    const ativos = lista.filter((c) => c.status === 'ativo' && !c.arquivado_em)
+    const emRisco = lista.filter((c) => c.status === 'atencao' && !c.arquivado_em)
+    const churnsNoMes = lista.filter((c) => {
+      if (!c.arquivado_em) return false
+      const d = new Date(c.arquivado_em)
+      return d >= inicioMes && d <= fimMes
+    })
+
+    const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+    const revChurn = churnsNoMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+
+    const baseInicio = ativos.length + churnsNoMes.length
+    const churnRateSquad = baseInicio > 0 ? churnsNoMes.length / baseInicio : 0
+    const nrr = 1 - churnRateSquad
+
+    // Score components
+    let score = 0
+    const badges: { label: string; positive: boolean }[] = []
+
+    if (nrr >= 1) {
+      score += 2
+      badges.push({ label: '+2 NRR', positive: true })
+    }
+    if (churnsNoMes.length === 0) {
+      score += 2
+      badges.push({ label: '+2 Zero churn', positive: true })
+    } else {
+      score -= 2
+      badges.push({ label: '-2 Perda MRR', positive: false })
+    }
+    if (emRisco.length === 0) {
+      score += 2
+      badges.push({ label: '+2 Zero risco', positive: true })
+    }
+    if (mrr > mrrMedioSquad) {
+      score += 2
+      badges.push({ label: '+2 MRR acima da média', positive: true })
+    }
+    // Indicacoes ainda nao tem tracking — placeholder negativa
+    score -= 1
+    badges.push({ label: '-1 Sem indic.', positive: false })
+
+    const classificacao: 'critico' | 'atencao' | 'saudavel' =
+      score <= 0 ? 'critico' : score <= 4 ? 'atencao' : 'saudavel'
+
+    resultados.push({
+      nome,
+      clientes: lista,
+      mrr,
+      nrr,
+      churnsCount: churnsNoMes.length,
+      emRiscoCount: emRisco.length,
+      revChurn,
+      score,
+      badges,
+      classificacao,
+    })
+  }
+  // Ordena: saudavel primeiro, depois atencao, depois critico
+  const ordem = { saudavel: 0, atencao: 1, critico: 2 }
+  resultados.sort((a, b) => ordem[a.classificacao] - ordem[b.classificacao])
+  return resultados
+}
+
+function ScoreSaudeSquads({ clientes, mesISO }: { clientes: Cliente[]; mesISO: string }) {
+  const squads = useMemo(() => {
+    const nomes = new Set<string>()
+    for (const c of clientes) if (c.squad) nomes.add(c.squad)
+    const nQtd = nomes.size || 1
+    const mrrTotal = clientes
+      .filter((c) => c.status === 'ativo' && !c.arquivado_em)
+      .reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+    const mrrMedioSquad = mrrTotal / nQtd
+    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad)
+  }, [clientes, mesISO])
+
+  if (squads.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-6">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
+        Score e Saúde por Squad
+      </p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {squads.map((sq) => (
+          <SquadCard key={sq.nome} squad={sq} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SquadCard({ squad }: { squad: ScoreSquad }) {
+  const cls =
+    squad.classificacao === 'saudavel'
+      ? 'border-emerald-500/40'
+      : squad.classificacao === 'atencao'
+        ? 'border-amber-500/40'
+        : 'border-red-500/40'
+
+  const scoreCls =
+    squad.classificacao === 'saudavel'
+      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+      : squad.classificacao === 'atencao'
+        ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+        : 'border-red-500/40 bg-red-500/10 text-red-200'
+
+  const classLabel =
+    squad.classificacao === 'saudavel'
+      ? 'Saudável'
+      : squad.classificacao === 'atencao'
+        ? 'Atenção'
+        : 'Crítico'
+
+  // Progress bar — score varia de -3 a +8, normaliza pra 0-100
+  const scoreNorm = Math.max(0, Math.min(100, ((squad.score + 3) / 11) * 100))
+
+  return (
+    <div className={cn('rounded-xl border bg-bg-card p-5', cls)}>
+      {/* Header */}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-zinc-100">{squad.nome}</h4>
+          <p className="mt-1 text-[11px] text-muted">
+            <Users size={10} className="inline mr-1" />
+            {squad.clientes.length} clientes · {formatBRL(squad.mrr)} MRR
+          </p>
+        </div>
+        <div className={cn('rounded-md border px-3 py-2 text-right', scoreCls)}>
+          <p className="text-lg font-bold tabular-nums leading-none">
+            {squad.score > 0 ? '+' : ''}
+            {squad.score}
+          </p>
+          <p className="mt-1 text-[9px] uppercase tracking-wider opacity-80">
+            de 8 · {classLabel}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar 3 zonas */}
+      <div className="relative h-2 rounded-full bg-bg-elev overflow-hidden">
+        <div className="absolute inset-0 flex">
+          <div className="w-1/3 bg-red-500/20" />
+          <div className="w-1/3 bg-amber-500/20" />
+          <div className="w-1/3 bg-emerald-500/20" />
+        </div>
+        <div
+          className={cn(
+            'absolute top-0 h-full w-1 rounded transition-all',
+            squad.classificacao === 'saudavel'
+              ? 'bg-emerald-400'
+              : squad.classificacao === 'atencao'
+                ? 'bg-amber-400'
+                : 'bg-red-400',
+          )}
+          style={{ left: `${scoreNorm}%` }}
+        />
+      </div>
+      <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-muted">
+        <span>Crítico</span>
+        <span>Atenção</span>
+        <span>Saudável</span>
+      </div>
+
+      {/* Badges */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {squad.badges.map((b, i) => (
+          <span
+            key={i}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px] font-medium',
+              b.positive
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                : 'border-red-500/30 bg-red-500/10 text-red-200',
+            )}
+          >
+            {b.label}
+          </span>
+        ))}
+      </div>
+
+      {/* Sub-KPIs 2x2 */}
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-muted">NRR</span>
+            <span
+              className={cn(
+                'text-xs font-semibold tabular-nums',
+                squad.nrr >= 1 ? 'text-emerald-300' : squad.nrr >= 0.95 ? 'text-amber-300' : 'text-red-300',
+              )}
+            >
+              {(squad.nrr * 100).toFixed(1)}%
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted">
+            {squad.nrr >= 1 ? 'Meta atingida' : `Faltam ${((1 - squad.nrr) * 100).toFixed(1)}pp`}
+          </p>
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-muted">Logo Churn</span>
+            <span
+              className={cn(
+                'text-xs font-semibold tabular-nums',
+                squad.churnsCount === 0 ? 'text-emerald-300' : 'text-red-300',
+              )}
+            >
+              {squad.churnsCount}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted">
+            {squad.churnsCount === 0
+              ? 'Nenhum cliente perdido'
+              : `${((squad.churnsCount / squad.clientes.length) * 100).toFixed(1)}% da base`}
+          </p>
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-muted">Rev. Churn</span>
+            <span
+              className={cn(
+                'text-xs font-semibold tabular-nums',
+                squad.revChurn === 0 ? 'text-emerald-300' : 'text-red-300',
+              )}
+            >
+              {formatBRL(squad.revChurn)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted">
+            {squad.revChurn === 0
+              ? 'Sem perda de receita'
+              : squad.mrr > 0
+                ? `${((squad.revChurn / (squad.mrr + squad.revChurn)) * 100).toFixed(1)}% do MRR`
+                : ''}
+          </p>
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-muted">Indicações</span>
+            <span className="text-xs font-semibold text-muted tabular-nums">0</span>
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted italic">v2 — tracking pendente</p>
+        </div>
+      </div>
     </div>
   )
 }
