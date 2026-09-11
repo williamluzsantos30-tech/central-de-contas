@@ -36,8 +36,6 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ChevronLeft,
-  ChevronRight,
   Plus,
   TrendingUp,
   TrendingDown,
@@ -51,10 +49,10 @@ import {
   Zap,
   CheckCircle2,
   XCircle,
+  Calendar,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
-import { Select } from '@/components/ui/Select'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -89,6 +87,15 @@ function shiftMes(mesISO: string, delta: number): string {
   const [y, m] = mesISO.split('-').map(Number)
   const nova = new Date(y, m - 1 + delta, 1)
   return `${nova.getFullYear()}-${String(nova.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+/** Ultimos N meses (do atual pra tras) como array de mesISO. */
+function ultimosMeses(n: number): string[] {
+  const hoje = new Date()
+  const atualISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
+  const out: string[] = []
+  for (let i = 0; i < n; i++) out.push(shiftMes(atualISO, -i))
+  return out
 }
 
 /** Meses entre data ISO e hoje. Retorna 0 se data invalida. */
@@ -261,50 +268,40 @@ export default function VisaoExecutiva() {
         }
       />
 
-      {/* Filtros */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-bg-soft px-2 py-1">
-          <button
-            onClick={() => setMesISO(shiftMes(mesISO, -1))}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-100"
-          >
-            <ChevronLeft size={13} />
-          </button>
-          <span className="min-w-[130px] text-center text-xs font-semibold capitalize">
-            {labelMes(mesISO)}
+      {/* Filtros — container unico, sobrio, alinhado */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-soft/40 px-3 py-2">
+        <div className="flex items-center gap-1.5 pr-2 mr-1 border-r border-border">
+          <Calendar size={13} className="text-muted" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Filtros
           </span>
-          <button
-            onClick={() => setMesISO(shiftMes(mesISO, 1))}
-            disabled={eMesAtual}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <ChevronRight size={13} />
-          </button>
         </div>
-        <Select value={fSquad} onChange={(e) => setFSquad(e.target.value)}>
-          <option value="">Todos os Squads</option>
-          {squadsDistintos.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </Select>
-        <Select value={fAM} onChange={(e) => setFAM(e.target.value)}>
-          <option value="">Todos os AMs</option>
-          {ams.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </Select>
-        <Select value={fGestor} onChange={(e) => setFGestor(e.target.value)}>
-          <option value="">Todos os Gestores</option>
-          {gestores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </Select>
+        <FiltroPill
+          value={mesISO}
+          onChange={(v) => setMesISO(v)}
+          options={ultimosMeses(12).map((iso) => ({
+            value: iso,
+            label: labelMes(iso).replace(/^./, (c) => c.toUpperCase()),
+          }))}
+        />
+        <FiltroPill
+          value={fSquad}
+          onChange={setFSquad}
+          placeholder="Todos os Squads"
+          options={squadsDistintos.map((s) => ({ value: s, label: s }))}
+        />
+        <FiltroPill
+          value={fAM}
+          onChange={setFAM}
+          placeholder="Todos os AMs"
+          options={ams.map((p) => ({ value: p.id, label: p.nome }))}
+        />
+        <FiltroPill
+          value={fGestor}
+          onChange={setFGestor}
+          placeholder="Todos os Gestores"
+          options={gestores.map((p) => ({ value: p.id, label: p.nome }))}
+        />
       </div>
 
       {loading ? (
@@ -623,6 +620,42 @@ const toneText: Record<Tone, string> = {
   amber: 'text-amber-300',
   red: 'text-red-300',
   neutral: 'text-zinc-100',
+}
+
+// Pill de filtro — <select> nativo estilizado como botao dark.
+// Sem placeholder = filtro obrigatorio (usa a primeira option como valor
+// atual). Com placeholder = "Todos os X" como opcao neutra vazia.
+function FiltroPill({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="cursor-pointer appearance-none rounded-md border border-border bg-bg-elev pl-3 pr-8 py-1.5 text-xs font-medium text-zinc-100 hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none transition-colors"
+      style={{
+        backgroundImage:
+          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 16 16\' fill=\'none\'%3E%3Cpath d=\'M4 6l4 4 4-4\' stroke=\'%23a1a1aa\' stroke-width=\'1.5\'/%3E%3C/svg%3E")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 10px center',
+      }}
+    >
+      {placeholder && <option value="">{placeholder}</option>}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 function SubKpi({ titulo, valor, tone }: { titulo: string; valor: string; tone: Tone }) {
