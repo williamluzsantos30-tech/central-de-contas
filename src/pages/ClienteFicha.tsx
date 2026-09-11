@@ -14,7 +14,6 @@
  *   Acoes Rapidas: Enviar NPS, Marcar Risco, Registrar Expansao,
  *                   Registrar Perda
  *   Contrato (v2)
- *   Briefing de Trafego (v2)
  *   Logins e Acessos — reusa LoginsAcessosPanel existente
  *   Acesso ao Portal do Cliente (v2 — feature nova)
  *   Timeline de Alteracoes (v2 — precisa events table)
@@ -764,20 +763,6 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
 
       {/* ============= Contrato ============= */}
       <ContratoBloco cliente={cliente} onEdit={() => setContratoModalOpen(true)} />
-
-      {/* ============= Briefing (placeholder) ============= */}
-      <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-5">
-        <div className="mb-2 flex items-center gap-2">
-          <FileText size={14} className="text-muted" />
-          <h3 className="text-sm font-semibold text-zinc-100">Briefing de Tráfego</h3>
-          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-amber-300">
-            v2
-          </span>
-        </div>
-        <p className="text-xs text-muted">
-          Status do briefing (pendente / enviado / respondido) + botão pra enviar link. v2.
-        </p>
-      </div>
 
       {/* ============= Logins e Acessos — reusa componente ============= */}
       <div className="rounded-xl border border-border bg-bg-card p-5">
