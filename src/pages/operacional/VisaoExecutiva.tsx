@@ -49,6 +49,7 @@ import {
   Zap,
   CheckCircle2,
   XCircle,
+  ExternalLink,
   Calendar,
   Instagram,
 } from 'lucide-react'
@@ -880,6 +881,9 @@ interface MesEvolucao {
   churns: number
   saldo: number
   baseAtiva: number
+  // Listas dos clientes que movimentaram — pra o modal de detalhe
+  novosLista: Cliente[]
+  churnsLista: Cliente[]
 }
 
 function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
@@ -895,16 +899,18 @@ function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
     // Nao projeta pro futuro
     if (inicioMes > hoje) break
 
-    const novos = clientes.filter((c) => {
+    const novosLista = clientes.filter((c) => {
       const d = new Date(c.data_inicio)
       return d >= inicioMes && d <= fimMes
-    }).length
+    })
+    const novos = novosLista.length
 
-    const churns = clientes.filter((c) => {
+    const churnsLista = clientes.filter((c) => {
       if (!c.arquivado_em) return false
       const d = new Date(c.arquivado_em)
       return d >= inicioMes && d <= fimMes
-    }).length
+    })
+    const churns = churnsLista.length
 
     const baseAtiva = clientes.filter((c) => {
       const dIn = new Date(c.data_inicio)
@@ -921,6 +927,8 @@ function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
       churns,
       saldo: novos - churns,
       baseAtiva,
+      novosLista,
+      churnsLista,
     })
   }
   return dados
@@ -949,6 +957,7 @@ function niceScale(maxValor: number): { max: number; ticks: number[] } {
 
 function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
   const dados = useMemo(() => calculaEvolucao(clientes), [clientes])
+  const [mesSelecionado, setMesSelecionado] = useState<MesEvolucao | null>(null)
 
   if (dados.length === 0) {
     return null
@@ -1062,15 +1071,31 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
               )
             })}
 
-            {/* Barras */}
+            {/* Barras — cada mes e uma coluna clicavel que abre o modal
+                de detalhamento (novos + churns daquele mes) */}
             {dados.map((d, i) => {
               const xCenter = padL + colW * i + colW / 2
               const xLeftBar = xCenter - barW - 2
               const xRightBar = xCenter + 2
               const novosH = maxBar > 0 ? (d.novos / maxBar) * chartH : 0
               const churnsH = maxBar > 0 ? (d.churns / maxBar) * chartH : 0
+              const temMov = d.novos > 0 || d.churns > 0
               return (
-                <g key={`col-${i}`}>
+                <g
+                  key={`col-${i}`}
+                  onClick={temMov ? () => setMesSelecionado(d) : undefined}
+                  className={temMov ? 'cursor-pointer' : undefined}
+                >
+                  {/* Hitbox invisivel maior pra facilitar o click */}
+                  {temMov && (
+                    <rect
+                      x={padL + colW * i}
+                      y={padT}
+                      width={colW}
+                      height={chartH}
+                      fill="transparent"
+                    />
+                  )}
                   {d.novos > 0 && (
                     <rect
                       x={xLeftBar}
@@ -1079,6 +1104,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
                       height={novosH}
                       fill="rgb(16 185 129)"
                       rx="2"
+                      className="transition-opacity hover:opacity-80"
                     />
                   )}
                   {d.churns > 0 && (
@@ -1089,6 +1115,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
                       height={churnsH}
                       fill="rgb(239 68 68)"
                       rx="2"
+                      className="transition-opacity hover:opacity-80"
                     />
                   )}
                   <text
@@ -1149,27 +1176,139 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
             </tr>
           </thead>
           <tbody>
-            {dados.map((d) => (
-              <tr key={d.mesIdx} className="border-b border-border/60 hover:bg-bg-soft/40">
-                <td className="py-2 text-zinc-300">{d.mesLabel}</td>
-                <td className="py-2 text-right tabular-nums text-emerald-300">{d.novos}</td>
-                <td className="py-2 text-right tabular-nums text-red-300">{d.churns}</td>
-                <td
+            {dados.map((d) => {
+              const temMov = d.novos > 0 || d.churns > 0
+              return (
+                <tr
+                  key={d.mesIdx}
+                  onClick={temMov ? () => setMesSelecionado(d) : undefined}
                   className={cn(
-                    'py-2 text-right tabular-nums font-semibold',
-                    d.saldo > 0 ? 'text-emerald-300' : d.saldo < 0 ? 'text-red-300' : 'text-zinc-400',
+                    'border-b border-border/60 transition-colors',
+                    temMov && 'cursor-pointer hover:bg-bg-soft/60',
                   )}
+                  title={temMov ? 'Clique para ver os clientes' : undefined}
                 >
-                  {d.saldo > 0 ? '+' : ''}
-                  {d.saldo}
-                </td>
-                <td className="py-2 text-right tabular-nums text-zinc-100 font-semibold">
-                  {d.baseAtiva}
-                </td>
-              </tr>
-            ))}
+                  <td className="py-2 text-zinc-300">{d.mesLabel}</td>
+                  <td className="py-2 text-right tabular-nums text-emerald-300">{d.novos}</td>
+                  <td className="py-2 text-right tabular-nums text-red-300">{d.churns}</td>
+                  <td
+                    className={cn(
+                      'py-2 text-right tabular-nums font-semibold',
+                      d.saldo > 0
+                        ? 'text-emerald-300'
+                        : d.saldo < 0
+                          ? 'text-red-300'
+                          : 'text-zinc-400',
+                    )}
+                  >
+                    {d.saldo > 0 ? '+' : ''}
+                    {d.saldo}
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-zinc-100 font-semibold">
+                    {d.baseAtiva}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
+      </div>
+
+      {/* Modal — detalhamento da movimentacao do mes */}
+      {mesSelecionado && (
+        <MovimentacaoMesModal mes={mesSelecionado} onClose={() => setMesSelecionado(null)} />
+      )}
+    </div>
+  )
+}
+
+// ==============================================================
+// Modal — detalhamento da movimentacao de um mes
+// ==============================================================
+
+function MovimentacaoMesModal({
+  mes,
+  onClose,
+}: {
+  mes: MesEvolucao
+  onClose: () => void
+}) {
+  const saldoStr = mes.saldo > 0 ? `+${mes.saldo}` : `${mes.saldo}`
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-100">
+            Movimentação de clientes — {mes.mesLabel}
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+          >
+            <XCircle size={12} />
+          </button>
+        </div>
+        <p className="mb-5 text-[11px] text-muted">
+          {mes.novos} novo(s) · {mes.churns} churn(s) · Saldo {saldoStr}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {/* Coluna Novos */}
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.03] p-3">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-emerald-500/20 pb-2">
+              <Users size={12} className="text-emerald-300" />
+              <p className="text-xs font-semibold text-emerald-200">Novos ({mes.novos})</p>
+            </div>
+            {mes.novosLista.length === 0 ? (
+              <p className="py-6 text-center text-[11px] text-muted italic">Nenhum</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {mes.novosLista.map((c) => (
+                  <li key={c.id}>
+                    <a
+                      href={`/clientes/${c.id}`}
+                      className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-emerald-500/10 hover:text-emerald-200"
+                    >
+                      <span className="truncate">{c.nome}</span>
+                      <ExternalLink size={10} className="shrink-0 opacity-60" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Coluna Churns */}
+          <div className="rounded-lg border border-red-500/30 bg-red-500/[0.03] p-3">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-red-500/20 pb-2">
+              <Users size={12} className="text-red-300" />
+              <p className="text-xs font-semibold text-red-200">Churns ({mes.churns})</p>
+            </div>
+            {mes.churnsLista.length === 0 ? (
+              <p className="py-6 text-center text-[11px] text-muted italic">Nenhum</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {mes.churnsLista.map((c) => (
+                  <li key={c.id}>
+                    <a
+                      href={`/clientes/${c.id}`}
+                      className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-red-500/10 hover:text-red-200"
+                    >
+                      <span className="truncate">{c.nome}</span>
+                      <ExternalLink size={10} className="shrink-0 opacity-60" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
