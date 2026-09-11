@@ -8,7 +8,7 @@ import { Document, Image, Page, Text, View, StyleSheet, pdf, Font } from '@react
 import type { Cliente, Criacao, TipoCriacao } from '@/types/database'
 import { introsHardcoded, loadIntros, resolverIntro } from '@/lib/criacoes-config'
 
-const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
+const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
 Font.registerHyphenationCallback((word) => {
   if (word.length <= 25) return [word]

@@ -11,7 +11,7 @@ import { parseLocalDate, formatDateBR } from '@/lib/dates'
 
 // URL absoluta da logo (precisa ser absoluta porque o react-pdf gera o
 // PDF num contexto à parte e não resolve paths relativos sozinho).
-const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
+const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
 // Hifenização inteligente:
 //   • Palavras "normais" (<=25 chars) ficam inteiras — não corta "PLANEJAMENTO".
@@ -345,7 +345,6 @@ function CapaPDF({ cliente, plano }: { cliente: Cliente; plano: PlanejamentoSoci
 
       {/* Rodapé preto: logo à esquerda + info à direita */}
       <View style={styles.rodapeAssinatura}>
-        <Image src={LOGO_URL} style={styles.rodapeLogo} />
         <Text style={styles.rodapeTexto}>CENTRAL DE CONTAS · PLANEJAMENTO</Text>
       </View>
     </Page>
@@ -466,8 +465,7 @@ function PaginaFinal() {
 
       {/* Rodapé preto: logo à esquerda + info à direita */}
       <View style={styles.rodapeAssinatura}>
-        <Image src={LOGO_URL} style={styles.rodapeLogo} />
-        <Text style={styles.rodapeTexto}>OBRIGADO · GRUPO MOVMED</Text>
+        <Text style={styles.rodapeTexto}>OBRIGADO</Text>
       </View>
     </Page>
   )
@@ -487,7 +485,7 @@ export function PlanejamentoPDFDoc({ cliente, plano, items }: Props) {
   return (
     <Document
       title={`Planejamento ${cliente.nome} - ${plano.mes_referencia ?? ''}`}
-      author="MovMed"
+      author=""
     >
       <CapaPDF cliente={cliente} plano={plano} />
       <PaginaIntroducao plano={plano} />

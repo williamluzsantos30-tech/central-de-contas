@@ -39,7 +39,7 @@ const COR = {
   producao: '#f59e0b',
 }
 
-const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
+const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
 // =========================================================
 // Helpers
@@ -222,7 +222,7 @@ function HeaderPagina() {
 function Rodape() {
   return (
     <View style={s.rodape} fixed>
-      <Text>MovMed · Central de Contas</Text>
+      <Text>Relatório semanal</Text>
       <Text render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
     </View>
   )

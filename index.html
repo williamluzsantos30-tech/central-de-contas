@@ -4,18 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Central de Contas MovMed</title>
+    <title>domus.agn — a casa da sua agência</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
     <script>
       // Aplica tema persistido ANTES do React mountar — evita flash.
+      // Le a key nova; se nao tiver, fallback pra key antiga do branding
+      // anterior pra usuarios ja migrados nao perderem preferencia.
       (function () {
         try {
-          var t = localStorage.getItem('movmed-theme');
+          var t = localStorage.getItem('domus-theme') || localStorage.getItem('movmed-theme');
           var theme = t === 'light' ? 'light' : 'dark';
           document.documentElement.classList.remove('dark', 'light');
           document.documentElement.classList.add(theme);

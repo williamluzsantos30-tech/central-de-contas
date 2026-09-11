@@ -9,7 +9,7 @@ export const isDemoMode = !isSupabaseConfigured
 
 if (isDemoMode) {
   console.info(
-    '[MovMed] Modo DEMO ativo com dados fictícios. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY em .env para conectar ao Supabase real.',
+    '[domus.agn] Modo DEMO ativo com dados fictícios. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY em .env para conectar ao Supabase real.',
   )
 }
 

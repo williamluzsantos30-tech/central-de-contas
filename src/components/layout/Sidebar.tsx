@@ -134,19 +134,17 @@ export function Sidebar() {
 
   return (
     <aside className="theme-dark fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
-      <div className="flex h-16 items-center gap-2.5 border-b border-border/80 bg-black px-5">
-        <img
-          src="/logo-movmed.png"
-          alt="MovMed"
-          className="h-9 w-auto object-contain"
-        />
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 leading-none">
-            Central
-          </p>
-          <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-zinc-400 leading-none">
-            de Contas
-          </p>
+      <div className="flex h-16 items-center border-b border-border/80 bg-black px-5">
+        {/* Wordmark temporario — substituir por SVG proprio quando o logo
+            estiver pronto. "domus" em branco, ".agn" em accent dourado
+            pra o brand ficar mais elegante. */}
+        <div className="flex items-baseline">
+          <span className="text-2xl font-serif font-semibold tracking-tight text-zinc-100">
+            domus
+          </span>
+          <span className="text-2xl font-serif font-semibold tracking-tight text-accent-400">
+            .agn
+          </span>
         </div>
       </div>
       <nav className="p-2 space-y-1">

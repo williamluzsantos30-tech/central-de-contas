@@ -68,7 +68,7 @@ export async function agendarCallNoGCal(
   const descricao = [
     `Call mensal de alinhamento com ${payload.clienteNome}.`,
     payload.autorNome ? `Agendada por ${payload.autorNome}.` : null,
-    'Evento criado automaticamente pela Central de Contas MovMed.',
+    'Evento criado automaticamente.',
   ]
     .filter(Boolean)
     .join('\n')

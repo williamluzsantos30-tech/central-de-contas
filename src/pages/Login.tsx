@@ -34,14 +34,13 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg p-6">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-bg-card p-8 shadow-card">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-500 text-white font-bold">
-            M
-          </div>
-          <div>
-            <h1 className="text-base font-semibold">MovMed</h1>
-            <p className="text-xs text-muted">Central de Contas</p>
-          </div>
+        <div className="mb-6 flex items-baseline">
+          <span className="text-3xl font-serif font-semibold tracking-tight text-zinc-100">
+            domus
+          </span>
+          <span className="text-3xl font-serif font-semibold tracking-tight text-accent-400">
+            .agn
+          </span>
         </div>
 
         <h2 className="mb-4 text-lg font-semibold">

@@ -27,7 +27,7 @@ import {
 } from '@react-pdf/renderer'
 import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
 
-const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
+const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
 Font.registerHyphenationCallback((word) => {
   if (word.length <= 25) return [word]

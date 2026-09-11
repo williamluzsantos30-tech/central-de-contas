@@ -2684,7 +2684,7 @@ function CriarUsuarioModal({
             type="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="usuario@movmed.com"
+            placeholder="usuario@empresa.com"
           />
         </Field>
         <Field label="Senha">
@@ -3479,7 +3479,7 @@ function DestinatarioModal({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="diretoria@movmed.com.br"
+            placeholder="diretoria@empresa.com.br"
           />
         </label>
       </div>

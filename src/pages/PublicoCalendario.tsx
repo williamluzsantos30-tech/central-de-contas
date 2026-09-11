@@ -161,13 +161,16 @@ export default function PublicoCalendario() {
       <header className="border-b border-border bg-black">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-movmed.png" alt="MovMed" className="h-9 w-auto object-contain" />
+            {/* Link publico e neutro em branding — o cliente final (paciente/
+                lead da agencia) nao precisa saber que sistema esta rodando
+                por tras. Quando white-label vier, cada agencia vai poder
+                colocar SUA marca aqui. */}
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 leading-none">
-                Central de Contas
+                Calendário
               </p>
               <p className="mt-1 text-xs text-zinc-200">
-                Calendário de postagens
+                Postagens do mês
                 {clienteNome && (
                   <>
                     {' '}·{' '}
@@ -199,7 +202,7 @@ export default function PublicoCalendario() {
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-8 text-center">
             <p className="text-lg font-semibold text-red-200">Link inválido</p>
             <p className="mt-2 text-sm text-red-300/80">
-              Esse link pode ter sido revogado. Peça à equipe MovMed pra gerar
+              Esse link pode ter sido revogado. Peça à sua agência pra gerar
               um novo.
             </p>
           </div>
@@ -351,7 +354,7 @@ export default function PublicoCalendario() {
 
             {/* Rodapé com créditos */}
             <p className="mt-6 text-center text-[10px] text-muted">
-              Calendário gerado automaticamente pela MovMed · atualizado em tempo real
+              Calendário atualizado em tempo real
             </p>
           </>
         )}

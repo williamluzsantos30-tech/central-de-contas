@@ -2546,7 +2546,7 @@ function ItemReferenciasField({
         className="mt-2 h-8 text-xs"
       />
       <p className="mt-1 text-[10px] text-muted">
-        URLs: tipo detectado pela URL. Upload: vai pro Storage MovMed.
+        URLs: tipo detectado pela URL. Upload: vai pro Storage do projeto.
       </p>
     </div>
   )

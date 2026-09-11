@@ -278,7 +278,7 @@ function corStatusPlano(s: StatusPlano): string {
   return s === 'aberto' ? COR.critico : s === 'em_andamento' ? COR.instavel : COR.estavel
 }
 
-const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo-movmed.png`
+const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
 // =========================================================
 // Styles compartilhados
@@ -522,7 +522,7 @@ function HeaderPagina({ titulo }: { titulo: string }) {
 function Rodape() {
   return (
     <View style={s.rodape} fixed>
-      <Text>MovMed · Central de Contas</Text>
+      <Text>Controle do Head</Text>
       <Text
         render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
       />

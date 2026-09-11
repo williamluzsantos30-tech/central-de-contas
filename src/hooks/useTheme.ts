@@ -2,11 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 
 export type Theme = 'dark' | 'light'
 
-const STORAGE_KEY = 'movmed-theme'
+// Le tambem a key antiga 'movmed-theme' na primeira carga pra usuarios
+// que ja tinham escolhido tema no branding anterior nao terem que
+// escolher de novo.
+const STORAGE_KEY = 'domus-theme'
+const LEGACY_KEY = 'movmed-theme'
 
 function readPersisted(): Theme {
   if (typeof window === 'undefined') return 'dark'
-  const v = window.localStorage.getItem(STORAGE_KEY)
+  const v =
+    window.localStorage.getItem(STORAGE_KEY) ??
+    window.localStorage.getItem(LEGACY_KEY)
   return v === 'light' ? 'light' : 'dark'
 }
 
