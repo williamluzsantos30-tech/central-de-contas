@@ -32,8 +32,6 @@
  *
  * O que ainda NAO faz (v2):
  *   - Metricas de Social Media integradas
- *   - Expansao / Reducao em tempo real (precisa log de mudancas em
- *     verba_mensal)
  *   - Tracking de indicacoes por squad
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -111,9 +109,25 @@ function mesesDesde(iso: string | null): number {
   return diffMs / (1000 * 60 * 60 * 24 * 30.44)
 }
 
+// Evento manual de expansao/perda/churn — usado pra construir o
+// Resultado do Negocio a partir do log real, nao mais placeholder.
+interface EventoMovimento {
+  tipo: 'expansao' | 'perda' | 'churn'
+  cliente_id: string
+  criado_em: string
+  meta: {
+    valor?: number
+    valor_perdido?: number
+    data?: string
+    motivo?: string
+    recorrente?: boolean
+  } | null
+}
+
 export default function VisaoExecutiva() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [eventosMov, setEventosMov] = useState<EventoMovimento[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [mesISO, setMesISO] = useState<string>(() => {
@@ -126,12 +140,19 @@ export default function VisaoExecutiva() {
 
   async function load() {
     setLoading(true)
-    const [cRes, pRes] = await Promise.all([
+    const [cRes, pRes, eRes] = await Promise.all([
       supabase.from('clientes').select('*').order('nome'),
       supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      // Eventos de movimento comercial — expansao, perda, churn.
+      // Alimenta o bloco Resultado do Negocio.
+      supabase
+        .from('cliente_eventos')
+        .select('tipo, cliente_id, criado_em, meta')
+        .in('tipo', ['expansao', 'perda', 'churn']),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setProfiles((pRes.data as Profile[]) ?? [])
+    setEventosMov((eRes.data as EventoMovimento[]) ?? [])
     setLoading(false)
   }
 
@@ -184,11 +205,37 @@ export default function VisaoExecutiva() {
     const mrrRisco = emRisco.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
     const mrrChurn = churnsNoMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
 
+    // Filtra eventos manuais de movimento comercial do mes selecionado.
+    // Prioriza meta.data (a data que o user informou no modal) e cai
+    // pra criado_em se nao tem meta.data.
+    const clienteIdsFiltrados = new Set(clientesFiltrados.map((c) => c.id))
+    const eventosDoMes = eventosMov.filter((ev) => {
+      if (!clienteIdsFiltrados.has(ev.cliente_id)) return false
+      const dataStr = ev.meta?.data ?? ev.criado_em
+      const d = new Date(dataStr)
+      return d >= inicioMes && d <= fimMes
+    })
+
+    const expansoes = eventosDoMes.filter((ev) => ev.tipo === 'expansao')
+    const perdas = eventosDoMes.filter((ev) => ev.tipo === 'perda')
+    const churnsExplicitos = eventosDoMes.filter((ev) => ev.tipo === 'churn')
+
+    const expansao = expansoes.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+    const reducao = perdas.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+
+    // Churn: usa a soma dos eventos tipo='churn' se houver, senao
+    // fallback pro somatorio de arquivado_em (retrocompativel)
+    const mrrChurnEfetivo =
+      churnsExplicitos.length > 0
+        ? churnsExplicitos.reduce((s, ev) => s + (ev.meta?.valor_perdido ?? 0), 0)
+        : mrrChurn
+
     const baseInicioMes = ativos.length + churnsNoMes.length
     const churnRate = baseInicioMes > 0 ? churnsNoMes.length / baseInicioMes : 0
 
-    // NRR aproximado — sem log de expansao/reducao, assume ambos = 0
-    const nrr = 1 - churnRate
+    // NRR = 1 + (expansao - reducao - churn) / MRR_inicio_mes
+    const mrrInicioMes = mrr + mrrChurn - expansao + reducao // aproximacao
+    const nrr = mrrInicioMes > 0 ? 1 + (expansao - reducao - mrrChurnEfetivo) / mrrInicioMes : 1
 
     const ticketMedio = ativos.length > 0 ? mrr / ativos.length : 0
 
@@ -196,10 +243,8 @@ export default function VisaoExecutiva() {
     const nAssessoria = ativos.filter((c) => c.tipo === 'assessoria').length
     const nConsultoria = ativos.filter((c) => c.tipo === 'consultoria').length
 
-    // Resultado do negocio
-    const expansao = 0 // v2
-    const reducao = 0 // v2
-    const saldo = expansao - reducao - mrrChurn
+    // Resultado do negocio — agora vem do log real
+    const saldo = expansao - reducao - mrrChurnEfetivo
 
     // Execucao operacional
     const emOnboarding = ativos.filter((c) => c.jornada === 'onboarding').length
@@ -228,7 +273,7 @@ export default function VisaoExecutiva() {
     return {
       mrr,
       mrrRisco,
-      mrrChurn,
+      mrrChurn: mrrChurnEfetivo,
       churnRate,
       nrr,
       ativos: ativos.length,
@@ -240,13 +285,17 @@ export default function VisaoExecutiva() {
       expansao,
       reducao,
       saldo,
+      // Contagens dos eventos manuais — usadas pra sub-legendas
+      nExpansoes: expansoes.length,
+      nPerdas: perdas.length,
+      nChurnEventos: churnsExplicitos.length,
       emOnboarding,
       pctOnboardingFinalizado,
       npsMedio,
       tempoMedioVida,
       ltvMedio,
     }
-  }, [clientesFiltrados, mesISO])
+  }, [clientesFiltrados, mesISO, eventosMov])
 
   // Classificacao do "farol" pro banner de alerta
   const temAlerta = kpis.saldo < 0 || kpis.emRisco > 0 || kpis.churnRate > 0.05
@@ -436,25 +485,38 @@ export default function VisaoExecutiva() {
                   label="Expansão"
                   valor={kpis.expansao}
                   tone="emerald"
-                  aproximado
+                  sub={
+                    kpis.nExpansoes > 0
+                      ? `${kpis.nExpansoes} ${kpis.nExpansoes === 1 ? 'registro' : 'registros'}`
+                      : 'nenhuma'
+                  }
                 />
                 <LinhaResultado
                   icone={<span className="text-amber-400 text-xs">−</span>}
                   label="Redução"
                   valor={-kpis.reducao}
                   tone="amber"
-                  aproximado
+                  sub={
+                    kpis.nPerdas > 0
+                      ? `${kpis.nPerdas} ${kpis.nPerdas === 1 ? 'registro' : 'registros'}`
+                      : 'nenhuma'
+                  }
                 />
                 <LinhaResultado
                   icone={<span className="text-red-400 text-xs">−</span>}
                   label="Churn"
                   valor={-kpis.mrrChurn}
                   tone="red"
+                  sub={
+                    kpis.churnsNoMes > 0
+                      ? `${kpis.churnsNoMes} ${kpis.churnsNoMes === 1 ? 'cliente' : 'clientes'}`
+                      : 'nenhum'
+                  }
                 />
               </div>
               <p className="mt-3 text-[10px] text-muted italic">
-                Expansão e Redução em tempo real virão na v2 (precisa log de
-                mudanças no verba_mensal).
+                Dados do log real de <code className="text-brand-300">cliente_eventos</code> —
+                Expansão/Perda/Churn registrados nas Fichas dos clientes.
               </p>
             </div>
             <div className="rounded-xl border border-border bg-bg-card p-5">
@@ -598,7 +660,6 @@ export default function VisaoExecutiva() {
               Próximos blocos (v2)
             </p>
             <ul className="mt-2 space-y-1 text-[11px] text-muted">
-              <li>· Expansão / Redução em tempo real — precisa log de mudanças em verba_mensal</li>
               <li>· Tracking de indicações por squad</li>
             </ul>
           </div>
@@ -682,24 +743,22 @@ function LinhaResultado({
   label,
   valor,
   tone,
-  aproximado = false,
+  sub,
 }: {
   icone: React.ReactNode
   label: string
   valor: number
   tone: 'emerald' | 'amber' | 'red'
-  aproximado?: boolean
+  sub?: string
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border bg-bg-soft/40 px-3 py-2">
       <div className="flex items-center gap-2">
-        <span className="grid h-5 w-5 place-items-center rounded-full bg-bg-elev">
-          {icone}
-        </span>
-        <span className="text-xs text-zinc-200">
-          {label}
-          {aproximado && <span className="ml-1 text-[10px] text-muted italic">(v2)</span>}
-        </span>
+        <span className="grid h-5 w-5 place-items-center rounded-full bg-bg-elev">{icone}</span>
+        <div>
+          <span className="text-xs text-zinc-200">{label}</span>
+          {sub && <span className="ml-1.5 text-[10px] text-muted">· {sub}</span>}
+        </div>
       </div>
       <span
         className={cn(
