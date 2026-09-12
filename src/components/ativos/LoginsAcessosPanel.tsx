@@ -60,7 +60,7 @@ export function LoginsAcessosPanel({ clienteId }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-brand-500/30 bg-brand-500/10 transition-all duration-300 group-hover/asset:scale-105 group-hover/asset:shadow-[0_0_25px_-6px_rgba(249,115,22,0.6)]">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-brand-500/30 bg-brand-500/10 transition-all duration-300 group-hover/asset:scale-105 group-hover/asset:shadow-[0_0_25px_-6px_rgba(124, 58, 237,0.6)]">
               <KeyRound size={18} className="text-brand-300" />
             </div>
             <div className="min-w-0">

@@ -1151,7 +1151,7 @@ function Kpi({
       ? 'border-red-500/30 bg-red-500/10 text-red-300'
       : tone === 'success'
       ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 group-hover/kpi:border-emerald-500/60 group-hover/kpi:shadow-[0_0_20px_-4px_rgba(16,185,129,0.6)]'
-      : 'border-brand-500/30 bg-brand-500/10 text-brand-300 group-hover/kpi:border-brand-500/60 group-hover/kpi:shadow-[0_0_20px_-4px_rgba(249,115,22,0.6)]'
+      : 'border-brand-500/30 bg-brand-500/10 text-brand-300 group-hover/kpi:border-brand-500/60 group-hover/kpi:shadow-[0_0_20px_-4px_rgba(124, 58, 237,0.6)]'
   const glowColor =
     tone === 'success' ? 'bg-emerald-500/10' : tone === 'danger' ? 'bg-red-500/10' : 'bg-brand-500/10'
 

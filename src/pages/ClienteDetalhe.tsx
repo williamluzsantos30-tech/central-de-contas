@@ -331,7 +331,7 @@ export default function ClienteDetalhe() {
                 className={cn(
                   'relative px-4 py-2 text-sm -mb-px border-b-2 transition-all duration-200',
                   tab === key
-                    ? 'border-brand-500 text-brand-200 drop-shadow-[0_0_4px_rgba(249,115,22,0.4)]'
+                    ? 'border-brand-500 text-brand-200 drop-shadow-[0_0_4px_rgba(124, 58, 237,0.4)]'
                     : 'border-transparent text-muted hover:text-zinc-200 hover:border-brand-500/30',
                 )}
               >

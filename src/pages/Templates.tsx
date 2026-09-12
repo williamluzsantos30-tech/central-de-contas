@@ -495,7 +495,7 @@ function DiaMesGrid({
               onClick={() => onSelect(isSelected ? null : d)}
               className={
                 isSelected
-                  ? 'aspect-square rounded-md border border-brand-500 bg-brand-500/25 text-xs font-semibold text-brand-100 shadow-[0_0_0_1px_rgba(249,115,22,0.4)]'
+                  ? 'aspect-square rounded-md border border-brand-500 bg-brand-500/25 text-xs font-semibold text-brand-100 shadow-[0_0_0_1px_rgba(124, 58, 237,0.4)]'
                   : 'aspect-square rounded-md border border-border bg-bg-elev text-xs text-zinc-300 hover:border-brand-500/40 hover:text-zinc-100'
               }
             >

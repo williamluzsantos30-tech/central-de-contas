@@ -256,7 +256,7 @@ export default function PreviewCriacaoPDF() {
               borderRadius: 6,
               border: '1px solid',
               borderColor: tipo === t ? '#f97316' : '#333',
-              background: tipo === t ? 'rgba(249,115,22,0.15)' : 'transparent',
+              background: tipo === t ? 'rgba(124, 58, 237,0.15)' : 'transparent',
               color: tipo === t ? '#fb923c' : '#a3a3a3',
               fontSize: 12,
               cursor: 'pointer',
