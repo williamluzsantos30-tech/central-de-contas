@@ -1,61 +1,57 @@
 /**
- * Visao do Negocio — pagina que o DONO da agencia abre primeiro.
+ * Visao Executiva — pagina que o DONO da agencia abre primeiro.
+ * Reproduz o layout de resumo geral que ele mostrou como referencia.
  *
- * Layout (referencia: dashboard "Visao do Negocio" — secoes agrupadas,
- * cards compactos com valor colorido por saude + delta vs mes anterior):
+ * Estrutura:
+ *   Header + filtros (mes/squad/AM/gestor)
+ *   Banner "Mes Atual - Tempo Real" (so quando mes atual selecionado)
+ *   Banner de alerta (condicional, quando ha metricas ruins)
+ *   Hero: Receita do Mes (MRR) grande
+ *   Grid de KPIs: NRR, Churn Rate, MRR em Risco, Composicao Base,
+ *                  Ticket Medio
+ *   Resultado do Negocio: Expansao / Reducao / Churn + Saldo
+ *   Execucao Operacional: Clientes em Risco, Tempo Medio Vida,
+ *                          Onboarding Finalizado, NPS Medio
+ *   Lifetime Value: LTV Medio, LT Medio
+ *   Evolucao de Clientes: bar chart + tabela historica ano corrente
+ *   Score e Saude por Squad: cards por squad com score de -3 a +8
+ *   Acoes Sugeridas: Verde / Amarelo / Vermelho — pra aplicar em cada
+ *                     nivel de squad classificado acima
+ *   Social Media: 3 KPIs (clientes com social, em atraso, NPS medio)
+ *                  + ranking por responsavel
  *
- *   Header: titulo + periodo + Novo cliente
- *   Tabs:   Executivo | Analytics      (+ filtros squad/AM/gestor)
+ * Metricas derivadas de clientes.* (sem tabela historica ainda):
+ *   MRR              = SUM verba_mensal WHERE status='ativo'
+ *   Churn Rate       = churns_mes / (ativos_hoje + churns_mes) — aprox
+ *   NRR              = 1 - churn_rate  — aprox (sem tracking de
+ *                      expansao/reducao ainda; assume 0)
+ *   MRR em Risco     = SUM verba_mensal WHERE status='atencao'
+ *   NPS Medio        = AVG(nps) dos ativos com nps preenchido
+ *   Tempo Medio Vida = AVG(hoje - data_inicio) em meses (ativos)
+ *   LTV Medio        = ticket_medio × tempo_medio_vida
  *
- *   EXECUTIVO
- *     Aquisicao & Crescimento  Novos Clientes · MRR Novos · Expansao · Em Onboarding
- *     Pulso do Negocio         [aviso: ativos sem valor mensal]
- *                              MRR Atual · NRR · Saldo do Mes · Taxa de Renovacao · Ticket Medio
- *     Estabilidade e Risco     Clientes Ativos · Churn · MRR Perdido · MRR em Risco · Contratos a Vencer
- *     Qualidade da Receita     LTV Medio · Permanencia Media · Tempo ate Churn · NPS Medio
- *     Tendencias (12 meses)    mini-areas: MRR · Clientes Ativos · Churn Mensal
- *
- *   ANALYTICS
- *     Evolucao de Clientes (bar chart + tabela + modal por mes)
- *     Score e Saude por Squad
- *     Acoes Sugeridas
- *     Social Media
- *
- * Todas as metricas sao reconstruidas a partir de clientes.* +
- * cliente_eventos (expansao/perda/churn). Nao existe snapshot mensal:
- *   base no fim do mes M = data_inicio <= fim(M) AND (arquivado_em null OR > fim(M))
- *   MRR(M)               = SUM verba_mensal da base, desfazendo expansoes/
- *                          reducoes registradas DEPOIS de M
- *   NRR                  = 1 + (expansao - reducao - churn) / MRR_inicio
- *   Churn Rate           = churns(M) / base_inicio(M)
- *   Taxa de Renovacao    = renovados / (renovados + encerrados) dos contratos
- *                          com contrato_fim em M
- *   LTV Medio            = ticket medio x permanencia media
- *   Tempo ate Churn      = media(arquivado_em - data_inicio) dos perdidos
- *
- * Status (ativo/atencao/pausado) so existe no presente — pra meses
- * passados toda a base reconstruida conta como ativa.
- *
- * Ainda sem dado (dependem do modulo Financeiro): investimento em
- * aquisicao / CAC, despesas, lucro, inadimplencia.
+ * O que ainda NAO faz (v2):
+ *   - Metricas de Social Media integradas
+ *   - Tracking de indicacoes por squad
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   Plus,
   TrendingUp,
+  TrendingDown,
   AlertTriangle,
   Users,
+  DollarSign,
+  Clock,
+  BookOpen,
   Download,
   Smile,
+  Zap,
   CheckCircle2,
   XCircle,
   ExternalLink,
+  Calendar,
   Instagram,
-  ChevronDown,
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -77,13 +73,6 @@ function formatBRLSigned(v: number): string {
   return `${s}${formatBRL(Math.abs(v))}`
 }
 
-/** R$ 1,2M · R$ 46k · R$ 800 — pra eixo de grafico pequeno. */
-function formatBRLCompacto(v: number): string {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace('.', ',')}M`
-  if (v >= 1_000) return `R$ ${Math.round(v / 1_000)}k`
-  return `R$ ${Math.round(v)}`
-}
-
 function formatPct(v: number): string {
   return `${(v * 100).toFixed(1)}%`
 }
@@ -94,13 +83,6 @@ function labelMes(mesISO: string): string {
     month: 'long',
     year: 'numeric',
   })
-}
-
-/** "Set/25" */
-function labelMesCurto(mesISO: string): string {
-  const [y, m] = mesISO.split('-').map(Number)
-  const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-  return `${nomes[m - 1]}/${String(y).slice(2)}`
 }
 
 function shiftMes(mesISO: string, delta: number): string {
@@ -118,18 +100,14 @@ function ultimosMeses(n: number): string[] {
   return out
 }
 
-/** Meses entre uma data ISO e um ponto de referencia. 0 se invalida. */
-function mesesEntre(iso: string | null, ref: Date): number {
+/** Meses entre data ISO e hoje. Retorna 0 se data invalida. */
+function mesesDesde(iso: string | null): number {
   if (!iso) return 0
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
-  return (ref.getTime() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-}
-
-/** Variacao percentual. null quando nao da pra comparar (base zero). */
-function pctDelta(atual: number, anterior: number): number | null {
-  if (anterior === 0) return atual === 0 ? 0 : null
-  return (atual - anterior) / anterior
+  const hoje = new Date()
+  const diffMs = hoje.getTime() - d.getTime()
+  return diffMs / (1000 * 60 * 60 * 24 * 30.44)
 }
 
 // Evento manual de expansao/perda/churn — usado pra construir o
@@ -147,193 +125,12 @@ interface EventoMovimento {
   } | null
 }
 
-// ==============================================================
-// Calculo dos KPIs de um mes — funcao pura, chamada pro mes
-// selecionado, pro mes anterior (delta) e pros 12 da tendencia.
-// ==============================================================
-
-interface Kpis {
-  // Aquisicao
-  novos: number
-  mrrNovos: number
-  expansao: number
-  nExpansoes: number
-  emOnboarding: number
-  pctOnboardingFinalizado: number
-  // Pulso
-  mrr: number
-  mrrInicio: number
-  nrr: number
-  saldo: number
-  reducao: number
-  nPerdas: number
-  taxaRenovacao: number | null
-  renovados: number
-  vencidos: number
-  ticketMedio: number
-  semVerba: number
-  // Estabilidade
-  ativos: number
-  nAssessoria: number
-  nConsultoria: number
-  churnsNoMes: number
-  churnRate: number
-  mrrPerdido: number
-  emRisco: number
-  mrrRisco: number
-  aVencer: number
-  mrrAVencer: number
-  // Qualidade
-  ltvMedio: number
-  permanenciaMedia: number
-  tempoAteChurn: number | null
-  npsMedio: number | null
-  nNps: number
-}
-
-function calculaKpis(base: Cliente[], eventos: EventoMovimento[], mesISO: string): Kpis {
-  const [y, m] = mesISO.split('-').map(Number)
-  const inicioMes = new Date(y, m - 1, 1)
-  const fimMes = new Date(y, m, 0, 23, 59, 59)
-  const hoje = new Date()
-  const eMesAtual = inicioMes <= hoje && hoje <= fimMes
-  // Ponto de referencia temporal: hoje (mes corrente) ou fim do mes
-  const ref = eMesAtual ? hoje : fimMes
-  const noMes = (d: Date) => d >= inicioMes && d <= fimMes
-  const verba = (c: Cliente) => c.verba_mensal ?? 0
-  const soma = (arr: Cliente[]) => arr.reduce((s, c) => s + verba(c), 0)
-
-  // Base reconstruida no fim do mes
-  const naBase = base.filter((c) => {
-    const dIn = new Date(c.data_inicio)
-    if (isNaN(dIn.getTime()) || dIn > fimMes) return false
-    if (!c.arquivado_em) return true
-    return new Date(c.arquivado_em) > fimMes
-  })
-  // Status so vale no presente — nao ha historico de status
-  const ativos = eMesAtual
-    ? naBase.filter((c) => c.status === 'ativo' || c.status === 'atencao')
-    : naBase
-  const emRisco = eMesAtual ? naBase.filter((c) => c.status === 'atencao') : []
-  const idsAtivos = new Set(ativos.map((c) => c.id))
-  const idsBase = new Set(base.map((c) => c.id))
-
-  const novos = base.filter((c) => noMes(new Date(c.data_inicio)))
-  const churns = base.filter((c) => c.arquivado_em && noMes(new Date(c.arquivado_em)))
-
-  // MRR no fim do mes — verba atual, desfazendo movimentos posteriores
-  const dataEv = (ev: EventoMovimento) => new Date(ev.meta?.data ?? ev.criado_em)
-  let mrr = soma(ativos)
-  for (const ev of eventos) {
-    if (!idsAtivos.has(ev.cliente_id)) continue
-    if (dataEv(ev) <= fimMes) continue
-    if (ev.tipo === 'expansao') mrr -= ev.meta?.valor ?? 0
-    else if (ev.tipo === 'perda') mrr += ev.meta?.valor ?? 0
-  }
-  mrr = Math.max(0, mrr)
-
-  // Movimentos comerciais do mes (log real das Fichas)
-  const eventosMes = eventos.filter((ev) => idsBase.has(ev.cliente_id) && noMes(dataEv(ev)))
-  const expansoes = eventosMes.filter((ev) => ev.tipo === 'expansao')
-  const perdas = eventosMes.filter((ev) => ev.tipo === 'perda')
-  const churnsEv = eventosMes.filter((ev) => ev.tipo === 'churn')
-  const expansao = expansoes.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
-  const reducao = perdas.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
-  const mrrPerdido =
-    churnsEv.length > 0
-      ? churnsEv.reduce((s, ev) => s + (ev.meta?.valor_perdido ?? 0), 0)
-      : soma(churns)
-
-  const mrrNovos = soma(novos)
-  const mrrInicio = Math.max(0, mrr - mrrNovos + mrrPerdido - expansao + reducao)
-  const nrr = mrrInicio > 0 ? 1 + (expansao - reducao - mrrPerdido) / mrrInicio : 1
-  const saldo = expansao - reducao - mrrPerdido
-
-  const novosAindaAtivos = novos.filter((c) => idsAtivos.has(c.id)).length
-  const baseInicio = ativos.length - novosAindaAtivos + churns.length
-  const churnRate = baseInicio > 0 ? churns.length / baseInicio : 0
-
-  const ticketMedio = ativos.length > 0 ? mrr / ativos.length : 0
-  const semVerba = ativos.filter((c) => !c.verba_mensal).length
-  const nAssessoria = ativos.filter((c) => c.tipo === 'assessoria').length
-  const nConsultoria = ativos.filter((c) => c.tipo === 'consultoria').length
-
-  const emOnboarding = ativos.filter((c) => c.jornada === 'onboarding').length
-  const finalizou = ativos.filter((c) => c.jornada && c.jornada !== 'onboarding').length
-  const pctOnboardingFinalizado = ativos.length > 0 ? finalizou / ativos.length : 0
-
-  // Contratos — renovacao no mes + a vencer nos proximos 30 dias
-  const vencidosLista = base.filter((c) => c.contrato_fim && noMes(new Date(c.contrato_fim)))
-  const renovados = vencidosLista.filter((c) => c.contrato_status === 'renovado').length
-  const encerrados = vencidosLista.filter((c) => c.contrato_status === 'encerrado').length
-  const taxaRenovacao = renovados + encerrados > 0 ? renovados / (renovados + encerrados) : null
-  const em30 = new Date(ref.getTime() + 30 * 864e5)
-  const aVencerLista = ativos.filter((c) => {
-    if (!c.contrato_fim || c.contrato_status === 'encerrado') return false
-    const d = new Date(c.contrato_fim)
-    return d >= ref && d <= em30
-  })
-
-  // Qualidade da receita
-  const permanencias = ativos.map((c) => mesesEntre(c.data_inicio, ref)).filter((v) => v > 0)
-  const permanenciaMedia =
-    permanencias.length > 0 ? permanencias.reduce((a, b) => a + b, 0) / permanencias.length : 0
-  const ltvMedio = ticketMedio * permanenciaMedia
-  const temposChurn = base
-    .filter((c) => c.arquivado_em && new Date(c.arquivado_em) <= fimMes)
-    .map((c) => mesesEntre(c.data_inicio, new Date(c.arquivado_em as string)))
-    .filter((v) => v >= 0)
-  const tempoAteChurn =
-    temposChurn.length > 0 ? temposChurn.reduce((a, b) => a + b, 0) / temposChurn.length : null
-  const comNps = ativos.filter((c) => typeof c.nps === 'number')
-  const npsMedio =
-    comNps.length > 0 ? comNps.reduce((s, c) => s + (c.nps ?? 0), 0) / comNps.length : null
-
-  return {
-    novos: novos.length,
-    mrrNovos,
-    expansao,
-    nExpansoes: expansoes.length,
-    emOnboarding,
-    pctOnboardingFinalizado,
-    mrr,
-    mrrInicio,
-    nrr,
-    saldo,
-    reducao,
-    nPerdas: perdas.length,
-    taxaRenovacao,
-    renovados,
-    vencidos: vencidosLista.length,
-    ticketMedio,
-    semVerba,
-    ativos: ativos.length,
-    nAssessoria,
-    nConsultoria,
-    churnsNoMes: churns.length,
-    churnRate,
-    mrrPerdido,
-    emRisco: emRisco.length,
-    mrrRisco: soma(emRisco),
-    aVencer: aVencerLista.length,
-    mrrAVencer: soma(aVencerLista),
-    ltvMedio,
-    permanenciaMedia,
-    tempoAteChurn,
-    npsMedio,
-    nNps: comNps.length,
-  }
-}
-
-type Aba = 'executivo' | 'analytics'
-
 export default function VisaoExecutiva() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [eventosMov, setEventosMov] = useState<EventoMovimento[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
-  const [aba, setAba] = useState<Aba>('executivo')
   const [mesISO, setMesISO] = useState<string>(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
@@ -347,6 +144,8 @@ export default function VisaoExecutiva() {
     const [cRes, pRes, eRes] = await Promise.all([
       supabase.from('clientes').select('*').order('nome'),
       supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      // Eventos de movimento comercial — expansao, perda, churn.
+      // Alimenta o bloco Resultado do Negocio.
       supabase
         .from('cliente_eventos')
         .select('tipo, cliente_id, criado_em, meta')
@@ -366,6 +165,7 @@ export default function VisaoExecutiva() {
   const mesAtualISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
   const eMesAtual = mesISO === mesAtualISO
 
+  // Base filtrada por squad / AM / gestor
   const clientesFiltrados = useMemo(() => {
     return clientes.filter((c) => {
       if (fSquad && c.squad !== fSquad) return false
@@ -375,6 +175,7 @@ export default function VisaoExecutiva() {
     })
   }, [clientes, fSquad, fAM, fGestor])
 
+  // Squads distintos pra dropdown
   const squadsDistintos = useMemo(() => {
     const set = new Set<string>()
     for (const c of clientes) if (c.squad) set.add(c.squad)
@@ -384,43 +185,136 @@ export default function VisaoExecutiva() {
   const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
   const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
 
-  const k = useMemo(
-    () => calculaKpis(clientesFiltrados, eventosMov, mesISO),
-    [clientesFiltrados, eventosMov, mesISO],
-  )
-  const kAnt = useMemo(
-    () => calculaKpis(clientesFiltrados, eventosMov, shiftMes(mesISO, -1)),
-    [clientesFiltrados, eventosMov, mesISO],
-  )
+  const kpis = useMemo(() => {
+    const [y, m] = mesISO.split('-').map(Number)
+    const inicioMes = new Date(y, m - 1, 1)
+    const fimMes = new Date(y, m, 0, 23, 59, 59)
 
-  // Serie dos ultimos 12 meses (mais antigo -> mais recente)
-  const serie = useMemo(() => {
-    return ultimosMeses(12)
-      .reverse()
-      .map((iso) => {
-        const kp = calculaKpis(clientesFiltrados, eventosMov, iso)
-        return { label: labelMesCurto(iso), mrr: kp.mrr, ativos: kp.ativos, churns: kp.churnsNoMes }
-      })
-  }, [clientesFiltrados, eventosMov])
+    const ativos = clientesFiltrados.filter(
+      (c) => c.status === 'ativo' && !c.arquivado_em,
+    )
+    const emRisco = clientesFiltrados.filter(
+      (c) => c.status === 'atencao' && !c.arquivado_em,
+    )
+    const churnsNoMes = clientesFiltrados.filter((c) => {
+      if (!c.arquivado_em) return false
+      const d = new Date(c.arquivado_em)
+      return d >= inicioMes && d <= fimMes
+    })
 
-  // Metas fixadas pelo dono: NRR >= 95% (crescendo) · Churn < 10% (meta)
-  const temAlerta = k.nrr < 0.95 || k.churnRate >= 0.1 || k.saldo < 0 || k.emRisco > 0
+    const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+    const mrrRisco = emRisco.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+    const mrrChurn = churnsNoMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+
+    // Filtra eventos manuais de movimento comercial do mes selecionado.
+    // Prioriza meta.data (a data que o user informou no modal) e cai
+    // pra criado_em se nao tem meta.data.
+    const clienteIdsFiltrados = new Set(clientesFiltrados.map((c) => c.id))
+    const eventosDoMes = eventosMov.filter((ev) => {
+      if (!clienteIdsFiltrados.has(ev.cliente_id)) return false
+      const dataStr = ev.meta?.data ?? ev.criado_em
+      const d = new Date(dataStr)
+      return d >= inicioMes && d <= fimMes
+    })
+
+    const expansoes = eventosDoMes.filter((ev) => ev.tipo === 'expansao')
+    const perdas = eventosDoMes.filter((ev) => ev.tipo === 'perda')
+    const churnsExplicitos = eventosDoMes.filter((ev) => ev.tipo === 'churn')
+
+    const expansao = expansoes.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+    const reducao = perdas.reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+
+    // Churn: usa a soma dos eventos tipo='churn' se houver, senao
+    // fallback pro somatorio de arquivado_em (retrocompativel)
+    const mrrChurnEfetivo =
+      churnsExplicitos.length > 0
+        ? churnsExplicitos.reduce((s, ev) => s + (ev.meta?.valor_perdido ?? 0), 0)
+        : mrrChurn
+
+    const baseInicioMes = ativos.length + churnsNoMes.length
+    const churnRate = baseInicioMes > 0 ? churnsNoMes.length / baseInicioMes : 0
+
+    // NRR = 1 + (expansao - reducao - churn) / MRR_inicio_mes
+    const mrrInicioMes = mrr + mrrChurn - expansao + reducao // aproximacao
+    const nrr = mrrInicioMes > 0 ? 1 + (expansao - reducao - mrrChurnEfetivo) / mrrInicioMes : 1
+
+    const ticketMedio = ativos.length > 0 ? mrr / ativos.length : 0
+
+    // Composicao por tipo
+    const nAssessoria = ativos.filter((c) => c.tipo === 'assessoria').length
+    const nConsultoria = ativos.filter((c) => c.tipo === 'consultoria').length
+
+    // Resultado do negocio — agora vem do log real
+    const saldo = expansao - reducao - mrrChurnEfetivo
+
+    // Execucao operacional
+    const emOnboarding = ativos.filter((c) => c.jornada === 'onboarding').length
+    const finalizouOnboarding = ativos.filter((c) => c.jornada && c.jornada !== 'onboarding').length
+    const pctOnboardingFinalizado =
+      ativos.length > 0 ? finalizouOnboarding / ativos.length : 0
+
+    const clientesComNps = ativos.filter((c) => typeof c.nps === 'number')
+    const npsMedio =
+      clientesComNps.length > 0
+        ? clientesComNps.reduce((s, c) => s + (c.nps ?? 0), 0) / clientesComNps.length
+        : null
+
+    // Tempo medio de vida (meses) — dos ativos com data_inicio
+    const vidasAtivos = ativos
+      .map((c) => mesesDesde(c.data_inicio))
+      .filter((v) => v > 0)
+    const tempoMedioVida =
+      vidasAtivos.length > 0
+        ? vidasAtivos.reduce((a, b) => a + b, 0) / vidasAtivos.length
+        : 0
+
+    // LTV medio = ticket * tempo de vida
+    const ltvMedio = ticketMedio * tempoMedioVida
+
+    return {
+      mrr,
+      mrrRisco,
+      mrrChurn: mrrChurnEfetivo,
+      churnRate,
+      nrr,
+      ativos: ativos.length,
+      emRisco: emRisco.length,
+      churnsNoMes: churnsNoMes.length,
+      ticketMedio,
+      nAssessoria,
+      nConsultoria,
+      expansao,
+      reducao,
+      saldo,
+      // Contagens dos eventos manuais — usadas pra sub-legendas
+      nExpansoes: expansoes.length,
+      nPerdas: perdas.length,
+      nChurnEventos: churnsExplicitos.length,
+      emOnboarding,
+      pctOnboardingFinalizado,
+      npsMedio,
+      tempoMedioVida,
+      ltvMedio,
+    }
+  }, [clientesFiltrados, mesISO, eventosMov])
+
+  // Farol do banner de alerta — dispara quando qualquer meta comercial
+  // e' quebrada. Metas fixadas pelo user:
+  //   NRR   >= 95%   (abaixo = nao esta crescendo)
+  //   Churn <  10%   (acima = meta nao atingida)
+  const temAlerta =
+    kpis.nrr < 0.95 || kpis.churnRate >= 0.1 || kpis.saldo < 0 || kpis.emRisco > 0
 
   return (
     <div>
       <PageHeader
-        title="Visão do Negócio"
-        description="Métricas estratégicas e indicadores de performance"
+        title="Resumo Geral"
+        description="Visão executiva da saúde da operação"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <FiltroPill
-              value={mesISO}
-              onChange={(v) => setMesISO(v)}
-              options={ultimosMeses(12).map((iso) => ({
-                value: iso,
-                label: labelMes(iso).replace(/^./, (c) => c.toUpperCase()),
-              }))}
-            />
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => alert('Código de Cultura — em breve')}>
+              <BookOpen size={14} /> Código de Cultura
+            </Button>
             <Button variant="outline" onClick={() => window.print()}>
               <Download size={14} /> Exportar
             </Button>
@@ -431,78 +325,305 @@ export default function VisaoExecutiva() {
         }
       />
 
-      {/* Tabs + filtros secundarios */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
-            {(
-              [
-                { key: 'executivo', label: 'Executivo' },
-                { key: 'analytics', label: 'Analytics' },
-              ] as { key: Aba; label: string }[]
-            ).map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setAba(t.key)}
-                className={cn(
-                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                  aba === t.key
-                    ? 'bg-bg-card text-zinc-100 shadow-sm'
-                    : 'text-muted hover:text-zinc-200',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {eMesAtual && (
-            <span
-              className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300"
-              title="Dados do mês corrente são calculados em tempo real"
-            >
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </span>
-              Tempo real
-            </span>
-          )}
+      {/* Filtros — container unico, sobrio, alinhado */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-soft/40 px-3 py-2">
+        <div className="flex items-center gap-1.5 pr-2 mr-1 border-r border-border">
+          <Calendar size={13} className="text-muted" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Filtros
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FiltroPill
-            value={fSquad}
-            onChange={setFSquad}
-            placeholder="Todos os Squads"
-            options={squadsDistintos.map((s) => ({ value: s, label: s }))}
-          />
-          <FiltroPill
-            value={fAM}
-            onChange={setFAM}
-            placeholder="Todos os AMs"
-            options={ams.map((p) => ({ value: p.id, label: p.nome }))}
-          />
-          <FiltroPill
-            value={fGestor}
-            onChange={setFGestor}
-            placeholder="Todos os Gestores"
-            options={gestores.map((p) => ({ value: p.id, label: p.nome }))}
-          />
-        </div>
+        <FiltroPill
+          value={mesISO}
+          onChange={(v) => setMesISO(v)}
+          options={ultimosMeses(12).map((iso) => ({
+            value: iso,
+            label: labelMes(iso).replace(/^./, (c) => c.toUpperCase()),
+          }))}
+        />
+        <FiltroPill
+          value={fSquad}
+          onChange={setFSquad}
+          placeholder="Todos os Squads"
+          options={squadsDistintos.map((s) => ({ value: s, label: s }))}
+        />
+        <FiltroPill
+          value={fAM}
+          onChange={setFAM}
+          placeholder="Todos os AMs"
+          options={ams.map((p) => ({ value: p.id, label: p.nome }))}
+        />
+        <FiltroPill
+          value={fGestor}
+          onChange={setFGestor}
+          placeholder="Todos os Gestores"
+          options={gestores.map((p) => ({ value: p.id, label: p.nome }))}
+        />
       </div>
 
       {loading ? (
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
           Carregando…
         </div>
-      ) : aba === 'analytics' ? (
+      ) : (
         <>
+          {/* Banner Mes Atual — tempo real */}
+          {eMesAtual && (
+            <div className="mb-3 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Clock size={13} className="text-sky-300" />
+                <p className="text-xs font-semibold text-sky-200">
+                  Mês Atual
+                  <span className="ml-2 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+                    Tempo Real
+                  </span>
+                </p>
+              </div>
+              <p className="mt-1 text-[11px] text-sky-300/80">
+                Dados de {labelMes(mesISO)} são calculados em tempo real e podem
+                mudar conforme novas movimentações são registradas.
+              </p>
+            </div>
+          )}
+
+          {/* Banner de alerta condicional */}
+          {temAlerta && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/[0.06] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={14} className="text-red-300" />
+                <p className="text-xs font-semibold text-red-200">
+                  {labelMes(mesISO)} em alerta
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                {/* Mostra so o que ESTA fora da meta — nao polui com KPIs OK */}
+                {kpis.nrr < 0.95 && (
+                  <span className="flex items-center gap-1 text-red-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                    NRR {formatPct(kpis.nrr)} <span className="opacity-70">(meta ≥ 95%)</span>
+                  </span>
+                )}
+                {kpis.churnRate >= 0.1 && (
+                  <span className="flex items-center gap-1 text-red-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                    Churn {formatPct(kpis.churnRate)}{' '}
+                    <span className="opacity-70">(meta &lt; 10%)</span>
+                  </span>
+                )}
+                {kpis.saldo < 0 && (
+                  <span className="flex items-center gap-1 text-red-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                    Saldo {formatBRLSigned(kpis.saldo)}
+                  </span>
+                )}
+                {kpis.emRisco > 0 && (
+                  <span className="flex items-center gap-1 text-red-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                    {kpis.emRisco} em risco ({formatBRL(kpis.mrrRisco)})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bloco principal — MRR + KPIs em grade */}
+          <div className="rounded-xl border border-border bg-bg-card p-6">
+            {/* Hero MRR */}
+            <div className="mb-6 pb-6 border-b border-border">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign size={16} className="text-emerald-300" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Receita do mês (MRR)
+                </p>
+              </div>
+              <p className="text-5xl font-bold tabular-nums leading-none text-emerald-300">
+                {formatBRL(kpis.mrr)}
+              </p>
+              <p className="mt-2 text-xs text-muted">receita recorrente mensal</p>
+            </div>
+
+            {/* Grid de sub-KPIs */}
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-5">
+              <SubKpi
+                titulo="NRR"
+                valor={formatPct(kpis.nrr)}
+                sub="meta ≥ 95%"
+                tone={kpis.nrr >= 0.95 ? 'emerald' : kpis.nrr >= 0.9 ? 'amber' : 'red'}
+              />
+              <SubKpi
+                titulo="Churn Rate"
+                valor={formatPct(kpis.churnRate)}
+                sub="meta < 10%"
+                tone={kpis.churnRate < 0.05 ? 'emerald' : kpis.churnRate < 0.1 ? 'amber' : 'red'}
+              />
+              <SubKpi
+                titulo="MRR em Risco"
+                valor={formatBRL(kpis.mrrRisco)}
+                tone={kpis.mrrRisco === 0 ? 'emerald' : 'red'}
+              />
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+                  Composição da Base
+                </p>
+                <p className="mt-1 text-lg font-bold tabular-nums text-zinc-100">
+                  {kpis.ativos}
+                </p>
+                <p className="text-[10px] text-muted">clientes ativos</p>
+                <div className="mt-2 flex flex-col gap-0.5 text-[10px] text-muted">
+                  <span>{kpis.nAssessoria} Assessoria</span>
+                  <span>{kpis.nConsultoria} Consultoria</span>
+                </div>
+              </div>
+              <SubKpi
+                titulo="Ticket Médio"
+                valor={formatBRL(kpis.ticketMedio)}
+                tone="neutral"
+              />
+            </div>
+          </div>
+
+          {/* Resultado do Negocio */}
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-border bg-bg-card p-5 md:col-span-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-4">
+                Resultado do Negócio
+              </p>
+              <div className="space-y-3">
+                <LinhaResultado
+                  icone={<Plus size={12} className="text-emerald-400" />}
+                  label="Expansão"
+                  valor={kpis.expansao}
+                  tone="emerald"
+                  sub={
+                    kpis.nExpansoes > 0
+                      ? `${kpis.nExpansoes} ${kpis.nExpansoes === 1 ? 'registro' : 'registros'}`
+                      : 'nenhuma'
+                  }
+                />
+                <LinhaResultado
+                  icone={<span className="text-amber-400 text-xs">−</span>}
+                  label="Redução"
+                  valor={-kpis.reducao}
+                  tone="amber"
+                  sub={
+                    kpis.nPerdas > 0
+                      ? `${kpis.nPerdas} ${kpis.nPerdas === 1 ? 'registro' : 'registros'}`
+                      : 'nenhuma'
+                  }
+                />
+                <LinhaResultado
+                  icone={<span className="text-red-400 text-xs">−</span>}
+                  label="Churn"
+                  valor={-kpis.mrrChurn}
+                  tone="red"
+                  sub={
+                    kpis.churnsNoMes > 0
+                      ? `${kpis.churnsNoMes} ${kpis.churnsNoMes === 1 ? 'cliente' : 'clientes'}`
+                      : 'nenhum'
+                  }
+                />
+              </div>
+              <p className="mt-3 text-[10px] text-muted italic">
+                Dados do log real de <code className="text-brand-300">cliente_eventos</code> —
+                Expansão/Perda/Churn registrados nas Fichas dos clientes.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-bg-card p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                <Zap size={12} className="inline mr-1" />
+                Saldo do Mês
+              </p>
+              <p
+                className={cn(
+                  'text-4xl font-bold tabular-nums leading-none mt-3',
+                  kpis.saldo < 0
+                    ? 'text-red-300'
+                    : kpis.saldo > 0
+                      ? 'text-emerald-300'
+                      : 'text-zinc-300',
+                )}
+              >
+                {formatBRLSigned(kpis.saldo)}
+              </p>
+              <p className="mt-3 text-[10px] text-muted leading-relaxed">
+                Saldo = Expansão + Nova Receita manual − Redução − Churn no
+                período.
+              </p>
+            </div>
+          </div>
+
+          {/* Execucao Operacional */}
+          <div className="mt-6">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
+              Execução Operacional
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <ExecKpi
+                icone={<AlertTriangle size={14} className="text-red-300" />}
+                titulo="Clientes em Risco"
+                valor={String(kpis.emRisco)}
+                sub={`${formatBRL(kpis.mrrRisco)} em risco`}
+              />
+              <ExecKpi
+                icone={<Clock size={14} className="text-brand-300" />}
+                titulo="Tempo Médio de Vida"
+                valor={`${kpis.tempoMedioVida.toFixed(1)}m`}
+                sub={`${kpis.ativos} clientes ativos`}
+              />
+              <ExecKpi
+                icone={<CheckCircle2 size={14} className="text-emerald-300" />}
+                titulo="Onboarding Finalizado"
+                valor={formatPct(kpis.pctOnboardingFinalizado)}
+                sub={`${kpis.emOnboarding} em onboarding`}
+              />
+              <ExecKpi
+                icone={<Smile size={14} className="text-amber-300" />}
+                titulo="NPS Médio"
+                valor={kpis.npsMedio !== null ? kpis.npsMedio.toFixed(1) : 'sem dado'}
+                sub={
+                  kpis.npsMedio !== null
+                    ? 'de 0 a 10'
+                    : 'nenhum cliente com NPS preenchido'
+                }
+              />
+            </div>
+          </div>
+
+          {/* Lifetime Value */}
+          <div className="mt-6">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
+              <DollarSign size={12} className="inline mr-1" />
+              Lifetime Value (LTV)
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <ExecKpi
+                icone={<DollarSign size={14} className="text-brand-300" />}
+                titulo="LTV Médio"
+                valor={formatBRL(kpis.ltvMedio)}
+                sub={`ticket médio × tempo médio de vida`}
+                grande
+              />
+              <ExecKpi
+                icone={<Users size={14} className="text-brand-300" />}
+                titulo="LT Médio (Base Ativa)"
+                valor={`${kpis.tempoMedioVida.toFixed(1)} meses`}
+                sub={`${kpis.ativos} clientes ativos`}
+                grande
+              />
+            </div>
+          </div>
+
+          {/* Evolucao de Clientes */}
           <EvolucaoClientes clientes={clientesFiltrados} />
+
+          {/* Score e Saude por Squad */}
           <ScoreSaudeSquads clientes={clientesFiltrados} mesISO={mesISO} />
 
-          {/* Acoes Sugeridas — depois dos squads porque se aplicam por nivel */}
+          {/* Acoes Sugeridas — fica DEPOIS dos squads porque as sugestoes
+              se aplicam por squad classificado. Ordem: primeiro voce ve
+              quem esta bem/mal, depois o que fazer com cada nivel. */}
           <div className="mt-6">
-            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
               Ações Sugeridas
             </p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -539,265 +660,18 @@ export default function VisaoExecutiva() {
             </div>
           </div>
 
+          {/* Visao rapida do setor de Social Media */}
           <SocialMediaVisao clientes={clientesFiltrados} profiles={profiles} />
-        </>
-      ) : (
-        <>
-          {/* Alerta — so o que esta fora da meta */}
-          {temAlerta && (
-            <div className="mb-1 flex flex-wrap items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/[0.06] px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={14} className="text-red-300" />
-                <p className="text-xs font-semibold text-red-200">
-                  {labelMes(mesISO).replace(/^./, (c) => c.toUpperCase())} em alerta
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                {k.nrr < 0.95 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    NRR {formatPct(k.nrr)} <span className="opacity-70">(meta ≥ 95%)</span>
-                  </span>
-                )}
-                {k.churnRate >= 0.1 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    Churn {formatPct(k.churnRate)} <span className="opacity-70">(meta &lt; 10%)</span>
-                  </span>
-                )}
-                {k.saldo < 0 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    Saldo {formatBRLSigned(k.saldo)}
-                  </span>
-                )}
-                {k.emRisco > 0 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    {k.emRisco} em risco ({formatBRL(k.mrrRisco)})
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* ---------------- Aquisicao & Crescimento ---------------- */}
-          <Secao titulo="Aquisição & Crescimento">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <KpiCard
-                label="Novos Clientes"
-                valor={String(k.novos)}
-                tone={k.novos > 0 ? 'emerald' : 'neutral'}
-                delta={pctDelta(k.novos, kAnt.novos)}
-                sub="entraram no mês"
-              />
-              <KpiCard
-                label="MRR Novos"
-                valor={formatBRL(k.mrrNovos)}
-                tone={k.mrrNovos > 0 ? 'emerald' : 'neutral'}
-                delta={pctDelta(k.mrrNovos, kAnt.mrrNovos)}
-                sub="receita dos novos contratos"
-              />
-              <KpiCard
-                label="Expansão (Upsell)"
-                valor={formatBRL(k.expansao)}
-                tone={k.expansao > 0 ? 'emerald' : 'neutral'}
-                delta={pctDelta(k.expansao, kAnt.expansao)}
-                sub={
-                  k.nExpansoes > 0
-                    ? `${k.nExpansoes} ${k.nExpansoes === 1 ? 'registro' : 'registros'}`
-                    : 'nenhum registro no mês'
-                }
-              />
-              <KpiCard
-                label="Em Onboarding"
-                valor={String(k.emOnboarding)}
-                tone="neutral"
-                sub={`${formatPct(k.pctOnboardingFinalizado)} da base já finalizou`}
-              />
-            </div>
-          </Secao>
-
-          {/* ---------------- Pulso do Negocio ---------------- */}
-          <Secao titulo="Pulso do Negócio">
-            {k.semVerba > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-amber-200">
-                <AlertTriangle size={13} className="text-amber-300" />
-                <span>
-                  <strong className="font-semibold">
-                    {k.semVerba} {k.semVerba === 1 ? 'cliente ativo' : 'clientes ativos'}
-                  </strong>{' '}
-                  sem valor mensal preenchido. O MRR pode estar subestimado.
-                </span>
-                <Link to="/clientes" className="font-semibold underline underline-offset-2 hover:text-amber-100">
-                  Ver clientes
-                </Link>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-              <KpiCard
-                label="MRR Atual"
-                valor={formatBRL(k.mrr)}
-                tone="emerald"
-                delta={pctDelta(k.mrr, kAnt.mrr)}
-                sub="vs mês anterior"
-              />
-              <KpiCard
-                label="NRR"
-                valor={formatPct(k.nrr)}
-                tone={k.nrr >= 0.95 ? 'emerald' : k.nrr >= 0.9 ? 'amber' : 'red'}
-                sub="meta ≥ 95%"
-              />
-              <KpiCard
-                label="Saldo do Mês"
-                valor={formatBRLSigned(k.saldo)}
-                tone={k.saldo > 0 ? 'emerald' : k.saldo < 0 ? 'red' : 'neutral'}
-                sub="expansão − redução − churn"
-              />
-              <KpiCard
-                label="Taxa de Renovação"
-                valor={k.taxaRenovacao === null ? '—' : formatPct(k.taxaRenovacao)}
-                tone={
-                  k.taxaRenovacao === null
-                    ? 'neutral'
-                    : k.taxaRenovacao >= 0.8
-                      ? 'emerald'
-                      : k.taxaRenovacao >= 0.5
-                        ? 'amber'
-                        : 'red'
-                }
-                sub={`${k.renovados}/${k.vencidos} ${k.vencidos === 1 ? 'contrato vencido' : 'contratos vencidos'}`}
-              />
-              <KpiCard
-                label="Ticket Médio"
-                valor={formatBRL(k.ticketMedio)}
-                tone="neutral"
-                delta={pctDelta(k.ticketMedio, kAnt.ticketMedio)}
-                sub="por cliente ativo"
-              />
-            </div>
-          </Secao>
-
-          {/* ---------------- Estabilidade e Risco ---------------- */}
-          <Secao titulo="Estabilidade e Risco">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-              <KpiCard
-                label="Clientes Ativos"
-                valor={String(k.ativos)}
-                tone="emerald"
-                delta={pctDelta(k.ativos, kAnt.ativos)}
-                sub={`${k.nAssessoria} assessoria · ${k.nConsultoria} consultoria`}
-              />
-              <KpiCard
-                label="Churn"
-                valor={`${k.churnsNoMes} (${formatPct(k.churnRate)})`}
-                tone={k.churnRate < 0.05 ? 'emerald' : k.churnRate < 0.1 ? 'amber' : 'red'}
-                delta={pctDelta(k.churnsNoMes, kAnt.churnsNoMes)}
-                deltaInvert
-                sub="meta < 10%"
-              />
-              <KpiCard
-                label="MRR Perdido"
-                valor={formatBRL(k.mrrPerdido)}
-                tone={k.mrrPerdido > 0 ? 'red' : 'emerald'}
-                delta={pctDelta(k.mrrPerdido, kAnt.mrrPerdido)}
-                deltaInvert
-                sub={
-                  k.churnsNoMes > 0
-                    ? `${k.churnsNoMes} ${k.churnsNoMes === 1 ? 'cliente perdido' : 'clientes perdidos'}`
-                    : 'nenhum churn no mês'
-                }
-              />
-              <KpiCard
-                label="MRR em Risco"
-                valor={formatBRL(k.mrrRisco)}
-                tone={k.emRisco > 0 ? 'amber' : 'emerald'}
-                sub={`${k.emRisco} ${k.emRisco === 1 ? 'cliente' : 'clientes'} em atenção`}
-              />
-              <KpiCard
-                label="Contratos a Vencer"
-                valor={String(k.aVencer)}
-                tone={k.aVencer > 0 ? 'amber' : 'emerald'}
-                sub={`${formatBRL(k.mrrAVencer)} nos próximos 30 dias`}
-              />
-            </div>
-          </Secao>
-
-          {/* ---------------- Qualidade da Receita ---------------- */}
-          <Secao titulo="Qualidade da Receita">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <KpiCard
-                label="LTV Médio"
-                valor={formatBRL(k.ltvMedio)}
-                tone="emerald"
-                sub="ticket médio × permanência média"
-              />
-              <KpiCard
-                label="Permanência Média"
-                valor={`${Math.round(k.permanenciaMedia)} ${Math.round(k.permanenciaMedia) === 1 ? 'mês' : 'meses'}`}
-                tone="neutral"
-                sub="tempo médio dos clientes ativos"
-              />
-              <KpiCard
-                label="Tempo até Churn"
-                valor={
-                  k.tempoAteChurn === null
-                    ? '—'
-                    : `${Math.round(k.tempoAteChurn)} ${Math.round(k.tempoAteChurn) === 1 ? 'mês' : 'meses'}`
-                }
-                tone={k.tempoAteChurn === null ? 'neutral' : 'amber'}
-                sub={k.tempoAteChurn === null ? 'nenhum cliente perdido' : 'média antes de cancelar'}
-              />
-              <KpiCard
-                label="NPS Médio"
-                valor={k.npsMedio === null ? '—' : k.npsMedio.toFixed(1)}
-                tone={
-                  k.npsMedio === null
-                    ? 'neutral'
-                    : k.npsMedio >= 9
-                      ? 'emerald'
-                      : k.npsMedio >= 7
-                        ? 'amber'
-                        : 'red'
-                }
-                sub={
-                  k.npsMedio === null
-                    ? 'nenhum NPS registrado'
-                    : `${k.nNps} ${k.nNps === 1 ? 'resposta' : 'respostas'} · escala 0 a 10`
-                }
-              />
-            </div>
-          </Secao>
-
-          {/* ---------------- Tendencias ---------------- */}
-          <Secao titulo="Tendências (12 meses)">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <MiniTendencia
-                id="mrr"
-                titulo="Evolução do MRR"
-                labels={serie.map((p) => p.label)}
-                valores={serie.map((p) => p.mrr)}
-                cor="#34d399"
-                formato={formatBRLCompacto}
-              />
-              <MiniTendencia
-                id="ativos"
-                titulo="Clientes Ativos"
-                labels={serie.map((p) => p.label)}
-                valores={serie.map((p) => p.ativos)}
-                cor="#a78bfa"
-                formato={(v) => String(v)}
-              />
-              <MiniTendencia
-                id="churn"
-                titulo="Churn Mensal"
-                labels={serie.map((p) => p.label)}
-                valores={serie.map((p) => p.churns)}
-                cor="#f87171"
-                formato={(v) => String(v)}
-              />
-            </div>
-          </Secao>
+          {/* Rodape com placeholders v2 */}
+          <div className="mt-8 rounded-xl border border-dashed border-border bg-bg-soft/30 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+              Próximos blocos (v2)
+            </p>
+            <ul className="mt-2 space-y-1 text-[11px] text-muted">
+              <li>· Tracking de indicações por squad</li>
+            </ul>
+          </div>
         </>
       )}
 
@@ -860,192 +734,87 @@ function FiltroPill({
   )
 }
 
-/** Secao colapsavel — chevron + titulo, como na referencia. */
-function Secao({
+function SubKpi({
   titulo,
-  children,
-  defaultOpen = true,
-}: {
-  titulo: string
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <section className="mt-5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="mb-2.5 flex items-center gap-1.5 text-left"
-        aria-expanded={open}
-      >
-        <ChevronDown
-          size={14}
-          className={cn('text-muted transition-transform duration-200', !open && '-rotate-90')}
-        />
-        <span className="text-xs font-semibold text-zinc-100">{titulo}</span>
-      </button>
-      {open && children}
-    </section>
-  )
-}
-
-/** Delta vs mes anterior. invert = subir e' ruim (churn, perdas). */
-function Delta({ pct, invert = false }: { pct: number | null; invert?: boolean }) {
-  if (pct === null) return null
-  const up = pct > 0.0005
-  const down = pct < -0.0005
-  const bom = invert ? down : up
-  const ruim = invert ? up : down
-  const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Minus
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums',
-        bom ? 'text-emerald-400' : ruim ? 'text-red-400' : 'text-muted',
-      )}
-      title="Variação vs mês anterior"
-    >
-      <Icon size={11} />
-      {up ? '+' : ''}
-      {(pct * 100).toFixed(1)}%
-    </span>
-  )
-}
-
-function KpiCard({
-  label,
   valor,
-  tone = 'neutral',
-  delta,
-  deltaInvert,
+  tone,
   sub,
 }: {
-  label: string
+  titulo: string
   valor: string
-  tone?: Tone
-  delta?: number | null
-  deltaInvert?: boolean
+  tone: Tone
   sub?: string
 }) {
   return (
-    <div className="rounded-xl border border-border bg-bg-card px-4 py-3.5 transition-colors hover:border-border/80">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</p>
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <p className={cn('text-2xl font-bold tabular-nums leading-none', toneText[tone])}>{valor}</p>
-        {delta !== undefined && <Delta pct={delta} invert={deltaInvert} />}
-      </div>
-      {sub && <p className="mt-1.5 text-[10px] text-muted">{sub}</p>}
+    <div>
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">{titulo}</p>
+      <p className={cn('mt-1 text-2xl font-bold tabular-nums leading-none', toneText[tone])}>
+        {valor}
+      </p>
+      {sub && <p className="mt-1.5 text-[9px] uppercase tracking-wider text-muted">{sub}</p>}
     </div>
   )
 }
 
-/**
- * Mini grafico de area (tendencia 12 meses). SVG puro, cores via classes
- * de tema (grid/texto) + hex da serie (line/gradient).
- */
-function MiniTendencia({
-  id,
-  titulo,
-  labels,
-  valores,
-  cor,
-  formato,
+function LinhaResultado({
+  icone,
+  label,
+  valor,
+  tone,
+  sub,
 }: {
-  id: string
-  titulo: string
-  labels: string[]
-  valores: number[]
-  cor: string
-  formato: (v: number) => string
+  icone: React.ReactNode
+  label: string
+  valor: number
+  tone: 'emerald' | 'amber' | 'red'
+  sub?: string
 }) {
-  const W = 320
-  const H = 132
-  const padL = 44
-  const padR = 10
-  const padT = 10
-  const padB = 22
-  const chartW = W - padL - padR
-  const chartH = H - padT - padB
-  const n = valores.length
-  const { max, ticks } = niceScale(Math.max(0, ...valores))
-  const ticksVis = ticks.length > 5 ? ticks.filter((_, i) => i % 2 === 0) : ticks
-  const x = (i: number) => padL + (n > 1 ? (chartW * i) / (n - 1) : chartW / 2)
-  const y = (v: number) => padT + chartH - (v / max) * chartH
-  const pontos = valores.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
-  const linha = pontos.join(' ')
-  const area = `M${x(0).toFixed(1)},${(padT + chartH).toFixed(1)} L${pontos.join(' L')} L${x(n - 1).toFixed(1)},${(padT + chartH).toFixed(1)} Z`
-  const atual = valores[n - 1] ?? 0
-  const anterior = valores[n - 2] ?? 0
-  const delta = pctDelta(atual, anterior)
-  const gradId = `grad-tend-${id}`
-  const semDados = valores.every((v) => v === 0)
-
   return (
-    <div className="rounded-xl border border-border bg-bg-card p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <TrendingUp size={13} style={{ color: cor }} />
-          <p className="text-xs font-semibold text-zinc-100">{titulo}</p>
-        </div>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-xs font-semibold tabular-nums text-zinc-200">{formato(atual)}</span>
-          <Delta pct={delta} invert={id === 'churn'} />
+    <div className="flex items-center justify-between rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="grid h-5 w-5 place-items-center rounded-full bg-bg-elev">{icone}</span>
+        <div>
+          <span className="text-xs text-zinc-200">{label}</span>
+          {sub && <span className="ml-1.5 text-[10px] text-muted">· {sub}</span>}
         </div>
       </div>
-      {semDados ? (
-        <div className="flex h-[120px] items-center justify-center rounded-lg border border-dashed border-border bg-bg-soft/30">
-          <p className="text-[11px] text-muted">Sem dados nos últimos 12 meses</p>
-        </div>
-      ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={titulo}>
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={cor} stopOpacity="0.28" />
-              <stop offset="100%" stopColor={cor} stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          {ticksVis.map((t) => (
-            <g key={t}>
-              <line
-                x1={padL}
-                x2={padL + chartW}
-                y1={y(t)}
-                y2={y(t)}
-                className="stroke-border"
-                strokeDasharray="2 3"
-              />
-              <text x={padL - 6} y={y(t) + 3} textAnchor="end" fontSize="8" className="fill-muted">
-                {formato(t)}
-              </text>
-            </g>
-          ))}
-          <path d={area} fill={`url(#${gradId})`} />
-          <polyline
-            points={linha}
-            fill="none"
-            stroke={cor}
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          <circle cx={x(n - 1)} cy={y(atual)} r="3" fill={cor} />
-          {labels.map((l, i) =>
-            i % 2 === 0 ? (
-              <text
-                key={l}
-                x={x(i)}
-                y={H - 6}
-                textAnchor="middle"
-                fontSize="8"
-                className="fill-muted"
-              >
-                {l}
-              </text>
-            ) : null,
-          )}
-        </svg>
-      )}
+      <span
+        className={cn(
+          'text-sm font-semibold tabular-nums',
+          tone === 'emerald' ? 'text-emerald-300' : tone === 'amber' ? 'text-amber-300' : 'text-red-300',
+        )}
+      >
+        {formatBRL(valor)}
+      </span>
+    </div>
+  )
+}
+
+function ExecKpi({
+  icone,
+  titulo,
+  valor,
+  sub,
+  grande = false,
+}: {
+  icone: React.ReactNode
+  titulo: string
+  valor: string
+  sub?: string
+  grande?: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-bg-card p-4">
+      <div className="mb-2 flex items-center gap-2">
+        {icone}
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          {titulo}
+        </p>
+      </div>
+      <p className={cn('font-bold tabular-nums text-zinc-100', grande ? 'text-3xl' : 'text-2xl')}>
+        {valor}
+      </p>
+      {sub && <p className="mt-1 text-[10px] text-muted">{sub}</p>}
     </div>
   )
 }
@@ -1175,19 +944,14 @@ function calculaEvolucao(clientes: Cliente[]): MesEvolucao[] {
  */
 function niceScale(maxValor: number): { max: number; ticks: number[] } {
   if (maxValor <= 0) return { max: 1, ticks: [0, 1] }
-  // Passo "bonito" em qualquer magnitude: normaliza pra [1,10) e
-  // arredonda pra 1 / 2 / 2.5 / 5 / 10 — funciona tanto pra contagem
-  // (3, 7, 23) quanto pra MRR (1.046.500 -> ticks de 250k).
+  // Passos "bonitos" — arredonda pra multiplos que produzem ticks limpos
+  const passos = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]
   const alvoTicks = 5
   const stepIdeal = maxValor / alvoTicks
-  const mag = 10 ** Math.floor(Math.log10(stepIdeal))
-  const norm = stepIdeal / mag
-  const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10
-  // Nunca abaixo de 1 — contagens e R$ sao inteiros
-  const step = Math.max(1, nice * mag)
-  const max = Math.ceil(maxValor / step - 1e-9) * step
+  const step = passos.find((p) => p >= stepIdeal) ?? Math.ceil(stepIdeal / 100) * 100
+  const max = Math.ceil(maxValor / step) * step
   const ticks: number[] = []
-  for (let i = 0; i * step <= max + 1e-9; i++) ticks.push(Math.round(i * step * 1e6) / 1e6)
+  for (let v = 0; v <= max; v += step) ticks.push(v)
   return { max, ticks }
 }
 
