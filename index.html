@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" class="dark">
+<html lang="pt-BR" class="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -18,7 +18,8 @@
       (function () {
         try {
           var t = localStorage.getItem('domus-theme') || localStorage.getItem('movmed-theme');
-          var theme = t === 'light' ? 'light' : 'dark';
+          // Light e' o padrao; dark so' se o usuario escolheu.
+          var theme = t === 'dark' ? 'dark' : 'light';
           document.documentElement.classList.remove('dark', 'light');
           document.documentElement.classList.add(theme);
         } catch (e) {}

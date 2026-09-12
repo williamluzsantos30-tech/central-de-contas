@@ -1036,16 +1036,15 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
                     x2={padL + chartW}
                     y1={y}
                     y2={y}
-                    stroke="rgb(38 38 46)"
+                    className="stroke-border"
                     strokeDasharray="2 3"
-                    strokeOpacity="0.6"
                   />
                   <text
                     x={padL - 8}
                     y={y + 3}
                     textAnchor="end"
                     fontSize="10"
-                    fill="rgb(113 113 122)"
+                    className="fill-muted"
                   >
                     {t}
                   </text>
@@ -1123,7 +1122,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
                     y={H - 8}
                     textAnchor="middle"
                     fontSize="10"
-                    fill="rgb(161 161 170)"
+                    className="fill-muted"
                   >
                     {d.mesLabel}
                   </text>

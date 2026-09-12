@@ -1,3 +1,17 @@
+// Shades claras (50-400) de cada familia viram CSS vars que trocam de
+// lado no light mode (ver bloco gerado no fim de src/index.css):
+// dark: text-emerald-300 = emerald-300 · light: = emerald-700.
+// Assim os ~1.400 usos de text-*-100/200/300/400 ficam legiveis nos dois
+// temas sem tocar em componente. 500-950 continuam fixos.
+const FAMILIAS_TEMA = [
+  'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan',
+  'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'stone',
+]
+const shadesTema = (nome) =>
+  Object.fromEntries(
+    [50, 100, 200, 300, 400].map((s) => [s, `rgb(var(--${nome}-${s}) / <alpha-value>)`]),
+  )
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
@@ -9,6 +23,7 @@ export default {
         serif: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
       },
       colors: {
+        ...Object.fromEntries(FAMILIAS_TEMA.map((f) => [f, shadesTema(f)])),
         // Cores semanticas via CSS variables — definidas em src/index.css
         // (:root = dark, html.light = light). Permite toggle de tema sem
         // mexer em cada componente.
@@ -26,11 +41,8 @@ export default {
         // Diferencia do "SaaS bancario" (azul) e diz "moderno" sem
         // ser hype-startup-de-IA.
         brand: {
-          50: '#f5f3ff',
-          100: '#ede9fe',
-          200: '#ddd6fe',
-          300: '#c4b5fd',
-          400: '#a78bfa',
+          // 50-400 seguem o mesmo flip de tema (vars --brand-*)
+          ...shadesTema('brand'),
           500: '#8b5cf6',
           600: '#7c3aed',
           700: '#6d28d9',

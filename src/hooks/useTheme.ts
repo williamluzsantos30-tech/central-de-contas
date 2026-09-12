@@ -8,12 +8,14 @@ export type Theme = 'dark' | 'light'
 const STORAGE_KEY = 'domus-theme'
 const LEGACY_KEY = 'movmed-theme'
 
+// Light e' o padrao (conteudo claro, chrome escuro via .theme-dark).
+// Dark so' quando o usuario escolheu explicitamente.
 function readPersisted(): Theme {
-  if (typeof window === 'undefined') return 'dark'
+  if (typeof window === 'undefined') return 'light'
   const v =
     window.localStorage.getItem(STORAGE_KEY) ??
     window.localStorage.getItem(LEGACY_KEY)
-  return v === 'light' ? 'light' : 'dark'
+  return v === 'dark' ? 'dark' : 'light'
 }
 
 function apply(theme: Theme) {
