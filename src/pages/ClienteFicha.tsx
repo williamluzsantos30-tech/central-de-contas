@@ -22,6 +22,7 @@
  * necessario quando muda status via "Marcar Risco".
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Pencil,
   Phone,
@@ -405,6 +406,19 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   const [perdaModalOpen, setPerdaModalOpen] = useState(false)
   const [eventos, setEventos] = useState<ClienteEvento[]>([])
   const [loadingEventos, setLoadingEventos] = useState(true)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Vindo de "Renovações" (botão Renovação → ?edit=contrato): abre direto
+  // o modal do contrato pra atualizar. Limpa o param pra não reabrir.
+  useEffect(() => {
+    if (searchParams.get('edit') === 'contrato') {
+      setContratoModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('edit')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function loadEventos() {
     setLoadingEventos(true)

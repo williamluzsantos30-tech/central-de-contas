@@ -14,7 +14,7 @@ import {
   AlertCircle,
   XCircle,
   Search,
-  ArrowRight,
+  RefreshCw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { cn } from '@/lib/utils'
@@ -226,11 +226,11 @@ function RenewalsTable({ linhas }: { linhas: LinhaRenovacao[] }) {
                 </td>
                 <td className="px-3 py-3 text-right">
                   <Link
-                    to={`/clientes/${l.id}`}
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:border-brand-500/50 hover:text-brand-300"
-                    title="Abrir a ficha do cliente para gerenciar o contrato"
+                    to={`/clientes/${l.id}?edit=contrato`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:border-brand-500/50 hover:text-brand-300"
+                    title="Abrir o contrato do cliente para atualizar"
                   >
-                    Iniciar Protocolo <ArrowRight size={11} />
+                    <RefreshCw size={11} /> Renovação
                   </Link>
                 </td>
               </tr>
