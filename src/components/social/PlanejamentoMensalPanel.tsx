@@ -104,20 +104,34 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
   })
 
-  const planoDoMes = useMemo(
+  // Pode existir mais de um plano com o mesmo mes_referencia (duplicado
+  // criado por engano, ou item ligado a outro plano). Pegamos todos os
+  // planos do mes e preferimos, como "plano do mes", aquele que ja tem
+  // itens — assim nao caimos num plano vazio duplicado.
+  const planosDoMes = useMemo(
     () =>
-      planejamentos.find(
+      planejamentos.filter(
         (p) => p.mes_referencia && p.mes_referencia.slice(0, 7) === mesISO.slice(0, 7),
-      ) ?? null,
+      ),
     [planejamentos, mesISO],
   )
 
+  const planoDoMes = useMemo(() => {
+    if (planosDoMes.length === 0) return null
+    return planosDoMes.find((p) => items.some((i) => i.producao_id === p.id)) ?? planosDoMes[0]
+  }, [planosDoMes, items])
+
+  // Itens do mes = qualquer item de um plano do mes OU agendado (prazo)
+  // dentro do mes. Isso garante que tudo que aparece no Calendario (que
+  // filtra por prazo) tambem apareca aqui — antes o Planejamento so via
+  // os itens de um unico plano e ficava vazio quando havia divergencia.
   const itemsDoMes = useMemo(() => {
-    if (!planoDoMes) return []
+    const m = mesISO.slice(0, 7)
+    const planoIds = new Set(planosDoMes.map((p) => p.id))
     return items
-      .filter((i) => i.producao_id === planoDoMes.id)
+      .filter((i) => planoIds.has(i.producao_id) || (i.prazo && i.prazo.slice(0, 7) === m))
       .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? '') || a.ordem - b.ordem)
-  }, [items, planoDoMes])
+  }, [items, planosDoMes, mesISO])
 
   function shiftMes(delta: number) {
     const [y, m] = mesISO.split('-').map(Number)
