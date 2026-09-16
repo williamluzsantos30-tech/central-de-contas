@@ -119,10 +119,10 @@ function mesLabel(mesAno: string): string {
 const JORNADA_LABEL: Record<string, { label: string; descricao: string; ordem: number }> = {
   onboarding: { label: 'Onboarding', descricao: 'Primeiros 30 dias — estruturando a base.', ordem: 0 },
   otimizacao: { label: 'Otimização', descricao: 'Campanhas rodando e sendo refinadas.', ordem: 1 },
-  expansao: { label: 'Expansão', descricao: 'Escalando o que funciona.', ordem: 2 },
-  retencao: { label: 'Retenção', descricao: 'Sustentando resultados e relacionamento.', ordem: 3 },
+  escala: { label: 'Escala', descricao: 'Escalando o que funciona.', ordem: 2 },
 }
-const JORNADA_ORDEM = ['onboarding', 'otimizacao', 'expansao', 'retencao']
+// Fases mostradas ao cliente (churn é estado interno, não vira tile).
+const JORNADA_ORDEM = ['onboarding', 'otimizacao', 'escala']
 
 const CONTRATO_TIPO_LABEL: Record<string, string> = {
   mensal: 'Mensal',
@@ -307,7 +307,7 @@ export default function PublicoPortal() {
             <Rocket size={14} className="text-brand-300" />
             <h2 className="text-sm font-semibold">Onde estamos</h2>
           </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {JORNADA_ORDEM.map((k, i) => {
               const cfg = JORNADA_LABEL[k]
               const ativa = i === jornadaIdx

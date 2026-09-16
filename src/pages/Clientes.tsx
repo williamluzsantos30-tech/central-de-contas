@@ -12,7 +12,6 @@ import {
   formatDate,
   JORNADAS_CLIENTE,
   jornadaClienteLabel,
-  statusClienteLabel,
   tipoClienteLabel,
 } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
@@ -385,12 +384,22 @@ function ChipSelect({
   )
 }
 
-/** Chip de status — pill compacta com borda + bg alpha. */
-const STATUS_CHIP: Record<Cliente['status'], string> = {
-  ativo: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200',
-  atencao: 'border-amber-500/50 bg-amber-500/15 text-amber-200',
-  pausado: 'border-zinc-500/50 bg-zinc-500/15 text-zinc-200',
-  churn: 'border-red-500/50 bg-red-500/15 text-red-200',
+/**
+ * Situação do cliente pro chip da coluna STATUS. Cliente em onboarding
+ * ganha destaque azul (fase de entrada); fora disso, mapeia o status:
+ * estável (verde), atenção (amarelo), pausado (cinza), churn (vermelho).
+ */
+function situacaoCliente(c: Cliente): { label: string; cls: string } {
+  if (c.jornada === 'onboarding') {
+    return { label: 'Onboarding', cls: 'border-sky-500/50 bg-sky-500/15 text-sky-200' }
+  }
+  const map: Record<Cliente['status'], { label: string; cls: string }> = {
+    ativo: { label: 'Estável', cls: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200' },
+    atencao: { label: 'Atenção', cls: 'border-amber-500/50 bg-amber-500/15 text-amber-200' },
+    pausado: { label: 'Pausado', cls: 'border-zinc-500/50 bg-zinc-500/15 text-zinc-200' },
+    churn: { label: 'Churn', cls: 'border-red-500/50 bg-red-500/15 text-red-200' },
+  }
+  return map[c.status]
 }
 
 /** Avatar circular com iniciais — usado no cliente e no AM/Social. */
@@ -441,6 +450,7 @@ function ClienteRow({
   onEditar: () => void
 }) {
   const lt = mesesCasa(c.data_inicio)
+  const situacao = situacaoCliente(c)
   const semaforoCor = {
     verde: 'bg-emerald-400',
     amarelo: 'bg-amber-400',
@@ -516,15 +526,15 @@ function ClienteRow({
         {lt}m
       </td>
 
-      {/* Status */}
+      {/* Status — situação (Onboarding azul / Estável verde / Atenção amarelo) */}
       <td className="px-3 py-3 whitespace-nowrap">
         <span
           className={cn(
             'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
-            STATUS_CHIP[c.status],
+            situacao.cls,
           )}
         >
-          {statusClienteLabel[c.status]}
+          {situacao.label}
         </span>
       </td>
 

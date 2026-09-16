@@ -119,15 +119,15 @@ export const TIPOS_CLIENTE: TipoCliente[] = ['assessoria', 'consultoria']
 export const jornadaClienteLabel: Record<JornadaCliente, string> = {
   onboarding: 'Onboarding',
   otimizacao: 'Otimização',
-  expansao: 'Expansão',
-  retencao: 'Retenção',
+  escala: 'Escala',
+  churn: 'Churn',
 }
 
 export const JORNADAS_CLIENTE: JornadaCliente[] = [
   'onboarding',
   'otimizacao',
-  'expansao',
-  'retencao',
+  'escala',
+  'churn',
 ]
 
 // Jornadas específicas do operacional Social Media (playbook):
