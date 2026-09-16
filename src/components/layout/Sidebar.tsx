@@ -17,6 +17,7 @@ import {
   Moon,
   Activity,
   TrendingUp,
+  UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -62,6 +63,7 @@ const nav: Group[] = [
     // Sem modulo — visao executiva e' meta-modulo, cruza tudo
     items: [
       { to: '/operacional/visao', label: 'Visão Executiva', icon: TrendingUp },
+      { to: '/clientes/onboarding', label: 'Onboarding', icon: UserPlus },
     ],
   },
   {
@@ -233,7 +235,7 @@ function NavItem({ to, label, icon: Icon, end }: Item) {
           'group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
           'transition-all duration-200 ease-out',
           isActive
-            ? 'bg-brand-500/15 text-brand-200 shadow-[inset_2px_0_0_0_#f97316]'
+            ? 'bg-brand-500/15 text-brand-200 shadow-[inset_2px_0_0_0_#7c3aed]'
             : 'text-zinc-300 hover:bg-bg-elev hover:text-zinc-100 hover:translate-x-0.5',
         )
       }
