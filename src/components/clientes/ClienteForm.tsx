@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Users2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -56,7 +57,23 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
   const [profilesAll, setProfilesAll] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { nomes: squadsAtivos } = useSquads()
+  const { nomes: squadsAtivos, squads } = useSquads()
+
+  // Squad selecionado (por nome) + seus membros — pra mostrar "membros
+  // deste squad" e marcar "(mesmo squad)" nos dropdowns de responsáveis.
+  const squadSelecionadoId = useMemo(
+    () => squads.find((s) => s.nome === form.squad)?.id ?? null,
+    [squads, form.squad],
+  )
+  const membrosSquad = useMemo(
+    () =>
+      squadSelecionadoId
+        ? profilesAll.filter((p) => p.squad_id === squadSelecionadoId)
+        : [],
+    [profilesAll, squadSelecionadoId],
+  )
+  const mesmoSquad = (p: Profile) =>
+    squadSelecionadoId && p.squad_id === squadSelecionadoId ? ' (mesmo squad)' : ''
 
   // Profiles agrupados por cargo — cada dropdown só lista quem é
   // diretamente vinculado àquela função.
@@ -209,7 +226,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     <Modal
       open={open}
       onClose={onClose}
-      title={cliente ? 'Editar cliente' : 'Novo cliente'}
+      title={cliente ? `Editar Cliente: ${cliente.nome}` : 'Novo cliente'}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>
@@ -237,7 +254,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             checked={form.modulos.includes('trafego')}
             onChange={() => toggleModulo('trafego')}
             label="Tráfego pago"
-            tone="orange"
+            tone="sky"
           />
           <ModuloCheckbox
             checked={form.modulos.includes('social_media')}
@@ -251,31 +268,15 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Nome *" full>
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Nome *">
           <Input
             value={form.nome}
             onChange={(e) => setForm({ ...form, nome: e.target.value })}
             placeholder="Clínica Exemplo"
           />
         </Field>
-        <Field label="Especialidade">
-          <Input
-            value={form.nicho}
-            onChange={(e) => setForm({ ...form, nicho: e.target.value })}
-            placeholder="Ex: Dermatologia, Cardiologia..."
-          />
-        </Field>
-        <Field label="Tipo de Serviço *">
-          <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-            <option value="">—</option>
-            {TIPOS_CLIENTE.map((t) => (
-              <option key={t} value={t}>
-                {tipoClienteLabel[t]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+
         <Field label="Squad *">
           <Select value={form.squad} onChange={(e) => setForm({ ...form, squad: e.target.value })}>
             <option value="">Selecione o squad</option>
@@ -290,6 +291,28 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             ))}
           </Select>
         </Field>
+        {form.squad && (
+          <div className="-mt-1 rounded-lg border border-border bg-bg-soft px-3 py-2.5">
+            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+              <Users2 size={11} /> Membros deste squad
+            </p>
+            {membrosSquad.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {membrosSquad.map((m) => (
+                  <span
+                    key={m.id}
+                    className="rounded border border-border bg-bg-elev px-1.5 py-0.5 text-[11px] text-zinc-300"
+                  >
+                    {m.nome}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted">Nenhum membro vinculado a este squad ainda.</p>
+            )}
+          </div>
+        )}
+
         <Field label="Account Manager *">
           <Select
             value={form.account_manager_id}
@@ -299,20 +322,23 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             {accountManagers.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.nome}
+                {mesmoSquad(g)}
               </option>
             ))}
           </Select>
         </Field>
+
         {temTrafego && (
           <Field label="Gestor de Tráfego (opcional)">
             <Select
               value={form.gestor_id}
               onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
             >
-              <option value="">Selecione (opcional)</option>
+              <option value="">Nenhum</option>
               {gestoresTrafego.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.nome}
+                  {mesmoSquad(g)}
                 </option>
               ))}
             </Select>
@@ -324,31 +350,17 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
               value={form.social_media_id}
               onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
             >
-              <option value="">Selecione (opcional)</option>
+              <option value="">Nenhum</option>
               {socialMedias.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.nome}
+                  {mesmoSquad(g)}
                 </option>
               ))}
             </Select>
           </Field>
         )}
-        <Field label="Status">
-          <Select
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-          >
-            <option value="ativo">Ativo</option>
-            <option value="atencao">Atenção</option>
-            <option value="pausado">Pausado</option>
-            <option value="churn">Churn</option>
-          </Select>
-        </Field>
-        {/* Jornada, Plataformas, Verbas de anuncio e Fonte CRM removidas do
-            form de cadastro — pedido do dono da agencia pra ficar enxuto.
-            Jornada e' auto-preenchida como 'onboarding' no save (todo cliente
-            novo comeca por ai). Verbas/plataforma/CRM sao editaveis depois
-            em outras telas (v2 vai ter tela de config avancada). */}
+
         <Field label="Ticket Mensal (R$) *">
           <Input
             type="number"
@@ -362,14 +374,37 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
             Fee mensal que o cliente paga pra agência. Alimenta o MRR na Visão Executiva.
           </p>
         </Field>
-        <Field label="Data de entrada">
+
+        <Field label="Data de Entrada">
           <Input
             type="date"
             value={form.data_inicio}
             onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
           />
         </Field>
-        <Field label="Observações" full>
+
+        <Field label="Especialidade">
+          <Input
+            value={form.nicho}
+            onChange={(e) => setForm({ ...form, nicho: e.target.value })}
+            placeholder="Ex: Dermatologia, Cardiologia..."
+          />
+        </Field>
+
+        {/* Campos que alimentam KPIs/relatórios — mantidos abaixo dos
+            principais. Jornada/verbas/plataforma/CRM saíram (form enxuto);
+            jornada nova = 'onboarding' automático no save. */}
+        <Field label="Tipo de Serviço *">
+          <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+            <option value="">—</option>
+            {TIPOS_CLIENTE.map((t) => (
+              <option key={t} value={t}>
+                {tipoClienteLabel[t]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Observações">
           <Textarea
             value={form.observacoes}
             onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
@@ -398,11 +433,11 @@ function ModuloCheckbox({
   checked: boolean
   onChange: () => void
   label: string
-  tone: 'orange' | 'pink'
+  tone: 'sky' | 'pink'
 }) {
   const baseChecked =
-    tone === 'orange'
-      ? 'border-orange-400/60 bg-orange-500/15 text-orange-200'
+    tone === 'sky'
+      ? 'border-sky-400/60 bg-sky-500/15 text-sky-200'
       : 'border-pink-400/60 bg-pink-500/15 text-pink-200'
   const baseUnchecked =
     'border-border bg-bg-elev text-muted hover:text-zinc-200 hover:border-zinc-500'
@@ -419,8 +454,8 @@ function ModuloCheckbox({
         className={
           'inline-grid h-3.5 w-3.5 place-items-center rounded border ' +
           (checked
-            ? tone === 'orange'
-              ? 'border-orange-400 bg-orange-400/30'
+            ? tone === 'sky'
+              ? 'border-sky-400 bg-sky-400/30'
               : 'border-pink-400 bg-pink-400/30'
             : 'border-zinc-500')
         }
