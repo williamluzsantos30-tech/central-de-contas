@@ -386,45 +386,25 @@ export default function VisaoExecutiva() {
             </div>
           )}
 
-          {/* Banner de alerta condicional */}
-          {temAlerta && (
-            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/[0.06] px-4 py-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={14} className="text-red-300" />
-                <p className="text-xs font-semibold text-red-200">
-                  {labelMes(mesISO)} em alerta
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                {/* Mostra so o que ESTA fora da meta — nao polui com KPIs OK */}
-                {kpis.nrr < 0.95 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    NRR {formatPct(kpis.nrr)} <span className="opacity-70">(meta ≥ 95%)</span>
-                  </span>
-                )}
-                {kpis.churnRate >= 0.1 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    Churn {formatPct(kpis.churnRate)}{' '}
-                    <span className="opacity-70">(meta &lt; 10%)</span>
-                  </span>
-                )}
-                {kpis.saldo < 0 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    Saldo {formatBRLSigned(kpis.saldo)}
-                  </span>
-                )}
-                {kpis.emRisco > 0 && (
-                  <span className="flex items-center gap-1 text-red-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                    {kpis.emRisco} em risco ({formatBRL(kpis.mrrRisco)})
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Farol rapido — NRR / Churn Rate / Saldo / Risco.
+              Verde = dentro da meta, vermelho = fora. Sempre visivel;
+              a moldura so fica vermelha quando algo esta fora. */}
+          <div
+            className={cn(
+              'mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2',
+              temAlerta ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-border bg-bg-card',
+            )}
+          >
+            {temAlerta && <AlertTriangle size={13} className="mr-1 text-red-300" />}
+            <Farol ok={kpis.nrr >= 0.95} label="NRR" valor={formatPct(kpis.nrr)} />
+            <Farol ok={kpis.churnRate < 0.1} label="Churn Rate" valor={formatPct(kpis.churnRate)} />
+            <Farol ok={kpis.saldo >= 0} label="Saldo" valor={formatBRLSigned(kpis.saldo)} />
+            <Farol
+              ok={kpis.emRisco === 0}
+              label="Risco"
+              valor={kpis.emRisco === 0 ? '0' : `${kpis.emRisco} · ${formatBRL(kpis.mrrRisco)}`}
+            />
+          </div>
 
           {/* Bloco principal — MRR + KPIs em grade */}
           <div className="rounded-xl border border-border bg-bg-card p-6">
@@ -731,6 +711,25 @@ function FiltroPill({
         </option>
       ))}
     </select>
+  )
+}
+
+/** Pill do farol: ponto verde/vermelho + label + valor compacto. */
+function Farol({ ok, label, valor }: { ok: boolean; label: string; valor: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wider',
+        ok
+          ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-300'
+          : 'border-red-500/40 bg-red-500/10 text-red-300',
+      )}
+      title={ok ? 'Dentro da meta' : 'Fora da meta'}
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', ok ? 'bg-emerald-400' : 'bg-red-400')} />
+      {label}
+      <span className="normal-case tracking-normal tabular-nums opacity-80">{valor}</span>
+    </span>
   )
 }
 
