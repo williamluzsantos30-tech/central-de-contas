@@ -67,14 +67,14 @@ import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
 import { etapasParaModulos, progressoOnboarding } from '@/lib/onboardingTemplate'
 
-// Meses entre uma ISO date e hoje
+// Meses de casa, inteiros — o mes em curso conta (entrou hoje = 1 mes,
+// 45 dias = 2 meses). Mesma regra da Visao Executiva e da lista.
 function mesesDesde(iso: string | null): number {
   if (!iso) return 0
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
-  const hoje = new Date()
-  const diffMs = hoje.getTime() - d.getTime()
-  return Math.max(0, diffMs / (1000 * 60 * 60 * 24 * 30.44))
+  const diffMs = Date.now() - d.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44))) + 1
 }
 
 /**
@@ -171,9 +171,12 @@ function calcularLtvDetalhado(
   const totalDelta = movimentacoes.reduce((s, m) => s + m.valor, 0)
   const mrrInicial = Math.max(0, mrrAtual - totalDelta)
 
-  // Monta periodos
+  // Monta periodos. Meses sao contados de forma cumulativa a partir da
+  // data_inicio (nao periodo a periodo) pra nao perder mes no
+  // arredondamento; o mes em curso conta e vai pro ultimo periodo.
   const periodos: LtvPeriodo[] = []
   let inicioAtual = dataInicio
+  const mesesAt = (iso: string) => mesesEntre(dataInicio, iso)
   let mrrAtualPeriodo = mrrInicial
   const composicaoAtual: string[] = [`Ticket inicial: ${formatBRLShort(mrrInicial)}`]
 
@@ -190,7 +193,7 @@ function calcularLtvDetalhado(
       continue
     }
 
-    const meses = mesesEntre(inicioAtual, mov.data)
+    const meses = mesesAt(mov.data) - mesesAt(inicioAtual)
     const dias = diasEntre(inicioAtual, mov.data)
     // Sempre empurra o periodo — mesmo com 0 meses. Isso torna
     // visivel o breakdown pra cliente novo que ainda nao acumulou
@@ -224,9 +227,9 @@ function calcularLtvDetalhado(
     void anterior
   }
 
-  // Fecha ultimo periodo ate hoje/churn — sempre empurra (mesmo com 0
-  // meses acumulados), pra cliente novo ter estrutura visivel.
-  const mesesFinal = mesesEntre(inicioAtual, dataFim)
+  // Fecha ultimo periodo ate hoje/churn. O +1 e' o mes em curso —
+  // cliente que entrou hoje ja conta 1 mes (LTV = ticket x 1).
+  const mesesFinal = mesesAt(dataFim) - mesesAt(inicioAtual) + 1
   const diasFinal = diasEntre(inicioAtual, dataFim)
   periodos.push({
     inicio: inicioAtual,
@@ -426,8 +429,9 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
   const ultimoNpsRespondidoEm = surveysRespondidos[0]?.respondido_em ?? null
   const npsPrecisaRenovar = useMemo(() => {
     if (!ultimoNpsRespondidoEm) {
-      // Nunca respondeu — se ja passou 2 meses desde entrada, precisa
-      return tempoCasa >= 2
+      // Nunca respondeu — precisa depois de 2 meses completos de casa
+      // (tempoCasa conta o mes em curso, entao 2 completos = 3)
+      return tempoCasa >= 3
     }
     const d = new Date(ultimoNpsRespondidoEm)
     const meses = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
@@ -688,7 +692,7 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">
               {formatDuracao(
-                Math.floor(tempoCasa),
+                tempoCasa,
                 diasEntre(cliente.data_inicio, new Date().toISOString()),
               )}
             </p>
@@ -3362,7 +3366,7 @@ function LtvDetalheModal({
             </p>
             <p className="mt-1.5 text-lg font-bold tabular-nums text-zinc-100">
               {formatDuracao(
-                Math.floor(tempoCasa),
+                tempoCasa,
                 diasEntre(cliente.data_inicio, new Date().toISOString()),
               )}
             </p>
@@ -3586,7 +3590,7 @@ function PerdaReceitaModal({
           valor_perdido: Number(valor) || ticket,
           ltv_congelado: ltvAtual,
           ticket_mensal_no_churn: ticket,
-          tempo_de_casa_meses: Math.floor(tempoCasa),
+          tempo_de_casa_meses: tempoCasa,
         },
       })
       if (evErr) {
@@ -3695,7 +3699,7 @@ function PerdaReceitaModal({
           <div className="text-center border-x border-border">
             <p className="text-[9px] uppercase tracking-wider text-muted">Tempo de Casa</p>
             <p className="mt-1 text-sm font-bold tabular-nums text-zinc-100">
-              {Math.floor(tempoCasa)} meses
+              {tempoCasa} {tempoCasa === 1 ? 'mês' : 'meses'}
             </p>
           </div>
           <div className="text-center">

@@ -100,15 +100,32 @@ function ultimosMeses(n: number): string[] {
   return out
 }
 
-/** Meses entre data ISO e hoje. Retorna 0 se data invalida. */
+/**
+ * Meses de casa, inteiros — o mes em curso conta. Cliente que entrou
+ * hoje = 1 mes; com 45 dias = 2 meses. Mesma regra da Ficha e da lista.
+ * Retorna 0 so se a data for invalida.
+ */
 function mesesDesde(iso: string | null): number {
   if (!iso) return 0
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
-  const hoje = new Date()
-  const diffMs = hoje.getTime() - d.getTime()
-  return diffMs / (1000 * 60 * 60 * 24 * 30.44)
+  const diffMs = Date.now() - d.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44))) + 1
 }
+
+function mesesLabel(n: number): string {
+  return `${n} ${n === 1 ? 'mês' : 'meses'}`
+}
+
+/** Data curta pt-BR. Trata 'YYYY-MM-DD' sem deslocar fuso. */
+function formatDataCurta(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR')
+}
+
+type TipoMov = 'expansao' | 'perda' | 'churn'
 
 // Evento manual de expansao/perda/churn — usado pra construir o
 // Resultado do Negocio a partir do log real, nao mais placeholder.
@@ -131,6 +148,7 @@ export default function VisaoExecutiva() {
   const [eventosMov, setEventosMov] = useState<EventoMovimento[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
+  const [movTipo, setMovTipo] = useState<TipoMov | null>(null)
   const [mesISO, setMesISO] = useState<string>(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
@@ -259,16 +277,17 @@ export default function VisaoExecutiva() {
         ? clientesComNps.reduce((s, c) => s + (c.nps ?? 0), 0) / clientesComNps.length
         : null
 
-    // Tempo medio de vida (meses) — dos ativos com data_inicio
+    // Tempo medio de vida — media dos meses de casa (inteiros, mes em
+    // curso conta), arredondada pra meses inteiros tambem.
     const vidasAtivos = ativos
       .map((c) => mesesDesde(c.data_inicio))
       .filter((v) => v > 0)
     const tempoMedioVida =
       vidasAtivos.length > 0
-        ? vidasAtivos.reduce((a, b) => a + b, 0) / vidasAtivos.length
+        ? Math.max(1, Math.round(vidasAtivos.reduce((a, b) => a + b, 0) / vidasAtivos.length))
         : 0
 
-    // LTV medio = ticket * tempo de vida
+    // LTV medio = ticket medio x meses inteiros
     const ltvMedio = ticketMedio * tempoMedioVida
 
     return {
@@ -290,6 +309,11 @@ export default function VisaoExecutiva() {
       nExpansoes: expansoes.length,
       nPerdas: perdas.length,
       nChurnEventos: churnsExplicitos.length,
+      // Listas pro modal de movimentacoes (click na linha do Resultado)
+      expansoesLista: expansoes,
+      perdasLista: perdas,
+      churnsEvLista: churnsExplicitos,
+      churnsClientesLista: churnsNoMes,
       emOnboarding,
       pctOnboardingFinalizado,
       npsMedio,
@@ -427,13 +451,11 @@ export default function VisaoExecutiva() {
               <SubKpi
                 titulo="NRR"
                 valor={formatPct(kpis.nrr)}
-                sub="meta ≥ 95%"
                 tone={kpis.nrr >= 0.95 ? 'emerald' : kpis.nrr >= 0.9 ? 'amber' : 'red'}
               />
               <SubKpi
                 titulo="Churn Rate"
                 valor={formatPct(kpis.churnRate)}
-                sub="meta < 10%"
                 tone={kpis.churnRate < 0.05 ? 'emerald' : kpis.churnRate < 0.1 ? 'amber' : 'red'}
               />
               <SubKpi
@@ -479,6 +501,7 @@ export default function VisaoExecutiva() {
                       ? `${kpis.nExpansoes} ${kpis.nExpansoes === 1 ? 'registro' : 'registros'}`
                       : 'nenhuma'
                   }
+                  onClick={kpis.nExpansoes > 0 ? () => setMovTipo('expansao') : undefined}
                 />
                 <LinhaResultado
                   icone={<span className="text-amber-400 text-xs">−</span>}
@@ -490,6 +513,7 @@ export default function VisaoExecutiva() {
                       ? `${kpis.nPerdas} ${kpis.nPerdas === 1 ? 'registro' : 'registros'}`
                       : 'nenhuma'
                   }
+                  onClick={kpis.nPerdas > 0 ? () => setMovTipo('perda') : undefined}
                 />
                 <LinhaResultado
                   icone={<span className="text-red-400 text-xs">−</span>}
@@ -501,12 +525,13 @@ export default function VisaoExecutiva() {
                       ? `${kpis.churnsNoMes} ${kpis.churnsNoMes === 1 ? 'cliente' : 'clientes'}`
                       : 'nenhum'
                   }
+                  onClick={
+                    kpis.churnsNoMes > 0 || kpis.nChurnEventos > 0
+                      ? () => setMovTipo('churn')
+                      : undefined
+                  }
                 />
               </div>
-              <p className="mt-3 text-[10px] text-muted italic">
-                Dados do log real de <code className="text-brand-300">cliente_eventos</code> —
-                Expansão/Perda/Churn registrados nas Fichas dos clientes.
-              </p>
             </div>
             <div className="rounded-xl border border-border bg-bg-card p-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
@@ -547,7 +572,7 @@ export default function VisaoExecutiva() {
               <ExecKpi
                 icone={<Clock size={14} className="text-brand-300" />}
                 titulo="Tempo Médio de Vida"
-                valor={`${kpis.tempoMedioVida.toFixed(1)}m`}
+                valor={mesesLabel(kpis.tempoMedioVida)}
                 sub={`${kpis.ativos} clientes ativos`}
               />
               <ExecKpi
@@ -586,7 +611,7 @@ export default function VisaoExecutiva() {
               <ExecKpi
                 icone={<Users size={14} className="text-brand-300" />}
                 titulo="LT Médio (Base Ativa)"
-                valor={`${kpis.tempoMedioVida.toFixed(1)} meses`}
+                valor={mesesLabel(kpis.tempoMedioVida)}
                 sub={`${kpis.ativos} clientes ativos`}
                 grande
               />
@@ -653,6 +678,23 @@ export default function VisaoExecutiva() {
             </ul>
           </div>
         </>
+      )}
+
+      {movTipo && (
+        <MovimentacoesModal
+          tipo={movTipo}
+          mesLabel={labelMes(mesISO)}
+          eventos={
+            movTipo === 'expansao'
+              ? kpis.expansoesLista
+              : movTipo === 'perda'
+                ? kpis.perdasLista
+                : kpis.churnsEvLista
+          }
+          churnsClientes={kpis.churnsClientesLista}
+          clientes={clientesFiltrados}
+          onClose={() => setMovTipo(null)}
+        />
       )}
 
       <ClienteForm
@@ -761,15 +803,25 @@ function LinhaResultado({
   valor,
   tone,
   sub,
+  onClick,
 }: {
   icone: React.ReactNode
   label: string
   valor: number
   tone: 'emerald' | 'amber' | 'red'
   sub?: string
+  onClick?: () => void
 }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-border bg-bg-soft/40 px-3 py-2">
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      title={onClick ? 'Ver movimentações' : undefined}
+      className={cn(
+        'flex items-center justify-between rounded-md border border-border bg-bg-soft/40 px-3 py-2 transition-colors',
+        onClick && 'cursor-pointer hover:border-border/60 hover:bg-bg-elev',
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className="grid h-5 w-5 place-items-center rounded-full bg-bg-elev">{icone}</span>
         <div>
@@ -1307,6 +1359,157 @@ function MovimentacaoMesModal({
             )}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================
+// Modal — movimentacoes de um tipo (expansao / reducao / churn) no mes
+// ==============================================================
+//
+// Abre ao clicar numa linha do Resultado do Negocio. Lista cada
+// registro com cliente (link pra Ficha), data, valor e motivo. Churn
+// sem evento explicito cai nos clientes arquivados no mes.
+
+function MovimentacoesModal({
+  tipo,
+  mesLabel,
+  eventos,
+  churnsClientes,
+  clientes,
+  onClose,
+}: {
+  tipo: TipoMov
+  mesLabel: string
+  eventos: EventoMovimento[]
+  churnsClientes: Cliente[]
+  clientes: Cliente[]
+  onClose: () => void
+}) {
+  const cfg = {
+    expansao: {
+      titulo: 'Expansões',
+      sinal: '+',
+      texto: 'text-emerald-300',
+      borda: 'border-emerald-500/30',
+      hover: 'hover:bg-emerald-500/10',
+    },
+    perda: {
+      titulo: 'Reduções',
+      sinal: '−',
+      texto: 'text-amber-300',
+      borda: 'border-amber-500/30',
+      hover: 'hover:bg-amber-500/10',
+    },
+    churn: {
+      titulo: 'Churns',
+      sinal: '−',
+      texto: 'text-red-300',
+      borda: 'border-red-500/30',
+      hover: 'hover:bg-red-500/10',
+    },
+  }[tipo]
+
+  const nomeDe = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
+
+  const linhas =
+    tipo === 'churn' && eventos.length === 0
+      ? churnsClientes.map((c) => ({
+          key: c.id,
+          clienteId: c.id,
+          nome: c.nome,
+          data: c.arquivado_em ?? '',
+          valor: c.verba_mensal ?? 0,
+          motivo: null as string | null,
+          recorrente: true,
+        }))
+      : eventos.map((ev, i) => ({
+          key: `${ev.cliente_id}-${i}`,
+          clienteId: ev.cliente_id,
+          nome: nomeDe(ev.cliente_id),
+          data: ev.meta?.data ?? ev.criado_em,
+          valor: tipo === 'churn' ? (ev.meta?.valor_perdido ?? 0) : (ev.meta?.valor ?? 0),
+          motivo: ev.meta?.motivo ?? null,
+          recorrente: ev.meta?.recorrente !== false,
+        }))
+  linhas.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+  const total = linhas.reduce((s, l) => s + l.valor, 0)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-xl border border-border bg-bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-100">
+            {cfg.titulo} — {mesLabel}
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200"
+            aria-label="Fechar"
+          >
+            <XCircle size={12} />
+          </button>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          {linhas.length} {linhas.length === 1 ? 'registro' : 'registros'} ·{' '}
+          <span className={cn('font-semibold tabular-nums', cfg.texto)}>
+            {cfg.sinal}
+            {formatBRL(total)}
+          </span>
+          /mês
+        </p>
+
+        {linhas.length === 0 ? (
+          <p className="py-8 text-center text-[11px] text-muted italic">Nenhum registro no mês</p>
+        ) : (
+          <div className={cn('overflow-hidden rounded-lg border', cfg.borda)}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+                  <th className="px-3 py-2 text-left font-semibold">Cliente</th>
+                  <th className="px-3 py-2 text-left font-semibold">Data</th>
+                  <th className="px-3 py-2 text-left font-semibold">Motivo</th>
+                  <th className="px-3 py-2 text-right font-semibold">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhas.map((l) => (
+                  <tr key={l.key} className={cn('border-b border-border/60 transition-colors', cfg.hover)}>
+                    <td className="px-3 py-2">
+                      <a
+                        href={`/clientes/${l.clienteId}`}
+                        className="inline-flex items-center gap-1 text-zinc-200 hover:text-brand-300"
+                      >
+                        <span className="truncate">{l.nome}</span>
+                        <ExternalLink size={10} className="shrink-0 opacity-60" />
+                      </a>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-muted">{formatDataCurta(l.data)}</td>
+                    <td className="px-3 py-2 text-muted">
+                      {l.motivo ?? '—'}
+                      {!l.recorrente && (
+                        <span className="ml-1.5 rounded border border-border px-1 py-0.5 text-[9px] uppercase tracking-wider">
+                          pontual
+                        </span>
+                      )}
+                    </td>
+                    <td className={cn('px-3 py-2 text-right font-semibold tabular-nums', cfg.texto)}>
+                      {cfg.sinal}
+                      {formatBRL(l.valor)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

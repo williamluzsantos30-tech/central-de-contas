@@ -19,13 +19,13 @@ import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Cliente, Profile } from '@/types/database'
 
-// Meses inteiros truncados entre uma ISO date e hoje. Usado como
-// "LT" (lifetime months) na tabela.
+// Meses de casa inteiros — o mes em curso conta (entrou hoje = 1).
+// Usado como "LT" (lifetime months) na tabela. Mesma regra da Ficha.
 function mesesCasa(iso: string | null): number {
   if (!iso) return 0
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
-  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) + 1
 }
 
 export default function Clientes() {
