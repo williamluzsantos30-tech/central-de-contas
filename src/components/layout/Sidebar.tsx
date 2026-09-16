@@ -19,6 +19,7 @@ import {
   TrendingUp,
   UserPlus,
   UserMinus,
+  FileClock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -66,6 +67,7 @@ const nav: Group[] = [
       { to: '/operacional/visao', label: 'Visão Executiva', icon: TrendingUp },
       { to: '/clientes/onboarding', label: 'Onboarding', icon: UserPlus },
       { to: '/clientes/churns', label: 'Churns', icon: UserMinus },
+      { to: '/clientes/renovacoes', label: 'Renovações', icon: FileClock },
     ],
   },
   {

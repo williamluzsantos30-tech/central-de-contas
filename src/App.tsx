@@ -25,6 +25,7 @@ import PreviewEdicaoVideo from '@/pages/PreviewEdicaoVideo'
 import VisaoExecutiva from '@/pages/operacional/VisaoExecutiva'
 import Onboarding from '@/pages/clientes/Onboarding'
 import Churns from '@/pages/clientes/churns/Churns'
+import Renovacoes from '@/pages/clientes/renovacoes/Renovacoes'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -68,6 +69,7 @@ export default function App() {
             <Route path="/operacional/visao" element={<VisaoExecutiva />} />
             <Route path="/clientes/onboarding" element={<Onboarding />} />
             <Route path="/clientes/churns" element={<Churns />} />
+            <Route path="/clientes/renovacoes" element={<Renovacoes />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />
             <Route path="/trafego/controle-head" element={<ControleHead />} />
