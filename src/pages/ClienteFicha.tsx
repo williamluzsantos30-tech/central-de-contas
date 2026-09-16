@@ -56,6 +56,8 @@ import {
   Copy,
   ExternalLink,
   Rocket,
+  Circle,
+  CircleCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -65,7 +67,14 @@ import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { uploadToStorageSafe } from '@/lib/storage'
 import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
-import { etapasParaModulos, progressoOnboarding } from '@/lib/onboardingTemplate'
+import {
+  etapasParaModulos,
+  progressoOnboarding,
+  prazoEtapa,
+  statusEtapa,
+  type OnboardingProgresso,
+  type StatusEtapa,
+} from '@/lib/onboardingTemplate'
 
 // Meses de casa, inteiros — o mes em curso conta (entrou hoje = 1 mes,
 // 45 dias = 2 meses). Mesma regra da Visao Executiva e da lista.
@@ -1481,60 +1490,100 @@ function OnboardingBloco({
         />
       </div>
       <p className="mb-3 text-[10px] text-muted">
-        Clique numa etapa pra marcar como concluída. O cliente acompanha esse progresso no
+        Marque cada etapa como concluída no ✓ à direita. O cliente acompanha esse progresso no
         Portal.
       </p>
       <ol className="space-y-1.5">
         {etapas.map((e, i) => {
-          const done = !!atual[e.key]?.concluido_em
+          const st = statusEtapa(e, atual, cliente.data_inicio)
+          const done = st === 'concluida'
           const isSaving = saving === e.key
+          const prazo = prazoEtapa(cliente.data_inicio, e)
+          const concluidoEm = atual[e.key]?.concluido_em ?? null
+          const badge = onbStatusBadge[st]
           return (
-            <li key={e.key}>
-              <button
-                type="button"
-                onClick={() => toggle(e.key)}
-                disabled={isSaving}
+            <li
+              key={e.key}
+              className={cn(
+                'flex items-start gap-3 rounded-lg border px-3 py-2 transition-colors',
+                done
+                  ? 'border-emerald-500/25 bg-emerald-500/[0.04]'
+                  : st === 'atrasada'
+                    ? 'border-red-500/25 bg-red-500/[0.03]'
+                    : 'border-border bg-bg-soft/30',
+                isSaving && 'opacity-60',
+              )}
+            >
+              {/* Indicador — numero (pendente) ou check verde (concluida) */}
+              <span
                 className={cn(
-                  'flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                  done
-                    ? 'border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]'
-                    : 'border-border bg-bg-soft/30 hover:border-brand-500/40',
-                  isSaving && 'opacity-60',
+                  'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+                  done ? 'bg-emerald-500 text-white' : 'border border-border text-muted',
                 )}
               >
-                <span
+                {done ? <CheckCircle2 size={12} /> : i + 1}
+              </span>
+
+              {/* Conteudo */}
+              <div className="min-w-0 flex-1">
+                <p
                   className={cn(
-                    'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold',
-                    done ? 'bg-emerald-500 text-white' : 'border border-border text-muted',
+                    'text-xs font-medium',
+                    done ? 'text-zinc-400 line-through' : 'text-zinc-100',
                   )}
                 >
-                  {done ? '✓' : i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p
-                      className={cn(
-                        'text-xs font-medium',
-                        done ? 'text-emerald-200 line-through opacity-80' : 'text-zinc-100',
-                      )}
-                    >
-                      {e.label}
-                    </p>
-                    {done && atual[e.key]?.concluido_em && (
-                      <span className="text-[10px] text-muted tabular-nums">
-                        {formatDateBR(atual[e.key].concluido_em)}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[10px] text-muted">{e.descricao}</p>
+                  {e.label}
+                </p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar size={9} /> {formatDateBR(prazo ? prazo.toISOString() : null)}
+                  </span>
+                  {concluidoEm && (
+                    <span className="inline-flex items-center gap-1 text-emerald-300">
+                      <CheckCircle2 size={9} /> {formatDateBR(concluidoEm)}
+                    </span>
+                  )}
                 </div>
-              </button>
+              </div>
+
+              {/* Acoes — status + botao concluir */}
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={cn(
+                    'rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider',
+                    badge.cls,
+                  )}
+                >
+                  {badge.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggle(e.key)}
+                  disabled={isSaving}
+                  title={done ? 'Concluída — clique para reabrir' : 'Marcar como concluída'}
+                  aria-label={done ? 'Reabrir etapa' : 'Concluir etapa'}
+                  className={cn(
+                    'grid h-7 w-7 place-items-center rounded-md border transition-colors',
+                    done
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                      : 'border-border text-muted hover:border-emerald-500/50 hover:text-emerald-300',
+                  )}
+                >
+                  {done ? <CircleCheck size={15} /> : <Circle size={15} />}
+                </button>
+              </div>
             </li>
           )
         })}
       </ol>
     </div>
   )
+}
+
+const onbStatusBadge: Record<StatusEtapa, { label: string; cls: string }> = {
+  concluida: { label: 'Concluída', cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' },
+  atrasada: { label: 'Atrasada', cls: 'border-red-500/40 bg-red-500/10 text-red-300' },
+  pendente: { label: 'Pendente', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
 }
 
 // ============================================================

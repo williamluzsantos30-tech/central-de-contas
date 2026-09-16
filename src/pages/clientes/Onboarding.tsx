@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  Circle,
   Send,
   CircleCheck,
   AlertTriangle,
@@ -580,41 +581,26 @@ function TimelineOnboarding({
                     : 'border-border bg-bg-card',
               )}
             >
-              {/* Check / numero */}
-              <button
-                type="button"
-                onClick={() => onToggleEtapa(etapa.key)}
-                title={done ? 'Marcar como pendente' : 'Marcar como concluída'}
+              {/* Indicador de status — numero (pendente) ou check verde (concluida) */}
+              <span
                 className={cn(
-                  'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors',
-                  done
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'border border-border text-muted hover:border-brand-500/50 hover:text-brand-300',
+                  'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                  done ? 'bg-emerald-500 text-white' : 'border border-border text-muted',
                 )}
               >
                 {done ? <CheckCircle2 size={13} /> : i + 1}
-              </button>
+              </span>
 
               {/* Conteudo */}
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p
-                    className={cn(
-                      'text-sm font-medium',
-                      done ? 'text-zinc-400 line-through' : 'text-zinc-100',
-                    )}
-                  >
-                    {etapa.label}
-                  </p>
-                  <span
-                    className={cn(
-                      'shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider',
-                      badge.cls,
-                    )}
-                  >
-                    {badge.label}
-                  </span>
-                </div>
+                <p
+                  className={cn(
+                    'text-sm font-medium',
+                    done ? 'text-zinc-400 line-through' : 'text-zinc-100',
+                  )}
+                >
+                  {etapa.label}
+                </p>
                 <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted">
                   <span className="inline-flex items-center gap-1">
                     <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-bg-elev text-[8px] font-bold text-brand-300">
@@ -631,6 +617,32 @@ function TimelineOnboarding({
                     </span>
                   )}
                 </div>
+              </div>
+
+              {/* Acoes — badge de status + botao concluir */}
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={cn(
+                    'rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider',
+                    badge.cls,
+                  )}
+                >
+                  {badge.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onToggleEtapa(etapa.key)}
+                  title={done ? 'Concluída — clique para reabrir' : 'Marcar como concluída'}
+                  aria-label={done ? 'Reabrir etapa' : 'Concluir etapa'}
+                  className={cn(
+                    'grid h-7 w-7 place-items-center rounded-md border transition-colors',
+                    done
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                      : 'border-border text-muted hover:border-emerald-500/50 hover:text-emerald-300',
+                  )}
+                >
+                  {done ? <CircleCheck size={15} /> : <Circle size={15} />}
+                </button>
               </div>
             </li>
           )
