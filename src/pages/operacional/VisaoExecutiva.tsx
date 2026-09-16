@@ -117,6 +117,19 @@ function mesesLabel(n: number): string {
   return `${n} ${n === 1 ? 'mês' : 'meses'}`
 }
 
+/** Dias inteiros entre duas datas ISO. 0 se invalida ou negativa. */
+function diasEntre(iniISO: string | null, fimISO: string | null): number {
+  if (!iniISO || !fimISO) return 0
+  const ini = new Date(iniISO)
+  const fim = new Date(fimISO)
+  if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return 0
+  return Math.max(0, Math.round((fim.getTime() - ini.getTime()) / 86_400_000))
+}
+
+// Meta interna de dias pra concluir o onboarding. Vira config por
+// agencia quando o modulo de metas nascer.
+const SLA_ONBOARDING_DIAS = 30
+
 /** Data curta pt-BR. Trata 'YYYY-MM-DD' sem deslocar fuso. */
 function formatDataCurta(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
@@ -142,10 +155,19 @@ interface EventoMovimento {
   } | null
 }
 
+// Evento de mudanca de jornada (auto-log do trigger). Usado pra medir
+// quanto tempo o cliente levou pra SAIR do onboarding.
+interface EventoJornada {
+  cliente_id: string
+  criado_em: string
+  meta: { campo?: string; de?: string | null; para?: string | null } | null
+}
+
 export default function VisaoExecutiva() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [eventosMov, setEventosMov] = useState<EventoMovimento[]>([])
+  const [eventosJornada, setEventosJornada] = useState<EventoJornada[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [movTipo, setMovTipo] = useState<TipoMov | null>(null)
@@ -159,7 +181,7 @@ export default function VisaoExecutiva() {
 
   async function load() {
     setLoading(true)
-    const [cRes, pRes, eRes] = await Promise.all([
+    const [cRes, pRes, eRes, jRes] = await Promise.all([
       supabase.from('clientes').select('*').order('nome'),
       supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
       // Eventos de movimento comercial — expansao, perda, churn.
@@ -168,10 +190,16 @@ export default function VisaoExecutiva() {
         .from('cliente_eventos')
         .select('tipo, cliente_id, criado_em, meta')
         .in('tipo', ['expansao', 'perda', 'churn']),
+      // Eventos de jornada — pra medir o tempo medio de onboarding.
+      supabase
+        .from('cliente_eventos')
+        .select('cliente_id, criado_em, meta')
+        .eq('tipo', 'jornada'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setProfiles((pRes.data as Profile[]) ?? [])
     setEventosMov((eRes.data as EventoMovimento[]) ?? [])
+    setEventosJornada((jRes.data as EventoJornada[]) ?? [])
     setLoading(false)
   }
 
@@ -271,6 +299,33 @@ export default function VisaoExecutiva() {
     const pctOnboardingFinalizado =
       ativos.length > 0 ? finalizouOnboarding / ativos.length : 0
 
+    // Tempo medio de onboarding — dias entre data_inicio e o evento que
+    // TIROU o cliente do onboarding (jornada: de='onboarding' -> outra).
+    // So conta quem de fato concluiu; quem ainda esta em onboarding ou
+    // entrou direto em outra jornada nao entra na media.
+    const idsFiltrados = new Set(clientesFiltrados.map((c) => c.id))
+    const inicioPorCliente = new Map(clientesFiltrados.map((c) => [c.id, c.data_inicio]))
+    const primeiraSaida = new Map<string, string>()
+    for (const ev of eventosJornada) {
+      if (!idsFiltrados.has(ev.cliente_id)) continue
+      if (ev.meta?.campo !== 'jornada') continue
+      if (ev.meta?.de !== 'onboarding' || !ev.meta?.para || ev.meta.para === 'onboarding') continue
+      const atual = primeiraSaida.get(ev.cliente_id)
+      if (!atual || new Date(ev.criado_em) < new Date(atual)) {
+        primeiraSaida.set(ev.cliente_id, ev.criado_em)
+      }
+    }
+    const temposOnboarding: number[] = []
+    for (const [id, saida] of primeiraSaida) {
+      const dias = diasEntre(inicioPorCliente.get(id) ?? null, saida)
+      if (dias > 0) temposOnboarding.push(dias)
+    }
+    const tempoMedioOnboarding =
+      temposOnboarding.length > 0
+        ? Math.round(temposOnboarding.reduce((a, b) => a + b, 0) / temposOnboarding.length)
+        : null
+    const nOnboardingConcluido = temposOnboarding.length
+
     const clientesComNps = ativos.filter((c) => typeof c.nps === 'number')
     const npsMedio =
       clientesComNps.length > 0
@@ -316,11 +371,13 @@ export default function VisaoExecutiva() {
       churnsClientesLista: churnsNoMes,
       emOnboarding,
       pctOnboardingFinalizado,
+      tempoMedioOnboarding,
+      nOnboardingConcluido,
       npsMedio,
       tempoMedioVida,
       ltvMedio,
     }
-  }, [clientesFiltrados, mesISO, eventosMov])
+  }, [clientesFiltrados, mesISO, eventosMov, eventosJornada])
 
   // Farol do banner de alerta — dispara quando qualquer meta comercial
   // e' quebrada. Metas fixadas pelo user:
@@ -571,9 +628,17 @@ export default function VisaoExecutiva() {
               />
               <ExecKpi
                 icone={<Clock size={14} className="text-brand-300" />}
-                titulo="Tempo Médio de Vida"
-                valor={mesesLabel(kpis.tempoMedioVida)}
-                sub={`${kpis.ativos} clientes ativos`}
+                titulo="Tempo Médio Onboarding"
+                valor={
+                  kpis.tempoMedioOnboarding !== null
+                    ? `${kpis.tempoMedioOnboarding} ${kpis.tempoMedioOnboarding === 1 ? 'dia' : 'dias'}`
+                    : 'sem dado'
+                }
+                sub={
+                  kpis.tempoMedioOnboarding !== null
+                    ? `SLA: ${SLA_ONBOARDING_DIAS} dias · ${kpis.nOnboardingConcluido} ${kpis.nOnboardingConcluido === 1 ? 'concluído' : 'concluídos'}`
+                    : 'nenhum onboarding concluído'
+                }
               />
               <ExecKpi
                 icone={<CheckCircle2 size={14} className="text-emerald-300" />}
@@ -1818,9 +1883,6 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
 // 3 KPIs no topo:
 //   Clientes com Social Media  = count clientes com modulo social_media
 //                                 e status='ativo'
-//   Social em Atraso           = subset acima com status='atencao'
-//                                 (aproximacao; mais preciso via
-//                                 producoes_social_media_items no v2)
 //   NPS Medio (Social)         = AVG nps dos clientes com social_media
 //
 // Ranking por Responsavel:
@@ -1845,12 +1907,6 @@ function SocialMediaVisao({
     const totalAtivos = clientes.filter(
       (c) => c.status === 'ativo' && !c.arquivado_em,
     ).length
-
-    // 'Em atraso' pra social = semaforo fora do verde (amarelo/laranja/
-    // vermelho = Atencao/Risco/Critico). Sem semaforo preenchido nao conta.
-    const emAtrasoReal = socialAtivos.filter(
-      (c) => c.semaforo === 'amarelo' || c.semaforo === 'laranja' || c.semaforo === 'vermelho',
-    )
 
     const comNps = socialAtivos.filter((c) => typeof c.nps === 'number')
     const npsMedio =
@@ -1891,8 +1947,6 @@ function SocialMediaVisao({
     return {
       totalSocial: socialAtivos.length,
       totalAtivos,
-      emAtraso: emAtrasoReal.length,
-      pctAtraso: socialAtivos.length > 0 ? emAtrasoReal.length / socialAtivos.length : 0,
       npsMedio,
       ranking,
     }
@@ -1912,7 +1966,7 @@ function SocialMediaVisao({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-border bg-bg-card p-4">
           <div className="mb-2 flex items-center gap-2">
             <Instagram size={12} className="text-pink-400" />
@@ -1924,33 +1978,6 @@ function SocialMediaVisao({
             {dados.totalSocial}
           </p>
           <p className="mt-1 text-[10px] text-muted">de {dados.totalAtivos} ativos</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-bg-card p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <AlertTriangle
-              size={12}
-              className={dados.pctAtraso > 0 ? 'text-amber-300' : 'text-muted'}
-            />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Social em Atraso
-            </p>
-          </div>
-          <p
-            className={cn(
-              'text-2xl font-bold tabular-nums',
-              dados.pctAtraso === 0
-                ? 'text-emerald-300'
-                : dados.pctAtraso < 0.1
-                  ? 'text-amber-300'
-                  : 'text-red-300',
-            )}
-          >
-            {(dados.pctAtraso * 100).toFixed(0)}%
-          </p>
-          <p className="mt-1 text-[10px] text-muted">
-            {dados.emAtraso} {dados.emAtraso === 1 ? 'cliente' : 'clientes'}
-          </p>
         </div>
 
         <div className="rounded-xl border border-border bg-bg-card p-4">
