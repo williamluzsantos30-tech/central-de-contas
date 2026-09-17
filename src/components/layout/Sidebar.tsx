@@ -20,6 +20,7 @@ import {
   UserPlus,
   UserMinus,
   FileClock,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -113,6 +114,7 @@ const nav: Group[] = [
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
     ],
   },
+  { kind: 'item', item: { to: '/central-operacional', label: 'Central Operacional', icon: BookOpen } },
   { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
 ]
 

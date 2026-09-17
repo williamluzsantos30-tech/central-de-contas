@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Layout } from '@/components/layout/Layout'
 import Login from '@/pages/Login'
@@ -26,6 +26,9 @@ import VisaoExecutiva from '@/pages/operacional/VisaoExecutiva'
 import Onboarding from '@/pages/clientes/Onboarding'
 import Churns from '@/pages/clientes/churns/Churns'
 import Renovacoes from '@/pages/clientes/renovacoes/Renovacoes'
+import CentralOperacional from '@/pages/central-operacional/CentralOperacional'
+import SetorDetalhe from '@/pages/central-operacional/SetorDetalhe'
+import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -70,6 +73,18 @@ export default function App() {
             <Route path="/clientes/onboarding" element={<Onboarding />} />
             <Route path="/clientes/churns" element={<Churns />} />
             <Route path="/clientes/renovacoes" element={<Renovacoes />} />
+            {/* Central Operacional — provider acima das 2 telas pra o estado
+                (docs criados) sobreviver à navegação entre elas. */}
+            <Route
+              element={
+                <CentralOperacionalProvider>
+                  <Outlet />
+                </CentralOperacionalProvider>
+              }
+            >
+              <Route path="/central-operacional" element={<CentralOperacional />} />
+              <Route path="/central-operacional/:setorId" element={<SetorDetalhe />} />
+            </Route>
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />
             <Route path="/trafego/controle-head" element={<ControleHead />} />
