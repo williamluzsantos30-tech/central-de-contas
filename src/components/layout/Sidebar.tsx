@@ -117,6 +117,7 @@ const nav: Group[] = [
   },
   { kind: 'item', item: { to: '/central-operacional', label: 'Central Operacional', icon: BookOpen } },
   { kind: 'item', item: { to: '/flags', label: 'Flags (Performance)', icon: Flag } },
+  { kind: 'item', item: { to: '/configuracoes', label: 'Configurações', icon: Settings2 } },
   { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
 ]
 

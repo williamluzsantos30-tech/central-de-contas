@@ -33,6 +33,7 @@ import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
 import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
+import Configuracoes from '@/pages/configuracoes/Configuracoes'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -101,6 +102,7 @@ export default function App() {
               <Route path="/flags" element={<Flags />} />
               <Route path="/flags/:colabId" element={<ColaboradorDetalhe />} />
             </Route>
+            <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />
             <Route path="/trafego/controle-head" element={<ControleHead />} />
