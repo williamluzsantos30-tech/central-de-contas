@@ -25,6 +25,7 @@ import { CalendarioSocialPanel } from '@/components/social/CalendarioSocialPanel
 import { MetricasSocialPanel } from '@/components/social/MetricasSocialPanel'
 import { IdeiasSocialPanel } from '@/components/social/IdeiasSocialPanel'
 import { ClienteFicha } from '@/pages/ClienteFicha'
+import { usePermissoes, PERM } from '@/hooks/usePermissoes'
 import { supabase } from '@/lib/supabase'
 import {
   cn,
@@ -623,6 +624,7 @@ function ClienteHeader({
   onChanged: () => void
   onEdit: () => void
 }) {
+  const { can } = usePermissoes()
   async function updateField(field: string, val: string | number | null) {
     await supabase.from('clientes').update({ [field]: val }).eq('id', cliente.id)
     onChanged()
@@ -690,6 +692,7 @@ function ClienteHeader({
             label="Status"
             value={cliente.status}
             render={statusClienteLabel[cliente.status]}
+            readOnly={!can(PERM.editarStatus)}
             options={[
               { value: 'ativo', label: 'Ativo' },
               { value: 'atencao', label: 'Atenção' },
@@ -759,6 +762,7 @@ function InlineEditBadge({
   options,
   onChange,
   tone,
+  readOnly = false,
 }: {
   label: string
   value: string
@@ -766,8 +770,18 @@ function InlineEditBadge({
   options: { value: string; label: string }[]
   onChange: (v: string) => Promise<void>
   tone: 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'neutral'
+  readOnly?: boolean
 }) {
   const [editing, setEditing] = useState(false)
+  // Sem permissão de edição → mostra só o badge, sem lápis nem select.
+  if (readOnly) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-muted">{label}:</span>
+        <Badge tone={tone}>{render}</Badge>
+      </div>
+    )
+  }
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-muted">{label}:</span>

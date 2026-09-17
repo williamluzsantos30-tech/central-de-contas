@@ -33,6 +33,8 @@ import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
+import { RequirePermissao } from '@/components/auth/RequirePermissao'
+import { PERM } from '@/hooks/usePermissoes'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -102,8 +104,22 @@ export default function App() {
               <Route path="/flags/:colabId" element={<ColaboradorDetalhe />} />
             </Route>
             <Route path="/configuracoes" element={<Configuracoes />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+            <Route
+              path="/clientes"
+              element={
+                <RequirePermissao perm={PERM.visualizar}>
+                  <Clientes />
+                </RequirePermissao>
+              }
+            />
+            <Route
+              path="/clientes/:id"
+              element={
+                <RequirePermissao perm={PERM.visualizar}>
+                  <ClienteDetalhe />
+                </RequirePermissao>
+              }
+            />
             <Route path="/trafego/controle-head" element={<ControleHead />} />
             <Route path="/minhas-tarefas" element={<MinhasTarefas />} />
             <Route path="/webdesign/projetos" element={<ProjetosWebdesign />} />
@@ -116,7 +132,14 @@ export default function App() {
             {/* Lista de clientes de Social Media foi unificada em /clientes
                 (aba "Social Media"). Mantém redirect pros links antigos. */}
             <Route path="/social/clientes" element={<Navigate to="/clientes?setor=social" replace />} />
-            <Route path="/social/clientes/:id" element={<ClienteDetalhe />} />
+            <Route
+              path="/social/clientes/:id"
+              element={
+                <RequirePermissao perm={PERM.visualizar}>
+                  <ClienteDetalhe />
+                </RequirePermissao>
+              }
+            />
             <Route path="/social/calendario" element={<CalendarioPostagens />} />
             {/* Métricas saíram do Operacional Social Media e viraram tab no Admin.
                 Mantém redirect pra qualquer link antigo. */}

@@ -33,6 +33,7 @@ import {
   type Modulo,
 } from '@/lib/cargos'
 import { useTheme } from '@/hooks/useTheme'
+import { usePermissoes, PERM } from '@/hooks/usePermissoes'
 
 type Item = {
   to: string
@@ -42,6 +43,8 @@ type Item = {
   adminOnly?: boolean
   /** Se preenchido, o item só aparece pra quem tem QUALQUER um desses cargos */
   cargosPermitidos?: Cargo[]
+  /** Se preenchido, o item só aparece pra quem tem essa permissão de papel */
+  perm?: string
 }
 
 type Group =
@@ -61,7 +64,7 @@ const nav: Group[] = [
   // Lista de clientes é universal — não pertence mais a um "módulo". As
   // operações (tráfego/social) aparecem por cliente, conforme o serviço
   // contratado, dentro da ficha.
-  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users } },
+  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar } },
   {
     kind: 'folder',
     key: 'operacional',
@@ -128,6 +131,7 @@ const nav: Group[] = [
 export function Sidebar() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  const { can } = usePermissoes()
   const { theme, toggle: toggleTheme } = useTheme()
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
@@ -178,12 +182,14 @@ export function Sidebar() {
         {nav.map((g, i) => {
           if (g.kind === 'item') {
             if (g.item.adminOnly && !isAdmin) return null
+            if (g.item.perm && !can(g.item.perm)) return null
             return <NavItem key={g.item.to} {...g.item} />
           }
           // Folder: bloqueia se o cargo não tem acesso a esse módulo
           if (g.modulo && !canAccessModulo(g.modulo)) return null
           const visibleItems = g.items.filter((it) => {
             if (it.adminOnly && !isAdmin) return false
+            if (it.perm && !can(it.perm)) return false
             if (it.cargosPermitidos && it.cargosPermitidos.length > 0) {
               // Admin sempre vê; demais só se tem algum dos cargos permitidos
               if (!isAdmin && !temAlgumCargo(profile, it.cargosPermitidos)) return false
