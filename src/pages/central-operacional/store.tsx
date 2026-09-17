@@ -12,6 +12,8 @@ import { SETORES_INICIAIS, type Documento, type Setor } from './mockDocuments'
 interface CentralCtx {
   setores: Setor[]
   addDocumento: (setorId: string, novo: Omit<Documento, 'id'>) => void
+  updateDocumento: (setorId: string, docId: string, patch: Partial<Omit<Documento, 'id'>>) => void
+  removeDocumento: (setorId: string, docId: string) => void
 }
 
 const Ctx = createContext<CentralCtx | null>(null)
@@ -29,7 +31,32 @@ export function CentralOperacionalProvider({ children }: { children: ReactNode }
     )
   }, [])
 
-  return <Ctx.Provider value={{ setores, addDocumento }}>{children}</Ctx.Provider>
+  const updateDocumento = useCallback(
+    (setorId: string, docId: string, patch: Partial<Omit<Documento, 'id'>>) => {
+      setSetores((prev) =>
+        prev.map((s) =>
+          s.id === setorId
+            ? { ...s, documentos: s.documentos.map((d) => (d.id === docId ? { ...d, ...patch } : d)) }
+            : s,
+        ),
+      )
+    },
+    [],
+  )
+
+  const removeDocumento = useCallback((setorId: string, docId: string) => {
+    setSetores((prev) =>
+      prev.map((s) =>
+        s.id === setorId ? { ...s, documentos: s.documentos.filter((d) => d.id !== docId) } : s,
+      ),
+    )
+  }, [])
+
+  return (
+    <Ctx.Provider value={{ setores, addDocumento, updateDocumento, removeDocumento }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function useCentral(): CentralCtx {

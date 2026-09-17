@@ -78,9 +78,50 @@ function doc(
   status: StatusDoc,
   cargos: string[],
   data: string,
+  conteudo?: string,
 ): Documento {
-  return { id: `doc-${++seq}`, titulo, categoria, status, cargos, data }
+  return { id: `doc-${++seq}`, titulo, categoria, status, cargos, data, conteudo }
 }
+
+const CONTEUDO_CONTAS_CRITICAS = `## Objetivo
+Garantir que contas em situação crítica recebam intervenção rápida, estruturada e eficaz, minimizando o risco de churn e recuperando a performance.
+
+---
+
+## 1. Critérios para Classificar uma Conta como Crítica
+Uma conta deve ser classificada como crítica quando apresentar pelo menos um dos seguintes indicadores:
+
+| Indicador | Critério |
+|-----------|----------|
+| NPS | Score < 7 na última pesquisa |
+| Queda de Leads | Redução > 20% em relação ao mês anterior |
+| Reclamação Formal | Cliente registrou insatisfação por e-mail, reunião ou canal oficial |
+| Investimento Parado | Cliente pausou campanhas ou reduziu budget > 30% |
+| Risco de Churn | Sinalização do Account Manager sobre intenção de cancelamento |
+
+> ⚠️ **Regra:** Toda conta classificada como crítica deve ter um plano de recuperação registrado em até 48 horas.
+
+---
+
+## 2. Protocolo de Intervenção
+
+### Etapa 1 — Diagnóstico (até 24h)
+1. Revisar métricas dos últimos 30 dias (CPL, leads, investimento, CTR, CPC)
+2. Analisar criativos ativos e histórico de alterações
+3. Verificar landing page (velocidade, formulário, copy)
+4. Consultar Account Manager sobre contexto do cliente
+5. Identificar causa raiz (não apenas sintomas)
+
+### Etapa 2 — Plano de Ação (até 48h)
+1. Elaborar plano de recuperação usando o template abaixo
+2. Alinhar com o Gestor de Tráfego responsável
+3. Apresentar ao Account Manager para validação
+4. Comunicar ao cliente (quando necessário)
+
+### Etapa 3 — Acompanhamento (semanal)
+1. Follow-up semanal obrigatório até a conta sair do status crítico
+2. Registrar evolução das métricas no sistema
+3. Ajustar plano conforme resultados parciais`
 
 export const SETORES_INICIAIS: Setor[] = [
   {
@@ -91,7 +132,7 @@ export const SETORES_INICIAIS: Setor[] = [
     cor: 'violet',
     cargos: ['Account Manager', 'Gerente Operacional', 'Gestor de Tráfego', 'Head de Tráfego'],
     documentos: [
-      doc('Playbook — Gestão de Contas Críticas', 'Playbooks', 'oficial', ['Head de Tráfego'], '2026-02-25'),
+      doc('Playbook — Gestão de Contas Críticas', 'Playbooks', 'oficial', ['Head de Tráfego'], '2026-02-25', CONTEUDO_CONTAS_CRITICAS),
       doc('Playbook — Auditoria Proativa de Contas', 'Playbooks', 'oficial', ['Head de Tráfego'], '2026-02-25'),
       doc('Playbook Oficial de Cultura', 'Playbooks', 'em_revisao', ['Account Manager', 'Designer', 'Social Media', 'Gestor de Tráfego', 'Coordenador Geral'], '2026-02-03'),
       doc('Playbook Operacional — Gestor de Tráfego', 'Playbooks', 'em_revisao', ['Social Media', 'Gestor de Tráfego'], '2026-01-28'),

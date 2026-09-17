@@ -21,7 +21,7 @@ export default function CentralOperacional() {
   const todosDocs = useMemo(
     () =>
       setores
-        .flatMap((s) => s.documentos.map((d) => ({ ...d, setorNome: s.nome })))
+        .flatMap((s) => s.documentos.map((d) => ({ ...d, setorId: s.id, setorNome: s.nome })))
         .sort((a, b) => b.data.localeCompare(a.data)),
     [setores],
   )
@@ -89,7 +89,7 @@ export default function CentralOperacional() {
       {aba === 'todos' && (
         <div className="space-y-2">
           {todosDocs.map((d) => (
-            <DocumentListItem key={d.id} doc={d} />
+            <DocumentListItem key={d.id} doc={d} setorId={d.setorId} />
           ))}
         </div>
       )}
@@ -97,7 +97,7 @@ export default function CentralOperacional() {
       {aba === 'jd' && (
         <div className="space-y-2">
           {jds.length > 0 ? (
-            jds.map((d) => <DocumentListItem key={d.id} doc={d} />)
+            jds.map((d) => <DocumentListItem key={d.id} doc={d} setorId={d.setorId} />)
           ) : (
             <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-12 text-center">
               <Briefcase size={22} className="mx-auto mb-2 text-muted" />

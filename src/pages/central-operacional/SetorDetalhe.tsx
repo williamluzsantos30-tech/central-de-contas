@@ -84,7 +84,12 @@ export default function SetorDetalhe() {
       {/* Seções por categoria */}
       <div className="space-y-4">
         {CATEGORIAS.map((cat) => (
-          <CategorySection key={cat} categoria={cat} docs={docsFiltrados.filter((d) => d.categoria === cat)} />
+          <CategorySection
+            key={cat}
+            categoria={cat}
+            setorId={setor.id}
+            docs={docsFiltrados.filter((d) => d.categoria === cat)}
+          />
         ))}
         {docsFiltrados.length === 0 && (
           <div className="rounded-xl border border-dashed border-border bg-bg-soft/30 p-12 text-center text-sm text-muted">

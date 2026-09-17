@@ -2,7 +2,7 @@
  * Componentes reutilizáveis da Central Operacional:
  * SectorCard, DocumentListItem, CategorySection, StatusBadge, NewDocumentModal.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Megaphone,
@@ -133,12 +133,25 @@ export function SectorCard({ setor }: { setor: Setor }) {
 // ============================================================
 // DocumentListItem (Tela 3 + aba "Todos os Documentos")
 // ============================================================
-export function DocumentListItem({ doc, mostrarCategoria = true }: { doc: Documento; mostrarCategoria?: boolean }) {
+export function DocumentListItem({
+  doc,
+  setorId,
+  mostrarCategoria = true,
+}: {
+  doc: Documento
+  setorId: string
+  mostrarCategoria?: boolean
+}) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-bg-card px-3 py-2.5 transition-colors hover:border-border/60 hover:bg-bg-soft/40">
       <FileText size={16} className="mt-0.5 shrink-0 text-muted" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-sky-300">{doc.titulo}</p>
+        <Link
+          to={`/central-operacional/${setorId}/${doc.id}`}
+          className="text-sm font-medium text-sky-300 hover:text-sky-200 hover:underline"
+        >
+          {doc.titulo}
+        </Link>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted">
           {mostrarCategoria && (
             <span className="rounded border border-border bg-bg-elev px-1.5 py-0.5 text-zinc-300">
@@ -165,7 +178,15 @@ export function DocumentListItem({ doc, mostrarCategoria = true }: { doc: Docume
 // ============================================================
 // CategorySection (Tela 3)
 // ============================================================
-export function CategorySection({ categoria, docs }: { categoria: Categoria; docs: Documento[] }) {
+export function CategorySection({
+  categoria,
+  docs,
+  setorId,
+}: {
+  categoria: Categoria
+  docs: Documento[]
+  setorId: string
+}) {
   const Icon = CATEGORIA_ICON[categoria] ?? FileText
   if (docs.length === 0) return null
   return (
@@ -181,7 +202,7 @@ export function CategorySection({ categoria, docs }: { categoria: Categoria; doc
       </div>
       <div className="space-y-2">
         {docs.map((d) => (
-          <DocumentListItem key={d.id} doc={d} mostrarCategoria />
+          <DocumentListItem key={d.id} doc={d} setorId={setorId} mostrarCategoria />
         ))}
       </div>
     </section>
@@ -206,12 +227,17 @@ export function NewDocumentModal({
   onClose,
   setores,
   onCreate,
+  docEdit,
+  onUpdate,
 }: {
   open: boolean
   onClose: () => void
   setores: Setor[]
   onCreate: (p: NovoDocPayload) => void
+  docEdit?: { setorId: string; doc: Documento } | null
+  onUpdate?: (setorId: string, docId: string, patch: Partial<Omit<Documento, 'id'>>) => void
 }) {
+  const editando = !!docEdit
   const [setorId, setSetorId] = useState(setores[0]?.id ?? '')
   const [titulo, setTitulo] = useState('')
   const [categoria, setCategoria] = useState<Categoria>('Playbooks')
@@ -221,24 +247,37 @@ export function NewDocumentModal({
   const [pdfNome, setPdfNome] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
+  // Prefill ao abrir (edição) ou zera (novo)
+  useEffect(() => {
+    if (!open) return
+    if (docEdit) {
+      setSetorId(docEdit.setorId)
+      setTitulo(docEdit.doc.titulo)
+      setCategoria(docEdit.doc.categoria)
+      setStatus(docEdit.doc.status)
+      setCargos(docEdit.doc.cargos)
+      setConteudo(docEdit.doc.conteudo ?? '')
+      setPdfNome(docEdit.doc.temPdf ? 'documento.pdf' : null)
+    } else {
+      setSetorId(setores[0]?.id ?? '')
+      setTitulo('')
+      setCategoria('Playbooks')
+      setStatus('em_revisao')
+      setCargos([])
+      setConteudo('')
+      setPdfNome(null)
+    }
+    setErro(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, docEdit])
+
   if (!open) return null
 
   function toggleCargo(c: string) {
     setCargos((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
   }
 
-  function reset() {
-    setSetorId(setores[0]?.id ?? '')
-    setTitulo('')
-    setCategoria('Playbooks')
-    setStatus('em_revisao')
-    setCargos([])
-    setConteudo('')
-    setPdfNome(null)
-    setErro(null)
-  }
-
-  function criar() {
+  function salvar() {
     if (!titulo.trim()) {
       setErro('Informe um título.')
       return
@@ -247,8 +286,18 @@ export function NewDocumentModal({
       setErro('Escolha o setor.')
       return
     }
-    onCreate({ setorId, titulo: titulo.trim(), categoria, status, cargos, conteudo, temPdf: !!pdfNome })
-    reset()
+    if (editando && docEdit && onUpdate) {
+      onUpdate(docEdit.setorId, docEdit.doc.id, {
+        titulo: titulo.trim(),
+        categoria,
+        status,
+        cargos,
+        conteudo,
+        temPdf: !!pdfNome,
+      })
+    } else {
+      onCreate({ setorId, titulo: titulo.trim(), categoria, status, cargos, conteudo, temPdf: !!pdfNome })
+    }
     onClose()
   }
 
@@ -259,7 +308,9 @@ export function NewDocumentModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-100">Novo Documento</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">
+            {editando ? 'Editar Documento' : 'Novo Documento'}
+          </h3>
           <button onClick={onClose} className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-bg-elev hover:text-zinc-200" aria-label="Fechar">
             <X size={14} />
           </button>
@@ -345,7 +396,7 @@ export function NewDocumentModal({
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={criar}>Criar Documento</Button>
+          <Button onClick={salvar}>{editando ? 'Salvar' : 'Criar Documento'}</Button>
         </div>
       </div>
     </div>

@@ -28,6 +28,7 @@ import Churns from '@/pages/clientes/churns/Churns'
 import Renovacoes from '@/pages/clientes/renovacoes/Renovacoes'
 import CentralOperacional from '@/pages/central-operacional/CentralOperacional'
 import SetorDetalhe from '@/pages/central-operacional/SetorDetalhe'
+import DocumentoDetalhe from '@/pages/central-operacional/DocumentoDetalhe'
 import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -84,6 +85,7 @@ export default function App() {
             >
               <Route path="/central-operacional" element={<CentralOperacional />} />
               <Route path="/central-operacional/:setorId" element={<SetorDetalhe />} />
+              <Route path="/central-operacional/:setorId/:docId" element={<DocumentoDetalhe />} />
             </Route>
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />
