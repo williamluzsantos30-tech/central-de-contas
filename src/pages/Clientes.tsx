@@ -41,10 +41,11 @@ type Setor = 'todos' | 'trafego' | 'social'
 export default function Clientes() {
   const { profile } = useAuth()
   // Segmento vem da URL (?setor=) — permite deep-link (ex: redirect de
-  // /social/clientes → /clientes?setor=social). Default: Tráfego.
+  // /social/clientes → /clientes?setor=social). Default: Todos (a lista é
+  // única, não pertence mais a um módulo).
   const [searchParams, setSearchParams] = useSearchParams()
   const setorParam = searchParams.get('setor')
-  const setor: Setor = setorParam === 'social' ? 'social' : setorParam === 'todos' ? 'todos' : 'trafego'
+  const setor: Setor = setorParam === 'social' ? 'social' : setorParam === 'trafego' ? 'trafego' : 'todos'
   function setSetor(s: Setor) {
     setSearchParams(
       (prev) => {

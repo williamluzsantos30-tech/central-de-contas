@@ -58,6 +58,10 @@ type Group =
 
 const nav: Group[] = [
   { kind: 'item', item: { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true } },
+  // Lista de clientes é universal — não pertence mais a um "módulo". As
+  // operações (tráfego/social) aparecem por cliente, conforme o serviço
+  // contratado, dentro da ficha.
+  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users } },
   {
     kind: 'folder',
     key: 'operacional',
@@ -80,7 +84,6 @@ const nav: Group[] = [
     defaultOpen: true,
     modulo: 'trafego',
     items: [
-      { to: '/clientes', label: 'Clientes', icon: Users },
       {
         to: '/trafego/controle-head',
         label: 'Controle do Head',
