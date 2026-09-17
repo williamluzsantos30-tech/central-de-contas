@@ -68,6 +68,7 @@ import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { uploadToStorageSafe } from '@/lib/storage'
 import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
+import { usePermissoes, PERM } from '@/hooks/usePermissoes'
 import {
   etapasParaModulos,
   progressoOnboarding,
@@ -393,6 +394,7 @@ interface Props {
 }
 
 export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
+  const { can } = usePermissoes()
   const tempoCasa = useMemo(() => mesesDesde(cliente.data_inicio), [cliente.data_inicio])
   const [ltvModalOpen, setLtvModalOpen] = useState(false)
 
@@ -763,31 +765,48 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
       </div>
 
       {/* ============= Acoes Rapidas ============= */}
+      {/* Cada ação é gateada pela permissão do papel do usuário (usePermissoes).
+          Admin vê tudo; quem não tem a permissão não vê o botão. */}
       <div className="rounded-xl border border-border bg-bg-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-zinc-100">Ações Rápidas</h3>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <EnviarNpsBtn cliente={cliente} onCriado={loadEventos} />
-          <AcaoBtn
-            icon={<AlertTriangle size={14} />}
-            label={labelStatusRisco(cliente.semaforo)}
-            hint="Estável / Atenção / Risco / Crítico"
-            tone={cliente.semaforo && cliente.semaforo !== 'verde' ? 'warning' : 'neutral'}
-            onClick={() => setRiscoModalOpen(true)}
-          />
-          <AcaoBtn
-            icon={<TrendingUp size={14} />}
-            label="Registrar Expansão"
-            hint="Upsell / novo serviço"
-            onClick={() => setExpansaoModalOpen(true)}
-          />
-          <AcaoBtn
-            icon={<TrendingDown size={14} />}
-            label="Registrar Perda"
-            hint="Downsell / redução"
-            tone="warning"
-            onClick={() => setPerdaModalOpen(true)}
-          />
-        </div>
+        {can(PERM.registrarNps) ||
+        can(PERM.editarStatus) ||
+        can(PERM.registrarExpansao) ||
+        can(PERM.registrarChurn) ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            {can(PERM.registrarNps) && <EnviarNpsBtn cliente={cliente} onCriado={loadEventos} />}
+            {can(PERM.editarStatus) && (
+              <AcaoBtn
+                icon={<AlertTriangle size={14} />}
+                label={labelStatusRisco(cliente.semaforo)}
+                hint="Estável / Atenção / Risco / Crítico"
+                tone={cliente.semaforo && cliente.semaforo !== 'verde' ? 'warning' : 'neutral'}
+                onClick={() => setRiscoModalOpen(true)}
+              />
+            )}
+            {can(PERM.registrarExpansao) && (
+              <AcaoBtn
+                icon={<TrendingUp size={14} />}
+                label="Registrar Expansão"
+                hint="Upsell / novo serviço"
+                onClick={() => setExpansaoModalOpen(true)}
+              />
+            )}
+            {can(PERM.registrarChurn) && (
+              <AcaoBtn
+                icon={<TrendingDown size={14} />}
+                label="Registrar Perda"
+                hint="Downsell / redução"
+                tone="warning"
+                onClick={() => setPerdaModalOpen(true)}
+              />
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted">
+            Seu papel não permite ações rápidas neste cliente.
+          </p>
+        )}
       </div>
 
       {/* ============= Contrato ============= */}
