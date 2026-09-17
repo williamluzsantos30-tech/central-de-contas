@@ -30,6 +30,9 @@ import CentralOperacional from '@/pages/central-operacional/CentralOperacional'
 import SetorDetalhe from '@/pages/central-operacional/SetorDetalhe'
 import DocumentoDetalhe from '@/pages/central-operacional/DocumentoDetalhe'
 import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
+import Flags from '@/pages/flags/Flags'
+import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
+import { FlagsProvider } from '@/pages/flags/store'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth()
@@ -86,6 +89,17 @@ export default function App() {
               <Route path="/central-operacional" element={<CentralOperacional />} />
               <Route path="/central-operacional/:setorId" element={<SetorDetalhe />} />
               <Route path="/central-operacional/:setorId/:docId" element={<DocumentoDetalhe />} />
+            </Route>
+            {/* Gestão de Flags — provider acima das 2 telas */}
+            <Route
+              element={
+                <FlagsProvider>
+                  <Outlet />
+                </FlagsProvider>
+              }
+            >
+              <Route path="/flags" element={<Flags />} />
+              <Route path="/flags/:colabId" element={<ColaboradorDetalhe />} />
             </Route>
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id" element={<ClienteDetalhe />} />

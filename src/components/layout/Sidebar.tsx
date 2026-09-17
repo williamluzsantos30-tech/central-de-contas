@@ -21,6 +21,7 @@ import {
   UserMinus,
   FileClock,
   BookOpen,
+  Flag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -115,6 +116,7 @@ const nav: Group[] = [
     ],
   },
   { kind: 'item', item: { to: '/central-operacional', label: 'Central Operacional', icon: BookOpen } },
+  { kind: 'item', item: { to: '/flags', label: 'Flags (Performance)', icon: Flag } },
   { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
 ]
 
