@@ -27,6 +27,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { FilterBar, FilterPill } from '@/components/ds'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { cargoLabel, type Cargo } from '@/lib/cargos'
@@ -234,14 +235,8 @@ export default function Onboarding() {
       </div>
 
       {/* Filtros */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-soft/40 px-3 py-2">
-        <div className="mr-1 flex items-center gap-1.5 border-r border-border pr-2">
-          <Calendar size={13} className="text-muted" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-            Filtros
-          </span>
-        </div>
-        <Pill
+      <FilterBar className="mb-3">
+        <FilterPill
           value={fPeriodo}
           onChange={(v) => setFPeriodo(v as PeriodoFiltro)}
           options={[
@@ -251,25 +246,10 @@ export default function Onboarding() {
             { value: '90', label: 'Últimos 90 dias' },
           ]}
         />
-        <Pill
-          value={fSquad}
-          onChange={setFSquad}
-          placeholder="Todos os Squads"
-          options={squadsDistintos.map((s) => ({ value: s, label: s }))}
-        />
-        <Pill
-          value={fAM}
-          onChange={setFAM}
-          placeholder="Todos os AMs"
-          options={ams.map((p) => ({ value: p.id, label: p.nome }))}
-        />
-        <Pill
-          value={fGestor}
-          onChange={setFGestor}
-          placeholder="Todos os Gestores"
-          options={gestores.map((p) => ({ value: p.id, label: p.nome }))}
-        />
-      </div>
+        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsDistintos.map((s) => ({ value: s, label: s }))} />
+        <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={ams.map((p) => ({ value: p.id, label: p.nome }))} />
+        <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={gestores.map((p) => ({ value: p.id, label: p.nome }))} />
+      </FilterBar>
 
       {/* Busca */}
       <div className="relative mb-3">
@@ -711,36 +691,3 @@ function FinalizarModal({
   )
 }
 
-// Pill de filtro — <select> nativo estilizado, igual a Visao Executiva.
-function Pill({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder?: string
-}) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="cursor-pointer appearance-none rounded-md border border-border bg-bg-elev py-1.5 pl-3 pr-8 text-xs font-medium text-zinc-100 transition-colors hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none"
-      >
-        {placeholder && <option value="">{placeholder}</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={12}
-        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted"
-      />
-    </div>
-  )
-}

@@ -55,6 +55,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { FilterBar, FilterPill } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -406,15 +407,9 @@ export default function VisaoExecutiva() {
         }
       />
 
-      {/* Filtros — container unico, sobrio, alinhado */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-soft/40 px-3 py-2">
-        <div className="flex items-center gap-1.5 pr-2 mr-1 border-r border-border">
-          <Calendar size={13} className="text-muted" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-            Filtros
-          </span>
-        </div>
-        <FiltroPill
+      {/* Filtros */}
+      <FilterBar className="mb-4">
+        <FilterPill
           value={mesISO}
           onChange={(v) => setMesISO(v)}
           options={ultimosMeses(12).map((iso) => ({
@@ -422,25 +417,10 @@ export default function VisaoExecutiva() {
             label: labelMes(iso).replace(/^./, (c) => c.toUpperCase()),
           }))}
         />
-        <FiltroPill
-          value={fSquad}
-          onChange={setFSquad}
-          placeholder="Todos os Squads"
-          options={squadsDistintos.map((s) => ({ value: s, label: s }))}
-        />
-        <FiltroPill
-          value={fAM}
-          onChange={setFAM}
-          placeholder="Todos os AMs"
-          options={ams.map((p) => ({ value: p.id, label: p.nome }))}
-        />
-        <FiltroPill
-          value={fGestor}
-          onChange={setFGestor}
-          placeholder="Todos os Gestores"
-          options={gestores.map((p) => ({ value: p.id, label: p.nome }))}
-        />
-      </div>
+        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsDistintos.map((s) => ({ value: s, label: s }))} />
+        <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={ams.map((p) => ({ value: p.id, label: p.nome }))} />
+        <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={gestores.map((p) => ({ value: p.id, label: p.nome }))} />
+      </FilterBar>
 
       {loading ? (
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
@@ -783,42 +763,6 @@ const toneText: Record<Tone, string> = {
   amber: 'text-amber-300',
   red: 'text-red-300',
   neutral: 'text-zinc-100',
-}
-
-// Pill de filtro — <select> nativo estilizado como botao dark.
-// Sem placeholder = filtro obrigatorio (usa a primeira option como valor
-// atual). Com placeholder = "Todos os X" como opcao neutra vazia.
-function FiltroPill({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder?: string
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="cursor-pointer appearance-none rounded-md border border-border bg-bg-elev pl-3 pr-8 py-1.5 text-xs font-medium text-zinc-100 hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none transition-colors"
-      style={{
-        backgroundImage:
-          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 16 16\' fill=\'none\'%3E%3Cpath d=\'M4 6l4 4 4-4\' stroke=\'%23a1a1aa\' stroke-width=\'1.5\'/%3E%3C/svg%3E")',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 10px center',
-      }}
-    >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  )
 }
 
 /** Pill do farol: ponto verde/vermelho + label + valor compacto. */

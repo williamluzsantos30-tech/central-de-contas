@@ -10,8 +10,9 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
+  // DS domus.agn: CTA = violet sólido (#7c3aed = brand-600), não gradiente.
   primary:
-    'bg-brand-gradient text-white border border-brand-400/30 shadow-[0_4px_14px_-4px_rgba(124,58,237,0.45)] hover:shadow-[0_6px_22px_-4px_rgba(124,58,237,0.6)] hover:brightness-110',
+    'bg-brand-600 text-white border border-brand-500/30 shadow-sm hover:bg-brand-500',
   secondary:
     'bg-bg-elev hover:bg-zinc-800 text-zinc-100 border border-border hover:border-border/60',
   ghost: 'hover:bg-bg-elev text-zinc-300 border border-transparent',
