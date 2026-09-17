@@ -132,11 +132,31 @@ export interface Profile {
    */
   cargos_extras: Cargo[]
   squad_id: string | null
+  /** Papel operacional (migration 083) — define as permissões do usuário. */
+  papel_id?: string | null
   avatar_url: string | null
   ativo: boolean
   aprovado: boolean
   created_at: string
   squad?: Squad | null
+  papel?: PapelOperacional | null
+}
+
+/**
+ * Papel operacional (migration 083). Fonte da verdade das permissões:
+ * cada pessoa (profiles.papel_id) tem um papel, e o papel carrega a lista
+ * de permissões. Espelha a tabela `papeis_operacionais`.
+ */
+export interface PapelOperacional {
+  id: string
+  nome: string
+  tipo: 'operacional' | 'estrategico'
+  escopo: 'Squad' | 'Global'
+  permissoes: string[]
+  jd_preenchida: boolean
+  ativo: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Squad {
