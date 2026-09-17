@@ -90,7 +90,9 @@ export default function Configuracoes() {
       supabase.from('papeis_operacionais').select('*').order('nome'),
       supabase
         .from('profiles')
-        .select('*, papel:papeis_operacionais(*), squad:squads(*)')
+        // FK explícita: profiles tem 2 relações com squads (squad_id e o
+        // lider_id de squads), então desambiguamos pelo nome da constraint.
+        .select('*, papel:papeis_operacionais!profiles_papel_fk(*), squad:squads!profiles_squad_fk(*)')
         .order('nome'),
     ])
     setPapeisDB((pRes.data as PapelOperacional[]) ?? [])
