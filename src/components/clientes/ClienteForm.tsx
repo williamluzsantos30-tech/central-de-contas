@@ -132,32 +132,36 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     setError(null)
   }, [open, cliente, defaultModulo])
 
-  function toggleModulo(m: ModuloCliente) {
-    setForm((prev) => {
-      const has = prev.modulos.includes(m)
-      const next = has ? prev.modulos.filter((x) => x !== m) : [...prev.modulos, m]
-      // Garante pelo menos um módulo marcado
-      return { ...prev, modulos: next.length > 0 ? next : prev.modulos }
-    })
-  }
-
   async function save() {
     setSaving(true)
     setError(null)
-    // Novo cliente sempre comeca em 'onboarding'. Edicao preserva o
-    // jornada atual (que foi definido em outra tela). Mesma logica pra
-    // jornada_social se o cliente atende Social Media.
     const isNovo = !cliente
-    const jornadaFinal = isNovo && form.modulos.includes('trafego') ? 'onboarding' : form.jornada || null
+    // Sem o seletor "Atende em": os módulos derivam de QUEM atende o cliente.
+    // Tráfego é a base (contexto de criação ou gestor vinculado); social entra
+    // quando há um Social Media responsável vinculado (que no social é sempre
+    // obrigatório). É o que faz o Operacional Social aparecer na ficha.
+    const mods = new Set<ModuloCliente>(
+      cliente?.modulos && cliente.modulos.length > 0 ? cliente.modulos : [defaultModulo],
+    )
+    if (form.gestor_id) mods.add('trafego')
+    if (form.social_media_id) mods.add('social_media')
+    else mods.delete('social_media')
+    if (mods.size === 0) mods.add('trafego')
+    const modulosFinal = Array.from(mods)
+
+    // Novo cliente sempre comeca em 'onboarding'. Edicao preserva a jornada
+    // atual (definida em outra tela). Mesma logica pra jornada_social se o
+    // cliente atende Social Media.
+    const jornadaFinal = isNovo && modulosFinal.includes('trafego') ? 'onboarding' : form.jornada || null
     const jornadaSocialFinal =
-      isNovo && form.modulos.includes('social_media') ? 'onboarding' : form.jornada_social || null
+      isNovo && modulosFinal.includes('social_media') ? 'onboarding' : form.jornada_social || null
 
     const payload = {
       nome: form.nome.trim(),
       nicho: form.nicho || null,
       squad: form.squad || null,
       tipo: form.tipo || null,
-      modulos: form.modulos.length > 0 ? form.modulos : ['trafego'],
+      modulos: modulosFinal,
       gestor_id: form.gestor_id || null,
       account_manager_id: form.account_manager_id || null,
       social_media_id: form.social_media_id || null,
@@ -200,12 +204,6 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
       setSaving(false)
       return
     }
-    // Cliente em SM precisa ter Social Media responsável vinculado
-    if (form.modulos.includes('social_media') && !form.social_media_id) {
-      setError('Cliente em Social Media precisa ter um responsável vinculado.')
-      setSaving(false)
-      return
-    }
     const { error: err } = cliente
       ? await supabase.from('clientes').update(payload).eq('id', cliente.id)
       : await supabase.from('clientes').insert(payload)
@@ -217,10 +215,6 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     onSaved()
     onClose()
   }
-
-  // Flags pra mostrar/esconder campos conforme os módulos selecionados.
-  const temTrafego = form.modulos.includes('trafego')
-  const temSocial = form.modulos.includes('social_media')
 
   return (
     <Modal
@@ -243,30 +237,6 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
           {error}
         </div>
       )}
-
-      {/* Módulos: define em qual(is) operação(ões) o cliente aparece */}
-      <div className="mb-3 rounded-lg border border-border bg-bg-soft px-3 py-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">
-          Atende em
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <ModuloCheckbox
-            checked={form.modulos.includes('trafego')}
-            onChange={() => toggleModulo('trafego')}
-            label="Tráfego pago"
-            tone="sky"
-          />
-          <ModuloCheckbox
-            checked={form.modulos.includes('social_media')}
-            onChange={() => toggleModulo('social_media')}
-            label="Social Media"
-            tone="pink"
-          />
-        </div>
-        <p className="mt-1.5 text-[10px] text-muted">
-          Define em qual operação o cliente aparece. Pode marcar os dois se ele contrata os dois serviços.
-        </p>
-      </div>
 
       <div className="grid grid-cols-1 gap-3">
         <Field label="Nome *">
@@ -328,38 +298,34 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
           </Select>
         </Field>
 
-        {temTrafego && (
-          <Field label="Gestor de Tráfego (opcional)">
-            <Select
-              value={form.gestor_id}
-              onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
-            >
-              <option value="">Nenhum</option>
-              {gestoresTrafego.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nome}
-                  {mesmoSquad(g)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        {temSocial && (
-          <Field label="Social Media (opcional)">
-            <Select
-              value={form.social_media_id}
-              onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
-            >
-              <option value="">Nenhum</option>
-              {socialMedias.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nome}
-                  {mesmoSquad(g)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
+        <Field label="Gestor de Tráfego (opcional)">
+          <Select
+            value={form.gestor_id}
+            onChange={(e) => setForm({ ...form, gestor_id: e.target.value })}
+          >
+            <option value="">Nenhum</option>
+            {gestoresTrafego.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nome}
+                {mesmoSquad(g)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Social Media (opcional)">
+          <Select
+            value={form.social_media_id}
+            onChange={(e) => setForm({ ...form, social_media_id: e.target.value })}
+          >
+            <option value="">Nenhum</option>
+            {socialMedias.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nome}
+                {mesmoSquad(g)}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
         <Field label="Ticket Mensal (R$) *">
           <Input
@@ -424,49 +390,3 @@ function Field({ label, children, full }: { label: string; children: React.React
   )
 }
 
-function ModuloCheckbox({
-  checked,
-  onChange,
-  label,
-  tone,
-}: {
-  checked: boolean
-  onChange: () => void
-  label: string
-  tone: 'sky' | 'pink'
-}) {
-  const baseChecked =
-    tone === 'sky'
-      ? 'border-sky-400/60 bg-sky-500/15 text-sky-200'
-      : 'border-pink-400/60 bg-pink-500/15 text-pink-200'
-  const baseUnchecked =
-    'border-border bg-bg-elev text-muted hover:text-zinc-200 hover:border-zinc-500'
-  return (
-    <button
-      type="button"
-      onClick={onChange}
-      className={
-        'inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ' +
-        (checked ? baseChecked : baseUnchecked)
-      }
-    >
-      <span
-        className={
-          'inline-grid h-3.5 w-3.5 place-items-center rounded border ' +
-          (checked
-            ? tone === 'sky'
-              ? 'border-sky-400 bg-sky-400/30'
-              : 'border-pink-400 bg-pink-400/30'
-            : 'border-zinc-500')
-        }
-      >
-        {checked && (
-          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </span>
-      {label}
-    </button>
-  )
-}
