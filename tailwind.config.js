@@ -64,9 +64,13 @@ export default {
           800: '#155e75',
           900: '#164e63',
         },
-        success: '#16a34a',
-        warning: '#eab308',
-        danger: '#ef4444',
+        // Semânticos do design system domus.agn (§6). purple/accent(violet)
+        // seguem as escalas 'purple'/'brand' do Tailwind — não viram token
+        // flat aqui pra não sobrescrever a escala.
+        success: '#22c55e',
+        warning: '#f97316',
+        danger: '#dc2626',
+        info: '#3b82f6',
         muted: {
           DEFAULT: '#71717a',
           soft: '#a1a1aa',
