@@ -29,6 +29,7 @@ import {
   loadCargoPermissoes,
   cargosDoProfile,
   temAlgumCargo,
+  moduloLabel,
   type Cargo,
   type Modulo,
 } from '@/lib/cargos'
@@ -131,7 +132,7 @@ const nav: Group[] = [
 export function Sidebar() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
-  const { can } = usePermissoes()
+  const { can, permissoes } = usePermissoes()
   const { theme, toggle: toggleTheme } = useTheme()
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
@@ -159,7 +160,15 @@ export function Sidebar() {
     setAllowedModulos(list)
   }, [profile, isAdmin])
 
+  // Acessos operacionais podem vir do PAPEL (dobrados como permissões, ex.:
+  // "Operacional Webdesign"). Se o papel do usuário carrega algum desses
+  // acessos, ele manda; senão cai no modelo antigo por cargo (cargoPermissoes),
+  // pra não tirar acesso de quem ainda não teve o papel configurado.
+  const MODULOS_OPERACIONAIS: Modulo[] = ['trafego', 'webdesign', 'social_media']
+  const papelDefineModulos = MODULOS_OPERACIONAIS.some((m) => permissoes.includes(moduloLabel[m]))
   function canAccessModulo(m: Modulo) {
+    if (isAdmin) return true
+    if (papelDefineModulos) return permissoes.includes(moduloLabel[m])
     return allowedModulos.has(m)
   }
 

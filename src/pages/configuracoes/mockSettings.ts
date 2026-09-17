@@ -72,6 +72,12 @@ export const PERMISSOES = [
   'Registrar expansão',
   'Registrar churn',
   'Apenas leitura',
+  // Acessos operacionais (antes eram "módulos" por cargo). Dobrados nos
+  // papéis: um papel com esses acessos vê as respectivas áreas na sidebar.
+  // Os labels batem com moduloLabel em @/lib/cargos.
+  'Operacional Tráfego',
+  'Operacional Webdesign',
+  'Operacional Social Media',
 ] as const
 
 export interface Role {
