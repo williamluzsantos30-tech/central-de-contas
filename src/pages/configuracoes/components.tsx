@@ -514,11 +514,11 @@ export function RoleFormModal({
 export function TeamMembersTable({
   membros,
   onToggle,
-  onDelete,
+  onEdit,
 }: {
   membros: TeamMember[]
   onToggle: (id: string) => void
-  onDelete: (id: string) => void
+  onEdit: (m: TeamMember) => void
 }) {
   const columns: Column<TeamMember>[] = [
     {
@@ -550,11 +550,12 @@ export function TeamMembersTable({
       align: 'right',
       render: (m) => (
         <span className="inline-flex items-center justify-end gap-1">
-          <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
+          <button
+            onClick={() => onEdit(m)}
+            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+            title="Editar papel e squad"
+          >
             <Pencil size={12} />
-          </button>
-          <button onClick={() => onDelete(m.id)} className="grid h-7 w-7 place-items-center rounded text-red-400 hover:bg-red-500/10" title="Excluir">
-            <Trash2 size={12} />
           </button>
         </span>
       ),
@@ -568,6 +569,71 @@ export function TeamMembersTable({
       minWidth={860}
       className="[&_tbody_tr:has(.text-zinc-500)]:bg-bg-soft/30"
     />
+  )
+}
+
+// ============================================================
+// EditMemberModal — atribui papel + squad a um membro (profiles)
+// ============================================================
+export function EditMemberModal({
+  open,
+  nome,
+  papelIdAtual,
+  squadIdAtual,
+  papeis,
+  squads,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  nome: string
+  papelIdAtual: string | null
+  squadIdAtual: string | null
+  papeis: { id: string; nome: string }[]
+  squads: { id: string; nome: string }[]
+  onClose: () => void
+  onSave: (papelId: string | null, squadId: string | null) => void
+}) {
+  const [papelId, setPapelId] = useState('')
+  const [squadId, setSquadId] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setPapelId(papelIdAtual ?? '')
+    setSquadId(squadIdAtual ?? '')
+  }, [open, papelIdAtual, squadIdAtual])
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Editar membro: ${nome}`}
+      footer={
+        <div className="flex justify-end gap-2">
+          <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
+          <PrimaryButton size="sm" onClick={() => onSave(papelId || null, squadId || null)}>Salvar</PrimaryButton>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <FormField label="Papel operacional" hint="Define as permissões do membro.">
+          <Select value={papelId} onChange={(e) => setPapelId(e.target.value)}>
+            <option value="">— Sem papel —</option>
+            {papeis.map((p) => (
+              <option key={p.id} value={p.id}>{p.nome}</option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="Squad principal">
+          <Select value={squadId} onChange={(e) => setSquadId(e.target.value)}>
+            <option value="">— Sem squad —</option>
+            {squads.map((s) => (
+              <option key={s.id} value={s.id}>{s.nome}</option>
+            ))}
+          </Select>
+        </FormField>
+      </div>
+    </Modal>
   )
 }
 

@@ -2,7 +2,7 @@
  * Configurações — metas, equipe operacional e parâmetros do sistema.
  * Construída sobre o design system (@/components/ds).
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Settings2,
   Users2,
@@ -25,13 +25,14 @@ import {
 } from 'lucide-react'
 import { PageHeader, PrimaryButton, OutlineButton, Badge, FormField, Input, Select } from '@/components/ds'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { useSquads } from '@/hooks/useSquads'
+import type { PapelOperacional, Profile } from '@/types/database'
 import {
   agregadoMetas,
   squadsOperacionais,
   PARAMS_INICIAIS,
   SQUADS_INICIAIS,
-  ROLES_INICIAIS,
-  MEMBROS_INICIAIS,
   type Params,
   type Role,
   type Squad,
@@ -48,7 +49,7 @@ import {
   SquadFormModal,
   RoleFormModal,
   TeamMembersTable,
-  NewMemberModal,
+  EditMemberModal,
   EditSquadGoalsModal,
   formatBRL,
   type TabDef,
@@ -68,15 +69,63 @@ const MESES = ['setembro 2026', 'agosto 2026', 'julho 2026', 'junho 2026']
 export default function Configuracoes() {
   const [tab, setTab] = useState('geral')
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
+  // Squads (com metas) seguem mock por enquanto — as metas/MRR não têm coluna
+  // no banco. A ligação pessoa→squad real é feita ao editar o membro.
   const [squads, setSquads] = useState<Squad[]>(SQUADS_INICIAIS)
-  const [roles, setRoles] = useState<Role[]>(ROLES_INICIAIS)
-  const [members, setMembers] = useState<TeamMember[]>(MEMBROS_INICIAIS)
+  // Papéis e membros vêm do banco (migration 083). Guardamos as linhas cruas
+  // e mapeamos pros shapes que os componentes de tabela esperam.
+  const [papeisDB, setPapeisDB] = useState<PapelOperacional[]>([])
+  const [profilesDB, setProfilesDB] = useState<Profile[]>([])
+  const { squads: squadsReais } = useSquads({ apenasAtivos: false })
   const [dirty, setDirty] = useState(false)
   const [mes, setMes] = useState(MESES[0])
   const [squadForm, setSquadForm] = useState<{ mode: 'create' | 'edit'; squad: Squad | null } | null>(null)
   const [metasSquad, setMetasSquad] = useState<Squad | null>(null)
   const [roleForm, setRoleForm] = useState<{ mode: 'create' | 'edit'; role: Role | null } | null>(null)
-  const [novoMembroOpen, setNovoMembroOpen] = useState(false)
+  const [editMember, setEditMember] = useState<Profile | null>(null)
+
+  // Carrega papéis + membros (profiles com papel/squad embarcados) do banco.
+  async function loadEquipe() {
+    const [pRes, prRes] = await Promise.all([
+      supabase.from('papeis_operacionais').select('*').order('nome'),
+      supabase
+        .from('profiles')
+        .select('*, papel:papeis_operacionais(*), squad:squads(*)')
+        .order('nome'),
+    ])
+    setPapeisDB((pRes.data as PapelOperacional[]) ?? [])
+    setProfilesDB((prRes.data as Profile[]) ?? [])
+  }
+  useEffect(() => {
+    loadEquipe()
+  }, [])
+
+  // DB → shapes que RolesTable/TeamMembersTable esperam.
+  const roles = useMemo<Role[]>(
+    () =>
+      papeisDB.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        tipo: p.tipo,
+        escopo: p.escopo,
+        permissoes: p.permissoes ?? [],
+        jdPreenchida: p.jd_preenchida,
+        ativo: p.ativo,
+      })),
+    [papeisDB],
+  )
+  const members = useMemo<TeamMember[]>(
+    () =>
+      profilesDB.map((pr) => ({
+        id: pr.id,
+        nome: pr.nome,
+        email: pr.email,
+        papel: pr.papel?.nome ?? null,
+        squad: pr.squad?.nome ?? null,
+        ativo: pr.ativo,
+      })),
+    [profilesDB],
+  )
 
   const ops = useMemo(() => squadsOperacionais(squads), [squads])
   const agg = useMemo(() => agregadoMetas(squads), [squads])
@@ -130,26 +179,36 @@ export default function Configuracoes() {
       ),
     )
   }
-  function toggleRole(id: string) {
-    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, ativo: !r.ativo } : r)))
+  async function toggleRole(id: string) {
+    const r = papeisDB.find((x) => x.id === id)
+    if (!r) return
+    await supabase.from('papeis_operacionais').update({ ativo: !r.ativo }).eq('id', id)
+    loadEquipe()
   }
-  function excluirRole(id: string) {
-    setRoles((prev) => prev.filter((r) => r.id !== id))
+  async function excluirRole(id: string) {
+    await supabase.from('papeis_operacionais').delete().eq('id', id)
+    loadEquipe()
   }
-  function criarRole(nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
-    setRoles((prev) => [...prev, { id: `r-${Date.now()}`, nome, tipo, escopo, permissoes, jdPreenchida: false, ativo: true }])
+  async function criarRole(nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
+    await supabase
+      .from('papeis_operacionais')
+      .insert({ nome, tipo, escopo, permissoes, jd_preenchida: false, ativo: true })
+    loadEquipe()
   }
-  function atualizarRole(id: string, nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
-    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, nome, tipo, escopo, permissoes } : r)))
+  async function atualizarRole(id: string, nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
+    await supabase.from('papeis_operacionais').update({ nome, tipo, escopo, permissoes }).eq('id', id)
+    loadEquipe()
   }
-  function toggleMembro(id: string) {
-    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ativo: !m.ativo } : m)))
+  async function toggleMembro(id: string) {
+    const pr = profilesDB.find((x) => x.id === id)
+    if (!pr) return
+    await supabase.from('profiles').update({ ativo: !pr.ativo }).eq('id', id)
+    loadEquipe()
   }
-  function excluirMembro(id: string) {
-    setMembers((prev) => prev.filter((m) => m.id !== id))
-  }
-  function criarMembro(nome: string, email: string, papel: string | null, squad: string | null) {
-    setMembers((prev) => [...prev, { id: `m-${Date.now()}`, nome, email: email || null, papel, squad, ativo: true }])
+  // Conecta o membro ao papel e ao squad (grava profiles.papel_id/squad_id).
+  async function salvarMembro(id: string, papelId: string | null, squadId: string | null) {
+    await supabase.from('profiles').update({ papel_id: papelId, squad_id: squadId }).eq('id', id)
+    loadEquipe()
   }
 
   return (
@@ -353,16 +412,20 @@ export default function Configuracoes() {
 
           {/* Membros da equipe */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users2 size={14} className="text-brand-300" />
-                <h2 className="text-sm font-semibold text-zinc-100">Membros da Equipe</h2>
-              </div>
-              <PrimaryButton size="sm" onClick={() => setNovoMembroOpen(true)}>
-                <Plus size={13} /> Novo Membro
-              </PrimaryButton>
+            <div className="mb-4 flex items-center gap-2">
+              <Users2 size={14} className="text-brand-300" />
+              <h2 className="text-sm font-semibold text-zinc-100">Membros da Equipe</h2>
             </div>
-            <TeamMembersTable membros={members} onToggle={toggleMembro} onDelete={excluirMembro} />
+            <TeamMembersTable
+              membros={members}
+              onToggle={toggleMembro}
+              onEdit={(m) => setEditMember(profilesDB.find((p) => p.id === m.id) ?? null)}
+            />
+            <p className="mt-3 text-[11px] text-muted">
+              Membros entram pela tela de acesso (cadastro + aprovação). Aqui você define o{' '}
+              <strong className="text-zinc-300">papel</strong> (permissões) e o{' '}
+              <strong className="text-zinc-300">squad</strong> de cada um, e ativa/inativa.
+            </p>
           </section>
         </div>
       )}
@@ -385,12 +448,18 @@ export default function Configuracoes() {
         }}
       />
       <EditSquadGoalsModal open={!!metasSquad} squad={metasSquad} onClose={() => setMetasSquad(null)} onSave={salvarMetasSquad} />
-      <NewMemberModal
-        open={novoMembroOpen}
-        onClose={() => setNovoMembroOpen(false)}
-        papeis={roles.map((r) => r.nome)}
-        squads={squads.map((s) => s.nome)}
-        onCreate={criarMembro}
+      <EditMemberModal
+        open={!!editMember}
+        nome={editMember?.nome ?? ''}
+        papelIdAtual={editMember?.papel_id ?? null}
+        squadIdAtual={editMember?.squad_id ?? null}
+        papeis={papeisDB.map((p) => ({ id: p.id, nome: p.nome }))}
+        squads={squadsReais.map((s) => ({ id: s.id, nome: s.nome }))}
+        onClose={() => setEditMember(null)}
+        onSave={(papelId, squadId) => {
+          if (editMember) salvarMembro(editMember.id, papelId, squadId)
+          setEditMember(null)
+        }}
       />
       <RoleFormModal
         open={!!roleForm}
