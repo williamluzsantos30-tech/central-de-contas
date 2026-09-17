@@ -23,6 +23,7 @@ export interface NovaFlag {
 interface FlagsCtx {
   colaboradores: Colaborador[]
   registrarFlag: (colabId: string, nova: NovaFlag) => void
+  reverterFlag: (colabId: string, flagId: string) => void
 }
 
 const Ctx = createContext<FlagsCtx | null>(null)
@@ -56,7 +57,19 @@ export function FlagsProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  return <Ctx.Provider value={{ colaboradores, registrarFlag }}>{children}</Ctx.Provider>
+  const reverterFlag = useCallback((colabId: string, flagId: string) => {
+    setColaboradores((prev) =>
+      prev.map((c) =>
+        c.id === colabId
+          ? { ...c, flags: c.flags.map((f) => (f.id === flagId ? { ...f, status: 'revertida' as StatusFlag } : f)) }
+          : c,
+      ),
+    )
+  }, [])
+
+  return (
+    <Ctx.Provider value={{ colaboradores, registrarFlag, reverterFlag }}>{children}</Ctx.Provider>
+  )
 }
 
 export function useFlags(): FlagsCtx {

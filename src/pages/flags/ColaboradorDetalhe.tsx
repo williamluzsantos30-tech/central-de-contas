@@ -5,7 +5,7 @@
  */
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, AlertTriangle } from 'lucide-react'
 import { PrimaryButton, Badge } from '@/components/ds'
 import { useFlags } from './store'
 import { RegisterFlagModal, FlagHistoryCard, FlagTipoBadge, dataBR } from './components'
@@ -13,7 +13,7 @@ import { derivar, LIMITE_CRITICO_AMARELAS } from './mockFlags'
 
 export default function ColaboradorDetalhe() {
   const { colabId } = useParams()
-  const { colaboradores, registrarFlag } = useFlags()
+  const { colaboradores, registrarFlag, reverterFlag } = useFlags()
   const [modalOpen, setModalOpen] = useState(false)
 
   const colab = colaboradores.find((c) => c.id === colabId)
@@ -72,6 +72,20 @@ export default function ColaboradorDetalhe() {
         </PrimaryButton>
       </div>
 
+      {/* Alerta: a 1 flag do limite */}
+      {!d.elegivelDesligamento && d.amarelasAtivas === LIMITE_CRITICO_AMARELAS - 1 && (
+        <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-orange-500/40 bg-orange-500/[0.06] px-4 py-3">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-orange-300" />
+          <div>
+            <p className="text-xs font-semibold text-orange-200">Alerta: próxima flag implica desligamento</p>
+            <p className="mt-0.5 text-[11px] text-orange-200/80">
+              Este colaborador possui {d.amarelasAtivas} flags amarelas ativas. Uma próxima flag o
+              tornará elegível para desligamento.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Resumo */}
       <section className="mb-5 rounded-lg border border-border bg-bg-card p-5">
         <h2 className="mb-4 text-sm font-semibold text-zinc-100">Resumo</h2>
@@ -109,7 +123,7 @@ export default function ColaboradorDetalhe() {
         ) : (
           <div className="space-y-3">
             {flagsOrdenadas.map((f) => (
-              <FlagHistoryCard key={f.id} flag={f} />
+              <FlagHistoryCard key={f.id} flag={f} onReverter={() => reverterFlag(colab.id, f.id)} />
             ))}
           </div>
         )}

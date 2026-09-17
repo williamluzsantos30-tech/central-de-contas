@@ -111,15 +111,17 @@ export function derivar(c: Colaborador, hoje = new Date()): ColaboradorDerivado 
   const vermelhaAtiva = c.flags.some((f) => f.tipo === 'vermelha' && f.status === 'ativa')
   const datas = c.flags.map((f) => f.criadaEm).sort()
   const ultimaFlag = datas.length ? datas[datas.length - 1] : null
-  const critico = amarelasAtivas >= LIMITE_CRITICO_AMARELAS || vermelhaAtiva
+  // Elegível a desligamento: bateu o limite de amarelas ativas OU tem
+  // vermelha ativa. "Crítico" acompanha a elegibilidade.
+  const elegivelDesligamento = amarelasAtivas >= LIMITE_CRITICO_AMARELAS || vermelhaAtiva
   const limite30 = new Date(hoje.getTime() - 30 * 86_400_000)
   const flags30d = c.flags.filter((f) => new Date(f.criadaEm) >= limite30).length
   return {
     amarelasAtivas,
     vermelhaAtiva,
     ultimaFlag,
-    statusRisco: critico ? 'critico' : 'normal',
-    elegivelDesligamento: vermelhaAtiva,
+    statusRisco: elegivelDesligamento ? 'critico' : 'normal',
+    elegivelDesligamento,
     totalHistorico: c.flags.length,
     flags30d,
   }
@@ -175,11 +177,12 @@ export const COLABORADORES_INICIAIS: Colaborador[] = [
     nome: 'Jorge Luiz',
     cargo: 'Account Manager',
     squad: 'MovSeals',
-    // 3 amarelas ativas (recentes) → Crítico
+    // 2 amarelas ativas (a 1 do limite → banner de alerta) + 2 revertidas
     flags: [
-      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(5, 9, 12), 'ativa', 'Não seguiu o checklist de rotina do AM.'),
-      flag('amarela', 'Performance', 'Queda de performance', diasAtras(22, 14, 40), 'ativa', 'Queda relevante de leads em duas contas.'),
-      flag('amarela', 'Operacional', 'Falha de registro no CRM', diasAtras(45, 10, 3), 'ativa', 'Contatos não registrados no CRM no período.'),
+      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(5, 15, 27), 'ativa', 'SLA de resposta estourado em mais de 12 horas com a Rodo/Randon.'),
+      flag('amarela', 'Comportamental', 'Risco ao cliente', diasAtras(26, 11, 48), 'ativa', 'Foram identificados 3 erros em 3 clientes diferentes: Ultramedclin (falta de atenção nos criativos Rodo/Randon), erro no número da campanha Dra. Carolina e falha na postagem solicitada. Pontos que reforçam a necessidade de maior atenção aos detalhes nas entregas.'),
+      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(110, 11, 24), 'revertida', 'Houve falha no procedimento operacional de conferência de campanha e orçamento pelo menos 1 vez na semana. Como consequência, o Grupo Ribeiro ficou aproximadamente 1 mês com a campanha pausada por falta de verba.'),
+      flag('amarela', 'Performance', 'Atraso crítico', diasAtras(150, 8, 27), 'revertida', 'Demora na resposta a cliente de consultoria.'),
     ],
   },
 ]

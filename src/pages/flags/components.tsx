@@ -3,7 +3,7 @@
  * FlagHistoryCard.
  */
 import { useEffect, useState } from 'react'
-import { Clock } from 'lucide-react'
+import { Clock, RotateCcw } from 'lucide-react'
 import { Modal, FormField, Select, Textarea, PrimaryButton, OutlineButton, Badge } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import {
@@ -187,7 +187,7 @@ const STATUS_SECUNDARIO: Record<StatusFlag, { label: string; tone: 'neutral' | '
   revertida: { label: 'Revertida', tone: 'success' },
 }
 
-export function FlagHistoryCard({ flag }: { flag: Flag }) {
+export function FlagHistoryCard({ flag, onReverter }: { flag: Flag; onReverter?: () => void }) {
   const st = STATUS_SECUNDARIO[flag.status]
   return (
     <div className="rounded-lg border border-border bg-bg-soft/40 p-4">
@@ -195,6 +195,15 @@ export function FlagHistoryCard({ flag }: { flag: Flag }) {
         <FlagTipoBadge tipo={flag.tipo} />
         <span className="text-[11px] tabular-nums text-muted">{dataHoraBR(flag.criadaEm)}</span>
         <Badge tone={st.tone}>{st.label}</Badge>
+        {flag.status === 'ativa' && onReverter && (
+          <button
+            onClick={onReverter}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300"
+            title="Reverter esta flag"
+          >
+            <RotateCcw size={12} /> Reverter
+          </button>
+        )}
       </div>
       <div className="space-y-0.5 text-xs">
         <p className="text-muted">
