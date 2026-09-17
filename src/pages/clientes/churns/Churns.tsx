@@ -13,19 +13,16 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ChevronDown,
-  Calendar,
   Download,
   UserMinus,
   DollarSign,
   Percent,
   Clock,
   Ticket,
-  ArrowUpRight,
   Search,
   Eye,
 } from 'lucide-react'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { Button } from '@/components/ui/Button'
+import { PageHeader, KPICard, FilterBar, FilterPill, OutlineButton } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import { useChurnsData, type ClienteChurn } from './useChurnsData'
 
@@ -130,9 +127,9 @@ export default function Churns() {
         title="Clientes Churns"
         description="Dashboard analítico de cancelamentos"
         actions={
-          <Button variant="outline" onClick={() => window.print()}>
+          <OutlineButton onClick={() => window.print()}>
             <Download size={14} /> Exportar
-          </Button>
+          </OutlineButton>
         }
       />
 
@@ -152,62 +149,23 @@ export default function Churns() {
             </div>
           )}
 
-          {/* KPIs */}
+          {/* KPIs — perdas em vermelho (cor semântica do DS) */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <KpiCard
-              icon={<UserMinus size={13} className="text-red-300" />}
-              label="Total Churns"
-              valor={String(d.kpis.totalChurns)}
-              sparkline={d.tendencia.map((t) => t.qtd)}
-            />
-            <KpiCard
-              icon={<DollarSign size={13} className="text-red-300" />}
-              label="MRR Perdido"
-              valor={formatBRL(d.kpis.mrrPerdido)}
-            />
-            <KpiCard
-              icon={<DollarSign size={13} className="text-emerald-300" />}
-              label="MRR Mês Atual"
-              valor={formatBRL(d.kpis.mrrMesAtual)}
-              badgePct={d.kpis.mrrMesAtualDeltaPct}
-            />
-            <KpiCard
-              icon={<Percent size={13} className="text-red-300" />}
-              label="Churn Rate"
-              valor={formatPct(d.kpis.churnRate)}
-              secondary="da base já cancelou"
-            />
-            <KpiCard
-              icon={<Clock size={13} className="text-brand-300" />}
-              label="Tempo Médio Casa"
-              valor={`${d.kpis.tempoMedioCasaMeses}m`}
-            />
-            <KpiCard
-              icon={<Ticket size={13} className="text-brand-300" />}
-              label="Ticket Médio Churn"
-              valor={formatBRL(d.kpis.ticketMedioChurn)}
-              secondary={`Ativos: ${formatBRL(d.kpis.ticketMedioAtivo)}`}
-            />
+            <KPICard icon={<UserMinus size={13} className="text-red-400" />} label="Total Churns" value={String(d.kpis.totalChurns)} tone="danger" sparkline={d.tendencia.map((t) => t.qtd)} sub="no período" />
+            <KPICard icon={<DollarSign size={13} className="text-red-400" />} label="MRR Perdido" value={formatBRL(d.kpis.mrrPerdido)} tone="danger" sub="acumulado" />
+            <KPICard icon={<DollarSign size={13} className="text-red-400" />} label="MRR Mês Atual" value={formatBRL(d.kpis.mrrMesAtual)} tone="danger" delta={d.kpis.mrrMesAtualDeltaPct} deltaInvert sub="vs. mês anterior" />
+            <KPICard icon={<Percent size={13} className="text-red-400" />} label="Churn Rate" value={formatPct(d.kpis.churnRate)} tone="danger" sub="da base já cancelou" />
+            <KPICard icon={<Clock size={13} className="text-brand-300" />} label="Tempo Médio Casa" value={`${d.kpis.tempoMedioCasaMeses}m`} sub="até o churn" />
+            <KPICard icon={<Ticket size={13} className="text-brand-300" />} label="Ticket Médio Churn" value={formatBRL(d.kpis.ticketMedioChurn)} sub={`Ativos: ${formatBRL(d.kpis.ticketMedioAtivo)}`} />
           </div>
 
           {/* Filtros */}
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-soft/40 px-3 py-2">
-            <div className="mr-1 flex items-center gap-1.5 border-r border-border pr-2">
-              <Calendar size={13} className="text-muted" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Filtros
-              </span>
-            </div>
-            <Pill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
-            <Pill
-              value={fSquad}
-              onChange={setFSquad}
-              placeholder="Todos os Squads"
-              options={d.porSquad.map((s) => ({ value: s.squad, label: s.squad }))}
-            />
-            <Pill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={[]} />
-            <Pill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={[]} />
-          </div>
+          <FilterBar className="mt-4">
+            <FilterPill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
+            <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={d.porSquad.map((s) => ({ value: s.squad, label: s.squad }))} />
+            <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={[]} />
+            <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={[]} />
+          </FilterBar>
 
           {/* Grid de gráficos */}
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -238,78 +196,6 @@ export default function Churns() {
         </>
       )}
     </div>
-  )
-}
-
-// ============================================================
-// KPI card
-// ============================================================
-function KpiCard({
-  icon,
-  label,
-  valor,
-  badgePct,
-  secondary,
-  sparkline,
-}: {
-  icon: React.ReactNode
-  label: string
-  valor: string
-  badgePct?: number | null
-  secondary?: string
-  sparkline?: number[]
-}) {
-  const temSpark = sparkline && sparkline.some((v) => v > 0)
-  return (
-    <div className="rounded-xl border border-border bg-bg-card px-4 py-3.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          {icon}
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</p>
-        </div>
-        {temSpark && <Sparkline dados={sparkline!} />}
-      </div>
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <p className="text-2xl font-bold leading-none tabular-nums text-zinc-100">{valor}</p>
-        {badgePct !== undefined && badgePct !== null && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold',
-              badgePct >= 0
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                : 'border-red-500/40 bg-red-500/10 text-red-300',
-            )}
-          >
-            <ArrowUpRight size={10} className={badgePct >= 0 ? '' : 'rotate-90'} />
-            {Math.round(badgePct * 100)}%
-          </span>
-        )}
-      </div>
-      {secondary ? (
-        <p className="mt-1.5 text-[10px] text-muted">{secondary}</p>
-      ) : (
-        <p className="mt-1.5 text-[10px] text-muted">vs. mês anterior</p>
-      )}
-    </div>
-  )
-}
-
-function Sparkline({ dados }: { dados: number[] }) {
-  const W = 60
-  const H = 22
-  const max = Math.max(1, ...dados)
-  const n = dados.length
-  const pts = dados
-    .map((v, i) => {
-      const x = n > 1 ? (W * i) / (n - 1) : W / 2
-      const y = H - (v / max) * (H - 2) - 1
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="shrink-0" aria-hidden>
-      <polyline points={pts} fill="none" stroke={COR_CHURN} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
   )
 }
 
@@ -816,39 +702,6 @@ function TabelaChurns({ clientes }: { clientes: ClienteChurn[] }) {
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-// ============================================================
-// Pill de filtro (select nativo estilizado)
-// ============================================================
-function Pill({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder?: string
-}) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="cursor-pointer appearance-none rounded-md border border-border bg-bg-elev py-1.5 pl-3 pr-8 text-xs font-medium text-zinc-100 transition-colors hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none"
-      >
-        {placeholder && <option value="">{placeholder}</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted" />
     </div>
   )
 }
