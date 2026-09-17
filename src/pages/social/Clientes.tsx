@@ -72,7 +72,7 @@ interface ClienteSocialStats {
   }>
 }
 
-export default function SocialClientes() {
+export default function SocialClientes({ embedded = false }: { embedded?: boolean }) {
   const { profile } = useAuth()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [items, setItems] = useState<ItemSocialMedia[]>([])
@@ -286,47 +286,55 @@ export default function SocialClientes() {
     })
   }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
+  const acoes = (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => {
+          setGerandoPdf(true)
+          downloadRelatorioSemanalSocialPDF({
+            clientes: filtered,
+            items,
+            planejamentos,
+          }).finally(() => setGerandoPdf(false))
+        }}
+        disabled={gerandoPdf || loading}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300 disabled:opacity-50"
+        title="Baixar PDF com publicadas, atrasadas e em produção desta semana"
+      >
+        <FileText size={13} />
+        {gerandoPdf ? 'Gerando…' : 'Relatório semanal'}
+      </button>
+      <Button
+        onClick={() => {
+          setEditing(null)
+          setFormOpen(true)
+        }}
+      >
+        <Plus size={14} /> Novo cliente
+      </Button>
+    </div>
+  )
+
   return (
     <div>
-      <PageHeader
-        title={
-          mostrarArquivados ? 'Clientes arquivados · Social Media' : 'Clientes · Social Media'
-        }
-        description={
-          mostrarArquivados
-            ? `${filtered.length} ${filtered.length === 1 ? 'cliente arquivado' : 'clientes arquivados'} (churn)`
-            : `${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`
-        }
-        actions={
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setGerandoPdf(true)
-                downloadRelatorioSemanalSocialPDF({
-                  clientes: filtered,
-                  items,
-                  planejamentos,
-                }).finally(() => setGerandoPdf(false))
-              }}
-              disabled={gerandoPdf || loading}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300 disabled:opacity-50"
-              title="Baixar PDF com publicadas, atrasadas e em produção desta semana"
-            >
-              <FileText size={13} />
-              {gerandoPdf ? 'Gerando…' : 'Relatório semanal'}
-            </button>
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              <Plus size={14} /> Novo cliente
-            </Button>
-          </div>
-        }
-      />
+      {embedded ? (
+        // Embutida na lista única — sem PageHeader próprio (o pai já tem).
+        // Só a barra de ações fica visível, alinhada à direita.
+        <div className="mb-4 flex items-center justify-end">{acoes}</div>
+      ) : (
+        <PageHeader
+          title={
+            mostrarArquivados ? 'Clientes arquivados · Social Media' : 'Clientes · Social Media'
+          }
+          description={
+            mostrarArquivados
+              ? `${filtered.length} ${filtered.length === 1 ? 'cliente arquivado' : 'clientes arquivados'} (churn)`
+              : `${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`
+          }
+          actions={acoes}
+        />
+      )}
 
       {/* Banner de órfãos: clientes em SM sem responsável atribuído */}
       {orfaos.length > 0 && (

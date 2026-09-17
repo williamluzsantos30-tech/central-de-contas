@@ -111,7 +111,8 @@ const nav: Group[] = [
     defaultOpen: true,
     modulo: 'social_media',
     items: [
-      { to: '/social/clientes', label: 'Clientes', icon: Users },
+      // Clientes de Social Media agora vivem na lista única (Tráfego > Clientes,
+      // aba "Social Media"). Aqui fica só a operação de conteúdo.
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
     ],
   },

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search, Pencil, Eye, Download, CircleDollarSign, AlertTriangle, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
+import SocialClientes from '@/pages/social/Clientes'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
 import { temAlgumCargo } from '@/lib/cargos'
@@ -33,8 +34,27 @@ function mesesCasa(iso: string | null): number {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) + 1
 }
 
+// Segmento da lista única. 'todos' = base inteira (colunas essenciais);
+// 'trafego'/'social' = a visão rica daquele setor.
+type Setor = 'todos' | 'trafego' | 'social'
+
 export default function Clientes() {
   const { profile } = useAuth()
+  // Segmento vem da URL (?setor=) — permite deep-link (ex: redirect de
+  // /social/clientes → /clientes?setor=social). Default: Tráfego.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const setorParam = searchParams.get('setor')
+  const setor: Setor = setorParam === 'social' ? 'social' : setorParam === 'todos' ? 'todos' : 'trafego'
+  function setSetor(s: Setor) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('setor', s)
+        return next
+      },
+      { replace: true },
+    )
+  }
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [gestores, setGestores] = useState<Profile[]>([])
   const { nomes: squadsAtivos } = useSquads()
@@ -75,14 +95,13 @@ export default function Clientes() {
     if (!silent) setLoading(true)
     const today = new Date().toISOString().slice(0, 10)
     const [cRes, gRes, ativosRes, atrasadasRes, minhasRes] = await Promise.all([
+      // Lista única — carrega TODA a base. O segmento (Todos/Tráfego/Social)
+      // filtra por módulo no cliente, em memória.
       supabase
         .from('clientes')
         .select(
           '*, gestor:profiles!gestor_id(*), account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
         )
-        // Tráfego mostra só os clientes do módulo trafego (legados sem modulos
-        // ainda assim aparecem porque a migration faz backfill com {trafego})
-        .contains('modulos', ['trafego'])
         .order('nome'),
       // Filtro "Todos gestores" só lista cargo gestor_trafego
       supabase
@@ -130,6 +149,10 @@ export default function Clientes() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
+      // Segmento: 'trafego' só clientes do módulo trafego; 'todos' = base inteira.
+      // (o segmento 'social' é renderizado por outro componente.)
+      const mods = c.modulos ?? ['trafego']
+      if (setor === 'trafego' && !mods.includes('trafego')) return false
       // Arquivados (churn) ficam ocultos por padrão. Toggle mostra apenas eles.
       const eArquivado = !!c.arquivado_em
       if (mostrarArquivados && !eArquivado) return false
@@ -149,7 +172,7 @@ export default function Clientes() {
       }
       return true
     })
-  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
+  }, [clientes, setor, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
   // KPIs operacionais derivados da base FILTRADA (só ativos; churn/arquivado
   // ficam fora). Reaproveita as métricas do Dashboard — verba sob gestão,
@@ -182,26 +205,54 @@ export default function Clientes() {
         title={mostrarArquivados ? 'Clientes arquivados' : 'Lista de Clientes'}
         description={mostrarArquivados ? 'Arquivados (churn)' : 'Clientes ativos na base'}
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => alert('Exportação em breve')}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300"
-            >
-              <Download size={12} /> Exportar
-            </button>
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              <Plus size={14} /> Novo cliente
-            </Button>
-          </div>
+          setor === 'social' ? undefined : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => alert('Exportação em breve')}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300"
+              >
+                <Download size={12} /> Exportar
+              </button>
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus size={14} /> Novo cliente
+              </Button>
+            </div>
+          )
         }
       />
 
+      {/* Segmento da lista única: Todos · Tráfego · Social Media */}
+      <div className="mb-4 inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
+        {(
+          [
+            ['todos', 'Todos'],
+            ['trafego', 'Tráfego'],
+            ['social', 'Social Media'],
+          ] as [Setor, string][]
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setSetor(key)}
+            className={cn(
+              'rounded-md px-3.5 py-1.5 text-[11px] font-medium transition-colors',
+              setor === key ? 'bg-bg-elev text-brand-200 shadow-sm' : 'text-muted hover:text-zinc-200',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {setor === 'social' ? (
+        <SocialClientes embedded />
+      ) : (
+        <>
       {/* Resumo operacional — reaproveita os KPIs do Dashboard (verba sob
           gestão, tarefas atrasadas, ativos com problema) + Minhas tarefas de
           hoje. Os 3 KPIs seguem os filtros aplicados na lista. */}
@@ -342,55 +393,28 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* Tabela — clean, hover sutil, colunas essenciais */}
-      <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
-                <th className="px-4 py-3 font-semibold">Cliente</th>
-                <th className="px-3 py-3 font-semibold">Squad</th>
-                <th className="px-3 py-3 font-semibold">Account Manager</th>
-                <th className="px-3 py-3 font-semibold">Social Media</th>
-                <th className="px-3 py-3 font-semibold text-right">Ticket Mensal</th>
-                <th className="px-3 py-3 font-semibold text-right">LT</th>
-                <th className="px-3 py-3 font-semibold">Status</th>
-                <th className="px-3 py-3 font-semibold">Jornada</th>
-                <th className="px-3 py-3 font-semibold text-right">NPS</th>
-                <th className="px-3 py-3 font-semibold">Semáforo</th>
-                <th className="px-3 py-3 font-semibold">Última Atualização</th>
-                <th className="px-3 py-3 text-right">&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted">
-                    Carregando…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted italic">
-                    Nenhum cliente encontrado com esses filtros.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((c) => (
-                  <ClienteRow
-                    key={c.id}
-                    cliente={c}
-                    onEditar={() => {
-                      setEditing(c)
-                      setFormOpen(true)
-                    }}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Tabela — 'todos' usa colunas essenciais; 'trafego' a visão rica */}
+      {setor === 'todos' ? (
+        <TabelaTodos
+          clientes={filtered}
+          loading={loading}
+          onEditar={(c) => {
+            setEditing(c)
+            setFormOpen(true)
+          }}
+        />
+      ) : (
+        <TabelaTrafego
+          clientes={filtered}
+          loading={loading}
+          onEditar={(c) => {
+            setEditing(c)
+            setFormOpen(true)
+          }}
+        />
+      )}
+        </>
+      )}
 
       <ClienteForm
         open={formOpen}
@@ -408,6 +432,205 @@ export default function Clientes() {
 // ============================================================
 // Componentes auxiliares
 // ============================================================
+
+/** Selos dos serviços que o cliente atende (Tráfego / Social). */
+function ServicoBadges({ modulos }: { modulos: Cliente['modulos'] }) {
+  const mods = modulos ?? ['trafego']
+  return (
+    <span className="inline-flex gap-1">
+      {mods.includes('trafego') && (
+        <span className="inline-flex items-center rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium text-sky-200">
+          Tráfego
+        </span>
+      )}
+      {mods.includes('social_media') && (
+        <span className="inline-flex items-center rounded border border-pink-500/40 bg-pink-500/10 px-1.5 py-0.5 text-[9px] font-medium text-pink-200">
+          Social
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Tabela rica do setor Tráfego (Ticket/LT/NPS/Semáforo). */
+function TabelaTrafego({
+  clientes,
+  loading,
+  onEditar,
+}: {
+  clientes: Cliente[]
+  loading: boolean
+  onEditar: (c: Cliente) => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
+              <th className="px-4 py-3 font-semibold">Cliente</th>
+              <th className="px-3 py-3 font-semibold">Squad</th>
+              <th className="px-3 py-3 font-semibold">Account Manager</th>
+              <th className="px-3 py-3 font-semibold">Social Media</th>
+              <th className="px-3 py-3 font-semibold text-right">Ticket Mensal</th>
+              <th className="px-3 py-3 font-semibold text-right">LT</th>
+              <th className="px-3 py-3 font-semibold">Status</th>
+              <th className="px-3 py-3 font-semibold">Jornada</th>
+              <th className="px-3 py-3 font-semibold text-right">NPS</th>
+              <th className="px-3 py-3 font-semibold">Semáforo</th>
+              <th className="px-3 py-3 font-semibold">Última Atualização</th>
+              <th className="px-3 py-3 text-right">&nbsp;</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted">
+                  Carregando…
+                </td>
+              </tr>
+            ) : clientes.length === 0 ? (
+              <tr>
+                <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted italic">
+                  Nenhum cliente encontrado com esses filtros.
+                </td>
+              </tr>
+            ) : (
+              clientes.map((c) => <ClienteRow key={c.id} cliente={c} onEditar={() => onEditar(c)} />)
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/** Tabela enxuta do segmento "Todos" — colunas essenciais + selos de serviço. */
+function TabelaTodos({
+  clientes,
+  loading,
+  onEditar,
+}: {
+  clientes: Cliente[]
+  loading: boolean
+  onEditar: (c: Cliente) => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
+              <th className="px-4 py-3 font-semibold">Cliente</th>
+              <th className="px-3 py-3 font-semibold">Serviços</th>
+              <th className="px-3 py-3 font-semibold">Squad</th>
+              <th className="px-3 py-3 font-semibold">Account Manager</th>
+              <th className="px-3 py-3 font-semibold text-right">Ticket Mensal</th>
+              <th className="px-3 py-3 font-semibold">Status</th>
+              <th className="px-3 py-3 font-semibold">Última Atualização</th>
+              <th className="px-3 py-3 text-right">&nbsp;</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-12 text-center text-xs text-muted">
+                  Carregando…
+                </td>
+              </tr>
+            ) : clientes.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-12 text-center text-xs text-muted italic">
+                  Nenhum cliente encontrado com esses filtros.
+                </td>
+              </tr>
+            ) : (
+              clientes.map((c) => <ClienteRowTodos key={c.id} cliente={c} onEditar={() => onEditar(c)} />)
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/** Linha enxuta do segmento "Todos". */
+function ClienteRowTodos({ cliente: c, onEditar }: { cliente: Cliente; onEditar: () => void }) {
+  const situacao = situacaoCliente(c)
+  return (
+    <tr className="border-b border-border/60 last:border-b-0 hover:bg-bg-soft/40 transition-colors">
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <AvatarInicial nome={c.nome} cor="brand" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Link
+                to={`/clientes/${c.id}`}
+                className="text-xs font-semibold text-zinc-100 hover:text-brand-300 truncate"
+              >
+                {c.nome}
+              </Link>
+              {c.tipo && (
+                <span className="inline-flex items-center rounded border border-border bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium text-zinc-300">
+                  {tipoClienteLabel[c.tipo]}
+                </span>
+              )}
+            </div>
+            {c.nicho && <p className="text-[10px] text-muted truncate">{c.nicho}</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap">
+        <ServicoBadges modulos={c.modulos} />
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap text-zinc-200">{c.squad ?? '—'}</td>
+      <td className="px-3 py-3 whitespace-nowrap">
+        {c.account_manager?.nome ? (
+          <div className="flex items-center gap-1.5">
+            <AvatarInicial nome={c.account_manager.nome} cor="violet" size="xs" />
+            <span className="text-zinc-200">{c.account_manager.nome}</span>
+          </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums text-emerald-300">
+        {formatCurrency(c.verba_mensal ?? 0)}
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap">
+        <span
+          className={cn(
+            'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
+            situacao.cls,
+          )}
+        >
+          {situacao.label}
+        </span>
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap text-[10px] text-muted tabular-nums">
+        {formatDate(c.updated_at)}
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap text-right">
+        <div className="inline-flex gap-0.5">
+          <button
+            onClick={onEditar}
+            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+            title="Editar"
+          >
+            <Pencil size={12} />
+          </button>
+          <Link
+            to={`/clientes/${c.id}`}
+            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
+            title="Abrir Ficha"
+          >
+            <Eye size={12} />
+          </Link>
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 /** KPI card — mesmo visual do Dashboard (glow no hover, ícone em caixa). */
 function Kpi({

@@ -53,10 +53,11 @@ import type {
 
 type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'crm' | 'log' | 'criacoes'
 type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas' | 'ideias'
-type Modo = 'trafego' | 'social'
-// Nova nav top-level do cliente. 'ficha' e' a visao comercial padrao;
-// 'operacional' abre as tabs originais do modo atual (trafego/social).
-type TopView = 'ficha' | 'operacional'
+// Nav top-level do cliente. 'ficha' e' a visao comercial padrao. Os
+// operacionais aparecem conforme os MODULOS do cliente: quem atende
+// tráfego ganha 'op-trafego', quem atende social ganha 'op-social'. Um
+// cliente que contrata os dois serviços tem as duas abas.
+type TopView = 'ficha' | 'op-trafego' | 'op-social'
 
 const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLeft: string }> = {
   diaria: {
@@ -84,10 +85,10 @@ const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLe
 export default function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  // O modo é definido PURAMENTE pela URL — sem toggle.
-  // /social/clientes/:id  → modo Social Media
-  // /clientes/:id         → modo Tráfego
-  const modoUrl: Modo = location.pathname.startsWith('/social/') ? 'social' : 'trafego'
+  // Qual operacional abrir primeiro quando a página carrega. Só afeta o
+  // estado inicial — depois o usuário troca de aba livremente. Links antigos
+  // de /social/clientes/:id abrem direto no operacional social.
+  const prefereSocial = location.pathname.startsWith('/social/')
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [ativos, setAtivos] = useState<Ativo[]>([])
@@ -96,9 +97,6 @@ export default function ClienteDetalhe() {
   const [tab, setTab] = useState<Tab>('visao')
   const [socialTab, setSocialTab] = useState<SocialTab>('painel')
   const [topView, setTopView] = useState<TopView>('ficha')
-  // Mantém compatível com o resto do código que lê `modo`. Atualiza
-  // sempre que a URL muda (navegação entre as 2 visões).
-  const modo: Modo = modoUrl
   const [editOpen, setEditOpen] = useState(false)
   const [novaFreq, setNovaFreq] = useState<FrequenciaTarefa | null>(null)
   const [drawerTarefa, setDrawerTarefa] = useState<Tarefa | null>(null)
@@ -170,6 +168,16 @@ export default function ClienteDetalhe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // Estado inicial da aba de topo assim que o cliente carrega. Links vindos
+  // do contexto Social Media abrem direto no operacional social (se o cliente
+  // atende social); o resto começa na Ficha.
+  useEffect(() => {
+    if (!cliente) return
+    const mods = cliente.modulos ?? ['trafego']
+    setTopView(prefereSocial && mods.includes('social_media') ? 'op-social' : 'ficha')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente?.id])
+
   async function restaurarTarefasPadrao() {
     if (!id) return
     if (
@@ -239,71 +247,66 @@ export default function ClienteDetalhe() {
   const temSocial = modulos.includes('social_media')
   const temTrafego = modulos.includes('trafego')
 
-  // Aviso quando alguém entra na rota errada (cliente não tem o módulo solicitado)
-  const moduloFaltante =
-    (modo === 'trafego' && !temTrafego) || (modo === 'social' && !temSocial)
+  // View efetiva: se o estado aponta pra um operacional que o cliente não
+  // atende (ex: cliente perdeu o módulo), cai de volta na Ficha.
+  const viewAtual: TopView =
+    (topView === 'op-trafego' && !temTrafego) || (topView === 'op-social' && !temSocial)
+      ? 'ficha'
+      : topView
 
   return (
     <div>
       <Link
-        to={modo === 'social' ? '/social/clientes' : '/clientes'}
+        to="/clientes"
         className="mb-3 inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-200"
       >
         <ChevronLeft size={14} /> voltar aos clientes
       </Link>
 
-      {moduloFaltante && (
-        <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          ⚠️ Esse cliente não está cadastrado no módulo{' '}
-          <strong>{modo === 'social' ? 'Social Media' : 'Tráfego'}</strong>. Os dados aqui podem estar vazios.
-          {modo === 'social' && temTrafego && (
-            <>
-              {' '}
-              <Link to={`/clientes/${cliente.id}`} className="underline hover:text-amber-100">
-                ver no Tráfego
-              </Link>
-            </>
-          )}
-          {modo === 'trafego' && temSocial && (
-            <>
-              {' '}
-              <Link to={`/social/clientes/${cliente.id}`} className="underline hover:text-amber-100">
-                ver no Social Media
-              </Link>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Nova tab bar de topo: Ficha (comercial) vs Operacional (features
-          do modo trafego/social). Ficha e' o default. */}
+      {/* Tab bar de topo: Ficha (comercial) + os operacionais que o cliente
+          atende. Quem contrata tráfego + social vê as duas abas. */}
       <div className="mb-6 inline-flex rounded-lg border border-border bg-bg-soft p-1">
         <button
           onClick={() => setTopView('ficha')}
           className={cn(
             'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
-            topView === 'ficha'
+            viewAtual === 'ficha'
               ? 'bg-bg-elev text-brand-300 shadow-sm'
               : 'text-muted hover:text-zinc-200',
           )}
         >
           📇 Ficha
         </button>
-        <button
-          onClick={() => setTopView('operacional')}
-          className={cn(
-            'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
-            topView === 'operacional'
-              ? 'bg-bg-elev text-brand-300 shadow-sm'
-              : 'text-muted hover:text-zinc-200',
-          )}
-        >
-          {modo === 'social' ? '📱 Operacional Social' : '📊 Operacional Tráfego'}
-        </button>
+        {temTrafego && (
+          <button
+            onClick={() => setTopView('op-trafego')}
+            className={cn(
+              'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
+              viewAtual === 'op-trafego'
+                ? 'bg-bg-elev text-brand-300 shadow-sm'
+                : 'text-muted hover:text-zinc-200',
+            )}
+          >
+            📊 Operacional Tráfego
+          </button>
+        )}
+        {temSocial && (
+          <button
+            onClick={() => setTopView('op-social')}
+            className={cn(
+              'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
+              viewAtual === 'op-social'
+                ? 'bg-bg-elev text-pink-300 shadow-sm'
+                : 'text-muted hover:text-zinc-200',
+            )}
+          >
+            📱 Operacional Social
+          </button>
+        )}
       </div>
 
       {/* Ficha view — visao comercial padrao */}
-      {topView === 'ficha' && (
+      {viewAtual === 'ficha' && (
         <ClienteFicha
           cliente={cliente}
           onChanged={load}
@@ -312,7 +315,7 @@ export default function ClienteDetalhe() {
       )}
 
       {/* Modo Tráfego: header + tabs originais */}
-      {topView === 'operacional' && modo === 'trafego' && (
+      {viewAtual === 'op-trafego' && (
         <>
           <ClienteHeader cliente={cliente} onChanged={load} onEdit={() => setEditOpen(true)} />
           <div className="mb-6 flex gap-1 border-b border-border">
@@ -343,7 +346,7 @@ export default function ClienteDetalhe() {
       )}
 
       {/* Modo Social Media: header SM + tabs SM */}
-      {topView === 'operacional' && modo === 'social' && (
+      {viewAtual === 'op-social' && (
         <>
           <SocialClienteHeader
             cliente={cliente}
@@ -418,7 +421,7 @@ export default function ClienteDetalhe() {
         </>
       )}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'visao' && (
+      {viewAtual === 'op-trafego' && tab === 'visao' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card>
             <CardHeader>
@@ -469,7 +472,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'tarefas' && (
+      {viewAtual === 'op-trafego' && tab === 'tarefas' && (
         <div className="space-y-5">
           <div className="flex items-center justify-end">
             <Button
@@ -520,7 +523,7 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'ativos' && (
+      {viewAtual === 'op-trafego' && tab === 'ativos' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {TIPOS_ATIVO.map((tipo) => {
             const a = ativosByTipo.get(tipo)
@@ -531,15 +534,15 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
+      {viewAtual === 'op-trafego' && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'metas' && (
+      {viewAtual === 'op-trafego' && tab === 'metas' && (
         <MetasPanel clienteId={cliente.id} cliente={cliente} />
       )}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
+      {viewAtual === 'op-trafego' && tab === 'crm' && <LeadsPanel cliente={cliente} />}
 
-      {topView === 'operacional' && modo === 'trafego' && tab === 'log' && (
+      {viewAtual === 'op-trafego' && tab === 'log' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <Select
