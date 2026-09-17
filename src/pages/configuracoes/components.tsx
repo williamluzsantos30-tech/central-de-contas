@@ -29,12 +29,14 @@ import {
 import { cn } from '@/lib/utils'
 import {
   COLABORADORES,
+  PERMISSOES,
   statusCrescimento,
   statusLimite,
   type Params,
   type Role,
   type Squad,
   type StatusTom,
+  type TeamMember,
 } from './mockSettings'
 
 export function formatBRL(v: number): string {
@@ -311,12 +313,53 @@ export function SquadsTable({
 }
 
 // ============================================================
-// RolesTable
+// PermissionBadgeList — até 2 badges + "+N" com popover no hover
 // ============================================================
-export function RolesTable({ roles, onToggle }: { roles: Role[]; onToggle: (id: string) => void }) {
+export function PermissionBadgeList({ permissoes }: { permissoes: string[] }) {
+  if (permissoes.length === 0) return <span className="text-[11px] text-muted">—</span>
+  const visiveis = permissoes.slice(0, 2)
+  const resto = permissoes.slice(2)
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {visiveis.map((p) => (
+        <Badge key={p} tone="neutral">{p}</Badge>
+      ))}
+      {resto.length > 0 && (
+        <span className="group relative">
+          <Badge tone="neutral" className="cursor-default">+{resto.length}</Badge>
+          <span className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 hidden min-w-[160px] rounded-lg border border-border bg-bg-elev p-2 shadow-xl group-hover:block">
+            <span className="flex flex-col gap-1">
+              {resto.map((p) => (
+                <span key={p} className="whitespace-nowrap text-[11px] text-zinc-200">{p}</span>
+              ))}
+            </span>
+          </span>
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ============================================================
+// RolesTable (completa)
+// ============================================================
+export function RolesTable({
+  roles,
+  emUso,
+  onToggle,
+  onDelete,
+}: {
+  roles: Role[]
+  emUso: Set<string>
+  onToggle: (id: string) => void
+  onDelete: (id: string) => void
+}) {
   const columns: Column<Role>[] = [
     { key: 'nome', header: 'Nome', render: (r) => <span className="font-medium text-zinc-100">{r.nome}</span> },
-    { key: 'tipo', header: 'Tipo', render: (r) => <Badge tone="accent">{r.tipo}</Badge> },
+    { key: 'tipo', header: 'Tipo', render: (r) => <Badge tone={r.tipo === 'estrategico' ? 'warning' : 'neutral'}>{r.tipo === 'estrategico' ? 'estratégico' : 'operacional'}</Badge> },
+    { key: 'escopo', header: 'Escopo', render: (r) => <Badge tone="neutral">{r.escopo}</Badge> },
+    { key: 'permissoes', header: 'Permissões', render: (r) => <PermissionBadgeList permissoes={r.permissoes} /> },
+    { key: 'jd', header: 'JD', render: (r) => <Badge tone={r.jdPreenchida ? 'warning' : 'neutral'}>{r.jdPreenchida ? 'Preenchido' : 'Vazio'}</Badge> },
     {
       key: 'status',
       header: 'Status',
@@ -327,27 +370,264 @@ export function RolesTable({ roles, onToggle }: { roles: Role[]; onToggle: (id: 
         </span>
       ),
     },
-    { key: 'jd', header: 'JD', render: (r) => (r.jd ? <a className="text-sky-300 hover:underline">{r.jd}</a> : <span className="text-muted">Vazio</span>) },
     {
       key: 'acoes',
       header: 'Ações',
       align: 'right',
-      render: () => (
+      render: (r) => {
+        const bloqueado = emUso.has(r.nome)
+        return (
+          <span className="inline-flex items-center justify-end gap-1">
+            <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Job description">
+              <FileText size={12} />
+            </button>
+            <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={() => !bloqueado && onDelete(r.id)}
+              disabled={bloqueado}
+              className={cn('grid h-7 w-7 place-items-center rounded', bloqueado ? 'cursor-not-allowed text-zinc-600' : 'text-red-400 hover:bg-red-500/10')}
+              title={bloqueado ? 'Possui vínculos ativos — só pode inativar' : 'Excluir'}
+            >
+              <Trash2 size={12} />
+            </button>
+          </span>
+        )
+      },
+    },
+  ]
+  return <DataTable columns={columns} rows={roles} rowKey={(r) => r.id} minWidth={980} />
+}
+
+// ============================================================
+// NewRoleModal
+// ============================================================
+export function NewRoleModal({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreate: (nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) => void
+}) {
+  const [nome, setNome] = useState('')
+  const [tipo, setTipo] = useState<Role['tipo']>('operacional')
+  const [escopo, setEscopo] = useState<Role['escopo']>('Squad')
+  const [perms, setPerms] = useState<string[]>([])
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setNome('')
+      setTipo('operacional')
+      setEscopo('Squad')
+      setPerms([])
+      setErro(null)
+    }
+  }, [open])
+
+  function togglePerm(p: string) {
+    setPerms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))
+  }
+  function salvar() {
+    if (!nome.trim()) {
+      setErro('Informe o nome do papel.')
+      return
+    }
+    onCreate(nome.trim(), tipo, escopo, perms)
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Novo Papel"
+      footer={
+        <div className="flex justify-end gap-2">
+          <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
+          <PrimaryButton size="sm" onClick={salvar}>Salvar</PrimaryButton>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {erro && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{erro}</div>}
+        <FormField label="Nome" required>
+          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Account Manager" />
+        </FormField>
+        <FormField label="Tipo">
+          <Select value={tipo} onChange={(e) => setTipo(e.target.value as Role['tipo'])}>
+            <option value="estrategico">Estratégico</option>
+            <option value="operacional">Operacional</option>
+          </Select>
+        </FormField>
+        <FormField label="Escopo do Cargo" hint="Global = Coordenador, Head, Diretor (não vinculado a squad)">
+          <Select value={escopo} onChange={(e) => setEscopo(e.target.value as Role['escopo'])}>
+            <option value="Squad">Squad</option>
+            <option value="Global">Global</option>
+          </Select>
+        </FormField>
+        <div>
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">Permissões</p>
+          <div className="flex flex-col gap-1.5">
+            {PERMISSOES.map((p) => (
+              <label key={p} className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+                <input type="checkbox" checked={perms.includes(p)} onChange={() => togglePerm(p)} className="h-3.5 w-3.5 rounded border-border bg-bg-elev accent-orange-500" />
+                {p}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ============================================================
+// TeamMembersTable
+// ============================================================
+export function TeamMembersTable({
+  membros,
+  onToggle,
+  onDelete,
+}: {
+  membros: TeamMember[]
+  onToggle: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  const columns: Column<TeamMember>[] = [
+    {
+      key: 'nome',
+      header: 'Nome',
+      render: (m) => (
+        <span className="inline-flex items-center gap-2">
+          <span className={cn('font-medium', m.ativo ? 'text-zinc-100' : 'text-zinc-500')}>{m.nome}</span>
+          {!m.ativo && <Badge tone="neutral">Inativo</Badge>}
+        </span>
+      ),
+    },
+    { key: 'email', header: 'Email', render: (m) => (m.email ? <span className="text-sky-300">{m.email}</span> : <span className="text-muted">—</span>) },
+    { key: 'papel', header: 'Papel', render: (m) => (m.papel ? <Badge tone="neutral" className="text-sky-200">{m.papel}</Badge> : <span className="text-muted">—</span>) },
+    { key: 'squad', header: 'Squad Principal', render: (m) => <span className={m.ativo ? 'text-zinc-300' : 'text-zinc-500'}>{m.squad ?? '—'}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (m) => (
+        <span className="inline-flex items-center gap-2">
+          <Toggle on={m.ativo} onChange={() => onToggle(m.id)} />
+          <span className="text-[11px] text-muted">{m.ativo ? 'Ativo' : 'Inativo'}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'acoes',
+      header: 'Ações',
+      align: 'right',
+      render: (m) => (
         <span className="inline-flex items-center justify-end gap-1">
-          <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Job description">
-            <FileText size={12} />
-          </button>
           <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
             <Pencil size={12} />
           </button>
-          <button className="grid h-7 w-7 place-items-center rounded text-red-400 hover:bg-red-500/10" title="Excluir">
+          <button onClick={() => onDelete(m.id)} className="grid h-7 w-7 place-items-center rounded text-red-400 hover:bg-red-500/10" title="Excluir">
             <Trash2 size={12} />
           </button>
         </span>
       ),
     },
   ]
-  return <DataTable columns={columns} rows={roles} rowKey={(r) => r.id} minWidth={640} />
+  return (
+    <DataTable
+      columns={columns}
+      rows={membros}
+      rowKey={(m) => m.id}
+      minWidth={860}
+      className="[&_tbody_tr:has(.text-zinc-500)]:bg-bg-soft/30"
+    />
+  )
+}
+
+// ============================================================
+// NewMemberModal
+// ============================================================
+export function NewMemberModal({
+  open,
+  onClose,
+  papeis,
+  squads,
+  onCreate,
+}: {
+  open: boolean
+  onClose: () => void
+  papeis: string[]
+  squads: string[]
+  onCreate: (nome: string, email: string, papel: string | null, squad: string | null) => void
+}) {
+  const [nome, setNome] = useState('')
+  const [email, setEmail] = useState('')
+  const [papel, setPapel] = useState('')
+  const [squad, setSquad] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setNome('')
+      setEmail('')
+      setPapel('')
+      setSquad('')
+      setErro(null)
+    }
+  }, [open])
+
+  function salvar() {
+    if (!nome.trim()) {
+      setErro('Informe o nome.')
+      return
+    }
+    onCreate(nome.trim(), email.trim(), papel || null, squad || null)
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Novo Membro"
+      footer={
+        <div className="flex justify-end gap-2">
+          <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
+          <PrimaryButton size="sm" onClick={salvar}>Salvar</PrimaryButton>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {erro && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{erro}</div>}
+        <FormField label="Nome" required>
+          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" />
+        </FormField>
+        <FormField label="Email/Login">
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@movmed.com" />
+        </FormField>
+        <FormField label="Papel Operacional">
+          <Select value={papel} onChange={(e) => setPapel(e.target.value)}>
+            <option value="">Selecionar papel (opcional)</option>
+            {papeis.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="Squad Principal">
+          <Select value={squad} onChange={(e) => setSquad(e.target.value)}>
+            <option value="">Selecionar squad (opcional)</option>
+            {squads.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </Select>
+        </FormField>
+      </div>
+    </Modal>
+  )
 }
 
 // ============================================================

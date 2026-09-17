@@ -31,9 +31,11 @@ import {
   PARAMS_INICIAIS,
   SQUADS_INICIAIS,
   ROLES_INICIAIS,
+  MEMBROS_INICIAIS,
   type Params,
   type Role,
   type Squad,
+  type TeamMember,
 } from './mockSettings'
 import {
   SettingsTabs,
@@ -44,6 +46,9 @@ import {
   SquadsTable,
   RolesTable,
   NewSquadModal,
+  NewRoleModal,
+  TeamMembersTable,
+  NewMemberModal,
   formatBRL,
   type TabDef,
 } from './components'
@@ -63,12 +68,20 @@ export default function Configuracoes() {
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
   const [squads, setSquads] = useState<Squad[]>(SQUADS_INICIAIS)
   const [roles, setRoles] = useState<Role[]>(ROLES_INICIAIS)
+  const [members, setMembers] = useState<TeamMember[]>(MEMBROS_INICIAIS)
   const [dirty, setDirty] = useState(false)
   const [mes, setMes] = useState(MESES[0])
   const [novoSquadOpen, setNovoSquadOpen] = useState(false)
+  const [novoPapelOpen, setNovoPapelOpen] = useState(false)
+  const [novoMembroOpen, setNovoMembroOpen] = useState(false)
 
   const ops = useMemo(() => squadsOperacionais(squads), [squads])
   const agg = useMemo(() => agregadoMetas(squads), [squads])
+  // Papel em uso = referenciado por algum membro → não pode ser excluído.
+  const papeisEmUso = useMemo(
+    () => new Set(members.map((m) => m.papel).filter(Boolean) as string[]),
+    [members],
+  )
 
   function setParam<K extends keyof Params>(k: K, v: number) {
     setParams((p) => ({ ...p, [k]: v }))
@@ -100,6 +113,21 @@ export default function Configuracoes() {
   }
   function toggleRole(id: string) {
     setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, ativo: !r.ativo } : r)))
+  }
+  function excluirRole(id: string) {
+    setRoles((prev) => prev.filter((r) => r.id !== id))
+  }
+  function criarRole(nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
+    setRoles((prev) => [...prev, { id: `r-${Date.now()}`, nome, tipo, escopo, permissoes, jdPreenchida: false, ativo: true }])
+  }
+  function toggleMembro(id: string) {
+    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ativo: !m.ativo } : m)))
+  }
+  function excluirMembro(id: string) {
+    setMembers((prev) => prev.filter((m) => m.id !== id))
+  }
+  function criarMembro(nome: string, email: string, papel: string | null, squad: string | null) {
+    setMembers((prev) => [...prev, { id: `m-${Date.now()}`, nome, email: email || null, papel, squad, ativo: true }])
   }
 
   return (
@@ -288,11 +316,25 @@ export default function Configuracoes() {
                 <ShieldCheck size={14} className="text-brand-300" />
                 <h2 className="text-sm font-semibold text-zinc-100">Papéis Operacionais</h2>
               </div>
-              <PrimaryButton size="sm">
+              <PrimaryButton size="sm" onClick={() => setNovoPapelOpen(true)}>
                 <Plus size={13} /> Novo Papel
               </PrimaryButton>
             </div>
-            <RolesTable roles={roles} onToggle={toggleRole} />
+            <RolesTable roles={roles} emUso={papeisEmUso} onToggle={toggleRole} onDelete={excluirRole} />
+          </section>
+
+          {/* Membros da equipe */}
+          <section className="rounded-lg border border-border bg-bg-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users2 size={14} className="text-brand-300" />
+                <h2 className="text-sm font-semibold text-zinc-100">Membros da Equipe</h2>
+              </div>
+              <PrimaryButton size="sm" onClick={() => setNovoMembroOpen(true)}>
+                <Plus size={13} /> Novo Membro
+              </PrimaryButton>
+            </div>
+            <TeamMembersTable membros={members} onToggle={toggleMembro} onDelete={excluirMembro} />
           </section>
         </div>
       )}
@@ -305,6 +347,14 @@ export default function Configuracoes() {
       )}
 
       <NewSquadModal open={novoSquadOpen} onClose={() => setNovoSquadOpen(false)} onCreate={criarSquad} />
+      <NewRoleModal open={novoPapelOpen} onClose={() => setNovoPapelOpen(false)} onCreate={criarRole} />
+      <NewMemberModal
+        open={novoMembroOpen}
+        onClose={() => setNovoMembroOpen(false)}
+        papeis={roles.map((r) => r.nome)}
+        squads={squads.map((s) => s.nome)}
+        onCreate={criarMembro}
+      />
     </div>
   )
 }

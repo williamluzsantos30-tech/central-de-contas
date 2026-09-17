@@ -62,12 +62,35 @@ export interface Squad {
   atual: SquadAtual
 }
 
+export type RoleTipo = 'operacional' | 'estrategico'
+export type RoleEscopo = 'Squad' | 'Global'
+
+export const PERMISSOES = [
+  'Visualizar clientes',
+  'Editar status',
+  'Registrar NPS',
+  'Registrar expansão',
+  'Registrar churn',
+  'Apenas leitura',
+] as const
+
 export interface Role {
   id: string
   nome: string
-  tipo: string
+  tipo: RoleTipo
+  escopo: RoleEscopo
+  permissoes: string[]
+  jdPreenchida: boolean
   ativo: boolean
-  jd: string | null
+}
+
+export interface TeamMember {
+  id: string
+  nome: string
+  email: string | null
+  papel: string | null
+  squad: string | null
+  ativo: boolean
 }
 
 /** Colaboradores pro dropdown de líder (Novo Squad). */
@@ -151,7 +174,36 @@ export const SQUADS_INICIAIS: Squad[] = [
 ]
 
 export const ROLES_INICIAIS: Role[] = [
-  { id: 'r-am', nome: 'Account Manager', tipo: 'operacional', ativo: true, jd: null },
+  { id: 'r-am', nome: 'Account Manager', tipo: 'operacional', escopo: 'Squad', permissoes: ['Visualizar clientes', 'Apenas leitura', 'Editar status', 'Registrar NPS'], jdPreenchida: false, ativo: true },
+  { id: 'r-comercial', nome: 'Comercial', tipo: 'operacional', escopo: 'Global', permissoes: [], jdPreenchida: false, ativo: true },
+  { id: 'r-concierge', nome: 'Concierge', tipo: 'operacional', escopo: 'Squad', permissoes: ['Visualizar clientes', 'Apenas leitura'], jdPreenchida: true, ativo: true },
+  { id: 'r-consultoria', nome: 'Consultoria', tipo: 'operacional', escopo: 'Squad', permissoes: [], jdPreenchida: false, ativo: true },
+  { id: 'r-coordq', nome: 'Coordenador de Qualidade', tipo: 'estrategico', escopo: 'Global', permissoes: ['Visualizar clientes', 'Editar status', 'Registrar NPS'], jdPreenchida: true, ativo: true },
+  { id: 'r-coordg', nome: 'Coordenador Geral', tipo: 'estrategico', escopo: 'Global', permissoes: ['Visualizar clientes', 'Registrar churn', 'Registrar NPS', 'Registrar expansão', 'Editar status'], jdPreenchida: true, ativo: true },
+  { id: 'r-designer', nome: 'Designer', tipo: 'operacional', escopo: 'Squad', permissoes: ['Visualizar clientes', 'Apenas leitura'], jdPreenchida: false, ativo: true },
+  { id: 'r-diretor', nome: 'Diretor', tipo: 'estrategico', escopo: 'Global', permissoes: ['Visualizar clientes', 'Editar status', 'Registrar NPS', 'Registrar expansão', 'Registrar churn', 'Apenas leitura'], jdPreenchida: false, ativo: true },
+  { id: 'r-editorvideo', nome: 'Editor de Vídeo', tipo: 'operacional', escopo: 'Global', permissoes: ['Visualizar clientes', 'Apenas leitura'], jdPreenchida: false, ativo: true },
+  { id: 'r-expcliente', nome: 'Experiência do Cliente', tipo: 'operacional', escopo: 'Squad', permissoes: ['Visualizar clientes', 'Editar status', 'Registrar NPS', 'Apenas leitura'], jdPreenchida: false, ativo: true },
+  { id: 'r-gerenteop', nome: 'Gerente Operacional', tipo: 'estrategico', escopo: 'Global', permissoes: ['Visualizar clientes', 'Editar status', 'Registrar NPS', 'Registrar expansão', 'Registrar churn'], jdPreenchida: true, ativo: true },
+  { id: 'r-gestortrafego', nome: 'Gestor de Tráfego', tipo: 'operacional', escopo: 'Squad', permissoes: ['Visualizar clientes', 'Apenas leitura'], jdPreenchida: false, ativo: true },
+  { id: 'r-headconteudo', nome: 'Head de Conteúdo', tipo: 'estrategico', escopo: 'Global', permissoes: ['Apenas leitura', 'Editar status', 'Registrar NPS'], jdPreenchida: false, ativo: true },
+  { id: 'r-headtrafego', nome: 'Head de Tráfego', tipo: 'estrategico', escopo: 'Global', permissoes: ['Visualizar clientes', 'Editar status', 'Registrar NPS'], jdPreenchida: true, ativo: true },
+]
+
+export const MEMBROS_INICIAIS: TeamMember[] = [
+  { id: 'm-agnaldo', nome: 'Agnaldo Junior', email: 'agnaldo', papel: 'Experiência do Cliente', squad: null, ativo: true },
+  { id: 'm-alexandre', nome: 'Alexandre Fernandes', email: 'alexandrefernandes', papel: 'Account Manager', squad: 'Delta', ativo: true },
+  { id: 'm-arlen', nome: 'Arlen Soares', email: 'arlen', papel: 'Designer', squad: null, ativo: true },
+  { id: 'm-arthur', nome: 'Arthur Almeida', email: null, papel: 'Editor de Vídeo', squad: null, ativo: false },
+  { id: 'm-augusto', nome: 'Augusto Gomes', email: null, papel: 'Designer', squad: null, ativo: false },
+  { id: 'm-beatriz', nome: 'Beatriz Barros', email: null, papel: 'Social Media', squad: null, ativo: true },
+  { id: 'm-brenda', nome: 'Brenda Fonseca', email: null, papel: 'Social Media', squad: null, ativo: false },
+  { id: 'm-bruno', nome: 'Bruno Gomes', email: null, papel: 'Head de Conteúdo', squad: null, ativo: true },
+  { id: 'm-diego', nome: 'Diego Assis', email: null, papel: 'Diretor', squad: null, ativo: true },
+  { id: 'm-glenda', nome: 'Glenda Lima', email: 'glendalima', papel: 'Social Media', squad: null, ativo: true },
+  { id: 'm-icaro', nome: 'Ícaro Falcão', email: 'icaro', papel: 'Gestor de Tráfego', squad: 'BlackOps', ativo: false },
+  { id: 'm-igorm', nome: 'Igor Mandau', email: null, papel: 'SDR', squad: null, ativo: true },
+  { id: 'm-igorr', nome: 'Igor Reis', email: null, papel: 'Designer', squad: null, ativo: true },
 ]
 
 /** Squads operacionais = ativos com portfólio (entram nas metas). */
