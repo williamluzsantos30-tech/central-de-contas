@@ -129,9 +129,9 @@ export default function App() {
             <Route path="/social" element={<AgendaSocialMedia />} />
             <Route path="/social/agenda" element={<AgendaSocialMedia />} />
             <Route path="/social/head" element={<HeadSocial />} />
-            {/* Lista de clientes de Social Media foi unificada em /clientes
-                (aba "Social Media"). Mantém redirect pros links antigos. */}
-            <Route path="/social/clientes" element={<Navigate to="/clientes?setor=social" replace />} />
+            {/* Lista de clientes de Social Media foi unificada na lista única
+                /clientes. Mantém redirect pros links antigos. */}
+            <Route path="/social/clientes" element={<Navigate to="/clientes" replace />} />
             <Route
               path="/social/clientes/:id"
               element={

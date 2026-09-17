@@ -13,6 +13,12 @@ export const PERM = {
   registrarExpansao: 'Registrar expansão',
   registrarChurn: 'Registrar churn',
   apenasLeitura: 'Apenas leitura',
+  // Acessos de setor operacional (labels = moduloLabel em @/lib/cargos).
+  // Definem tanto a sidebar (Webdesign/Social) quanto quais abas operacionais
+  // aparecem na Ficha do cliente (Tráfego/Social).
+  opTrafego: 'Operacional Tráfego',
+  opWebdesign: 'Operacional Webdesign',
+  opSocial: 'Operacional Social Media',
 } as const
 
 /**
