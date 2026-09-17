@@ -3,7 +3,7 @@
  * SettingsTabs, GoalCard, MiniStat, SquadCalcCard, SquadMetricPanel,
  * ProgressBar, SquadsTable, RolesTable, NewSquadModal, Toggle.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   TrendingUp,
   Zap,
@@ -12,6 +12,10 @@ import {
   Pencil,
   Trash2,
   FileText,
+  Minus,
+  Plus,
+  Target,
+  Users2,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -347,11 +351,13 @@ export function RolesTable({
   roles,
   emUso,
   onToggle,
+  onEdit,
   onDelete,
 }: {
   roles: Role[]
   emUso: Set<string>
   onToggle: (id: string) => void
+  onEdit: (r: Role) => void
   onDelete: (id: string) => void
 }) {
   const columns: Column<Role>[] = [
@@ -381,7 +387,7 @@ export function RolesTable({
             <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Job description">
               <FileText size={12} />
             </button>
-            <button className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
+            <button onClick={() => onEdit(r)} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
               <Pencil size={12} />
             </button>
             <button
@@ -401,32 +407,49 @@ export function RolesTable({
 }
 
 // ============================================================
-// NewRoleModal
+// RoleFormModal — Novo Papel / Editar Papel (mesma estrutura)
 // ============================================================
-export function NewRoleModal({
+export function RoleFormModal({
   open,
+  mode = 'create',
+  role,
   onClose,
-  onCreate,
+  onSubmit,
 }: {
   open: boolean
+  mode?: 'create' | 'edit'
+  role?: Role | null
   onClose: () => void
-  onCreate: (nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) => void
+  onSubmit: (nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) => void
 }) {
+  const nomeRef = useRef<HTMLInputElement>(null)
   const [nome, setNome] = useState('')
   const [tipo, setTipo] = useState<Role['tipo']>('operacional')
   const [escopo, setEscopo] = useState<Role['escopo']>('Squad')
   const [perms, setPerms] = useState<string[]>([])
   const [erro, setErro] = useState<string | null>(null)
+  const editando = mode === 'edit'
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    if (editando && role) {
+      setNome(role.nome)
+      setTipo(role.tipo)
+      setEscopo(role.escopo)
+      setPerms(role.permissoes)
+    } else {
       setNome('')
       setTipo('operacional')
       setEscopo('Squad')
       setPerms([])
-      setErro(null)
     }
-  }, [open])
+    setErro(null)
+    const t = setTimeout(() => {
+      nomeRef.current?.focus()
+      nomeRef.current?.select()
+    }, 20)
+    return () => clearTimeout(t)
+  }, [open, editando, role])
 
   function togglePerm(p: string) {
     setPerms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))
@@ -436,7 +459,7 @@ export function NewRoleModal({
       setErro('Informe o nome do papel.')
       return
     }
-    onCreate(nome.trim(), tipo, escopo, perms)
+    onSubmit(nome.trim(), tipo, escopo, perms)
     onClose()
   }
 
@@ -444,7 +467,7 @@ export function NewRoleModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Novo Papel"
+      title={editando ? 'Editar Papel' : 'Novo Papel'}
       footer={
         <div className="flex justify-end gap-2">
           <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
@@ -455,7 +478,7 @@ export function NewRoleModal({
       <div className="space-y-3">
         {erro && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{erro}</div>}
         <FormField label="Nome" required>
-          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Account Manager" />
+          <Input ref={nomeRef} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Account Manager" />
         </FormField>
         <FormField label="Tipo">
           <Select value={tipo} onChange={(e) => setTipo(e.target.value as Role['tipo'])}>
@@ -549,6 +572,153 @@ export function TeamMembersTable({
 }
 
 // ============================================================
+// EditSquadGoalsModal — Editar Metas do Squad
+// ============================================================
+export interface MetasEdicao {
+  indicacoesAtual: number
+  novaReceitaManual: number
+  descricaoManual: string
+  metaIndicacoes: number
+  metaNovaReceita: number
+  logoChurn: number
+  revChurn: number
+}
+
+export function EditSquadGoalsModal({
+  open,
+  squad,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  squad: Squad | null
+  onClose: () => void
+  onSave: (squadId: string, m: MetasEdicao) => void
+}) {
+  const [ind, setInd] = useState(0)
+  const [novaManual, setNovaManual] = useState(0)
+  const [descManual, setDescManual] = useState('')
+  const [metaInd, setMetaInd] = useState(0)
+  const [metaNova, setMetaNova] = useState(0)
+  const [logo, setLogo] = useState(0)
+  const [rev, setRev] = useState(0)
+
+  useEffect(() => {
+    if (open && squad) {
+      setInd(squad.atual.indicacoes)
+      setNovaManual(0)
+      setDescManual('')
+      setMetaInd(squad.metas.indicacoes)
+      setMetaNova(squad.metas.novaReceita)
+      setLogo(squad.metas.logoChurn)
+      setRev(squad.metas.revChurn)
+    }
+  }, [open, squad])
+
+  if (!squad) return null
+
+  function salvar() {
+    if (!squad) return
+    onSave(squad.id, {
+      indicacoesAtual: ind,
+      novaReceitaManual: novaManual,
+      descricaoManual: descManual,
+      metaIndicacoes: metaInd,
+      metaNovaReceita: metaNova,
+      logoChurn: logo,
+      revChurn: rev,
+    })
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Editar Metas - ${squad.nome}`}
+      footer={
+        <div className="flex justify-end gap-2">
+          <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
+          <PrimaryButton size="sm" onClick={salvar}>Salvar</PrimaryButton>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Valor atual */}
+        <div>
+          <p className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <Users2 size={11} /> Valor atual
+          </p>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2.5">
+            <span className="text-sm text-zinc-200">Indicações do Mês</span>
+            <div className="flex items-center gap-1">
+              <StepBtn icon={Minus} onClick={() => setInd((v) => Math.max(0, v - 1))} />
+              <span className="w-8 text-center text-sm font-semibold tabular-nums text-zinc-100">{ind}</span>
+              <StepBtn icon={Plus} onClick={() => setInd((v) => v + 1)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Nova receita manual */}
+        <FormField label="Nova Receita Manual (R$)">
+          <Input type="number" value={novaManual} onChange={(e) => setNovaManual(Number(e.target.value))} />
+        </FormField>
+        <FormField label="Descrição da nova receita manual" hint="Aparece no card “Resultado do Negócio” do dashboard.">
+          <Input value={descManual} onChange={(e) => setDescManual(e.target.value)} placeholder="Ex.: Indicação da Dra. Ana — projeto pontual" />
+        </FormField>
+
+        {/* Metas mensais */}
+        <div>
+          <p className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <TrendingUp size={11} /> Metas mensais
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Meta Indicações">
+              <Input type="number" value={metaInd} onChange={(e) => setMetaInd(Number(e.target.value))} />
+            </FormField>
+            <FormField label="Meta NRR (%)" hint="Fixa em 95% para todos os squads">
+              <Input type="number" value={squad.metas.nrr} disabled />
+            </FormField>
+          </div>
+          <div className="mt-3">
+            <FormField label="Meta Nova Receita (R$)">
+              <Input type="number" step="0.01" value={metaNova} onChange={(e) => setMetaNova(Number(e.target.value))} />
+            </FormField>
+          </div>
+        </div>
+
+        {/* Limites de churn */}
+        <div>
+          <p className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <AlertTriangle size={11} className="text-amber-300" /> Limites de Churn (máximo tolerado)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Logo Churn (clientes)">
+              <Input type="number" value={logo} onChange={(e) => setLogo(Number(e.target.value))} />
+            </FormField>
+            <FormField label="Rev. Churn (R$)">
+              <Input type="number" step="0.01" value={rev} onChange={(e) => setRev(Number(e.target.value))} />
+            </FormField>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function StepBtn({ icon: Icon, onClick }: { icon: LucideIcon; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid h-7 w-7 place-items-center rounded-md border border-border bg-bg-elev text-zinc-200 transition-colors hover:border-brand-500/40 hover:text-brand-300"
+    >
+      <Icon size={13} />
+    </button>
+  )
+}
+
+// ============================================================
 // NewMemberModal
 // ============================================================
 export function NewMemberModal({
@@ -631,37 +801,54 @@ export function NewMemberModal({
 }
 
 // ============================================================
-// NewSquadModal
+// SquadFormModal — Novo Squad / Editar Squad (mesma estrutura)
 // ============================================================
-export function NewSquadModal({
+export function SquadFormModal({
   open,
+  mode = 'create',
+  squad,
   onClose,
-  onCreate,
+  onSubmit,
 }: {
   open: boolean
+  mode?: 'create' | 'edit'
+  squad?: Squad | null
   onClose: () => void
-  onCreate: (nome: string, descricao: string, lider: string | null) => void
+  onSubmit: (nome: string, descricao: string, lider: string | null) => void
 }) {
+  const nomeRef = useRef<HTMLInputElement>(null)
   const [nome, setNome] = useState('')
   const [descricao, setDescricao] = useState('')
   const [lider, setLider] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  const editando = mode === 'edit'
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    if (editando && squad) {
+      setNome(squad.nome)
+      setDescricao(squad.descricao ?? '')
+      setLider(squad.lider ?? '')
+    } else {
       setNome('')
       setDescricao('')
       setLider('')
-      setErro(null)
     }
-  }, [open])
+    setErro(null)
+    // Foca e seleciona o nome ao abrir (útil no modo edição)
+    const t = setTimeout(() => {
+      nomeRef.current?.focus()
+      nomeRef.current?.select()
+    }, 20)
+    return () => clearTimeout(t)
+  }, [open, editando, squad])
 
-  function criar() {
+  function submeter() {
     if (!nome.trim()) {
       setErro('Informe o nome do squad.')
       return
     }
-    onCreate(nome.trim(), descricao.trim(), lider || null)
+    onSubmit(nome.trim(), descricao.trim(), lider || null)
     onClose()
   }
 
@@ -669,18 +856,18 @@ export function NewSquadModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Novo Squad"
+      title={editando ? 'Editar Squad' : 'Novo Squad'}
       footer={
         <div className="flex justify-end gap-2">
           <OutlineButton size="sm" onClick={onClose}>Cancelar</OutlineButton>
-          <PrimaryButton size="sm" onClick={criar}>Criar Squad</PrimaryButton>
+          <PrimaryButton size="sm" onClick={submeter}>{editando ? 'Salvar' : 'Criar Squad'}</PrimaryButton>
         </div>
       }
     >
       <div className="space-y-3">
         {erro && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{erro}</div>}
         <FormField label="Nome" required>
-          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Squad MovSales" />
+          <Input ref={nomeRef} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Squad MovSales" />
         </FormField>
         <FormField label="Descrição">
           <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição do squad" />

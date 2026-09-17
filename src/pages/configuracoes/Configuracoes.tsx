@@ -45,12 +45,14 @@ import {
   SquadMetricPanel,
   SquadsTable,
   RolesTable,
-  NewSquadModal,
-  NewRoleModal,
+  SquadFormModal,
+  RoleFormModal,
   TeamMembersTable,
   NewMemberModal,
+  EditSquadGoalsModal,
   formatBRL,
   type TabDef,
+  type MetasEdicao,
 } from './components'
 
 const TABS: TabDef[] = [
@@ -71,8 +73,9 @@ export default function Configuracoes() {
   const [members, setMembers] = useState<TeamMember[]>(MEMBROS_INICIAIS)
   const [dirty, setDirty] = useState(false)
   const [mes, setMes] = useState(MESES[0])
-  const [novoSquadOpen, setNovoSquadOpen] = useState(false)
-  const [novoPapelOpen, setNovoPapelOpen] = useState(false)
+  const [squadForm, setSquadForm] = useState<{ mode: 'create' | 'edit'; squad: Squad | null } | null>(null)
+  const [metasSquad, setMetasSquad] = useState<Squad | null>(null)
+  const [roleForm, setRoleForm] = useState<{ mode: 'create' | 'edit'; role: Role | null } | null>(null)
   const [novoMembroOpen, setNovoMembroOpen] = useState(false)
 
   const ops = useMemo(() => squadsOperacionais(squads), [squads])
@@ -111,6 +114,22 @@ export default function Configuracoes() {
       },
     ])
   }
+  function atualizarSquad(id: string, nome: string, descricao: string, lider: string | null) {
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, nome, descricao: descricao || null, lider } : s)))
+  }
+  function salvarMetasSquad(id: string, m: MetasEdicao) {
+    setSquads((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              metas: { ...s.metas, indicacoes: m.metaIndicacoes, novaReceita: m.metaNovaReceita, logoChurn: m.logoChurn, revChurn: m.revChurn },
+              atual: { ...s.atual, indicacoes: m.indicacoesAtual, novaReceita: s.atual.novaReceita + m.novaReceitaManual },
+            }
+          : s,
+      ),
+    )
+  }
   function toggleRole(id: string) {
     setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, ativo: !r.ativo } : r)))
   }
@@ -119,6 +138,9 @@ export default function Configuracoes() {
   }
   function criarRole(nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
     setRoles((prev) => [...prev, { id: `r-${Date.now()}`, nome, tipo, escopo, permissoes, jdPreenchida: false, ativo: true }])
+  }
+  function atualizarRole(id: string, nome: string, tipo: Role['tipo'], escopo: Role['escopo'], permissoes: string[]) {
+    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, nome, tipo, escopo, permissoes } : r)))
   }
   function toggleMembro(id: string) {
     setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ativo: !m.ativo } : m)))
@@ -282,7 +304,7 @@ export default function Configuracoes() {
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {ops.map((s) => (
-                <SquadMetricPanel key={s.id} squad={s} onEdit={() => setDirty(true)} />
+                <SquadMetricPanel key={s.id} squad={s} onEdit={() => setMetasSquad(s)} />
               ))}
             </div>
             <div className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-bg-soft/40 px-3 py-2.5 text-[11px] text-muted">
@@ -298,11 +320,11 @@ export default function Configuracoes() {
                 <Users2 size={14} className="text-brand-300" />
                 <h2 className="text-sm font-semibold text-zinc-100">Squads</h2>
               </div>
-              <PrimaryButton size="sm" onClick={() => setNovoSquadOpen(true)}>
+              <PrimaryButton size="sm" onClick={() => setSquadForm({ mode: 'create', squad: null })}>
                 <Plus size={13} /> Novo Squad
               </PrimaryButton>
             </div>
-            <SquadsTable squads={squads} onToggle={toggleSquad} onEdit={() => setDirty(true)} onDelete={excluirSquad} />
+            <SquadsTable squads={squads} onToggle={toggleSquad} onEdit={(s) => setSquadForm({ mode: 'edit', squad: s })} onDelete={excluirSquad} />
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.05] px-3 py-2 text-[11px] text-amber-200/90">
               <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-300" />
               Squads com vínculos a clientes ou membros não podem ser excluídos, apenas inativados. Registros inativos mantêm histórico para métricas e relatórios.
@@ -316,11 +338,17 @@ export default function Configuracoes() {
                 <ShieldCheck size={14} className="text-brand-300" />
                 <h2 className="text-sm font-semibold text-zinc-100">Papéis Operacionais</h2>
               </div>
-              <PrimaryButton size="sm" onClick={() => setNovoPapelOpen(true)}>
+              <PrimaryButton size="sm" onClick={() => setRoleForm({ mode: 'create', role: null })}>
                 <Plus size={13} /> Novo Papel
               </PrimaryButton>
             </div>
-            <RolesTable roles={roles} emUso={papeisEmUso} onToggle={toggleRole} onDelete={excluirRole} />
+            <RolesTable
+              roles={roles}
+              emUso={papeisEmUso}
+              onToggle={toggleRole}
+              onDelete={excluirRole}
+              onEdit={(r) => setRoleForm({ mode: 'edit', role: r })}
+            />
           </section>
 
           {/* Membros da equipe */}
@@ -346,14 +374,33 @@ export default function Configuracoes() {
         </div>
       )}
 
-      <NewSquadModal open={novoSquadOpen} onClose={() => setNovoSquadOpen(false)} onCreate={criarSquad} />
-      <NewRoleModal open={novoPapelOpen} onClose={() => setNovoPapelOpen(false)} onCreate={criarRole} />
+      <SquadFormModal
+        open={!!squadForm}
+        mode={squadForm?.mode ?? 'create'}
+        squad={squadForm?.squad ?? null}
+        onClose={() => setSquadForm(null)}
+        onSubmit={(nome, desc, lider) => {
+          if (squadForm?.mode === 'edit' && squadForm.squad) atualizarSquad(squadForm.squad.id, nome, desc, lider)
+          else criarSquad(nome, desc, lider)
+        }}
+      />
+      <EditSquadGoalsModal open={!!metasSquad} squad={metasSquad} onClose={() => setMetasSquad(null)} onSave={salvarMetasSquad} />
       <NewMemberModal
         open={novoMembroOpen}
         onClose={() => setNovoMembroOpen(false)}
         papeis={roles.map((r) => r.nome)}
         squads={squads.map((s) => s.nome)}
         onCreate={criarMembro}
+      />
+      <RoleFormModal
+        open={!!roleForm}
+        mode={roleForm?.mode ?? 'create'}
+        role={roleForm?.role ?? null}
+        onClose={() => setRoleForm(null)}
+        onSubmit={(nome, tipo, escopo, perms) => {
+          if (roleForm?.mode === 'edit' && roleForm.role) atualizarRole(roleForm.role.id, nome, tipo, escopo, perms)
+          else criarRole(nome, tipo, escopo, perms)
+        }}
       />
     </div>
   )
