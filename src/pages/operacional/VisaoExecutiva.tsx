@@ -225,6 +225,19 @@ export default function VisaoExecutiva() {
     })
   }, [clientes, fSquad, fAM, fGestor])
 
+  // Indicações reais por squad (coluna atual_indicacoes, migration 087) —
+  // useSquads faz select('*'), então o valor vem no runtime.
+  const indicacoesPorSquad = useMemo(
+    () =>
+      new Map(
+        squadsReais.map((s) => [
+          s.nome,
+          Number((s as unknown as { atual_indicacoes?: number }).atual_indicacoes ?? 0),
+        ]),
+      ),
+    [squadsReais],
+  )
+
   const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
   const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
 
@@ -668,6 +681,7 @@ export default function VisaoExecutiva() {
             mesISO={mesISO}
             squadsAtivos={squadsReais.map((s) => s.nome)}
             fSquad={fSquad}
+            indicacoesPorSquad={indicacoesPorSquad}
           />
 
           {/* Acoes Sugeridas — fica DEPOIS dos squads porque as sugestoes
@@ -1548,6 +1562,7 @@ interface ScoreSquad {
   churnsCount: number
   emRiscoCount: number
   revChurn: number
+  indicacoes: number
   score: number
   badges: { label: string; positive: boolean }[]
   classificacao: 'critico' | 'atencao' | 'saudavel'
@@ -1559,6 +1574,7 @@ function calculaScoreSquads(
   mrrMedioSquad: number,
   squadsAtivos: string[],
   incluirSemSquad: boolean,
+  indicacoesPorSquad: Map<string, number>,
 ): ScoreSquad[] {
   const [y, m] = mesISO.split('-').map(Number)
   const inicioMes = new Date(y, m - 1, 1)
@@ -1619,9 +1635,16 @@ function calculaScoreSquads(
       score += 2
       badges.push({ label: '+2 MRR acima da média', positive: true })
     }
-    // Indicacoes ainda nao tem tracking — placeholder negativa
-    score -= 1
-    badges.push({ label: '-1 Sem indic.', positive: false })
+    // Indicações — valor real do squad (atual_indicacoes na tabela squads,
+    // editável no Painel de Metas). Com indicação = +1; sem = -1.
+    const indicacoes = indicacoesPorSquad.get(nome) ?? 0
+    if (indicacoes > 0) {
+      score += 1
+      badges.push({ label: `+1 Indicações`, positive: true })
+    } else {
+      score -= 1
+      badges.push({ label: '-1 Sem indic.', positive: false })
+    }
 
     const classificacao: 'critico' | 'atencao' | 'saudavel' =
       score <= 0 ? 'critico' : score <= 4 ? 'atencao' : 'saudavel'
@@ -1634,6 +1657,7 @@ function calculaScoreSquads(
       churnsCount: churnsNoMes.length,
       emRiscoCount: emRisco.length,
       revChurn,
+      indicacoes,
       score,
       badges,
       classificacao,
@@ -1650,11 +1674,13 @@ function ScoreSaudeSquads({
   mesISO,
   squadsAtivos,
   fSquad,
+  indicacoesPorSquad,
 }: {
   clientes: Cliente[]
   mesISO: string
   squadsAtivos: string[]
   fSquad: string
+  indicacoesPorSquad: Map<string, number>
 }) {
   const squads = useMemo(() => {
     // Fonte dos cards = squads ativos (tabela central). Respeita o filtro de
@@ -1666,8 +1692,8 @@ function ScoreSaudeSquads({
       .filter((c) => c.status === 'ativo' && !c.arquivado_em)
       .reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
     const mrrMedioSquad = mrrTotal / nQtd
-    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad, nomesAlvo, incluirSemSquad)
-  }, [clientes, mesISO, squadsAtivos, fSquad])
+    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad, nomesAlvo, incluirSemSquad, indicacoesPorSquad)
+  }, [clientes, mesISO, squadsAtivos, fSquad, indicacoesPorSquad])
 
   if (squads.length === 0) {
     return null
@@ -1837,9 +1863,18 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
         <div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wider text-muted">Indicações</span>
-            <span className="text-xs font-semibold text-muted tabular-nums">0</span>
+            <span
+              className={cn(
+                'text-xs font-semibold tabular-nums',
+                squad.indicacoes > 0 ? 'text-emerald-300' : 'text-muted',
+              )}
+            >
+              {squad.indicacoes}
+            </span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted italic">v2 — tracking pendente</p>
+          <p className="mt-0.5 text-[10px] text-muted italic">
+            {squad.indicacoes > 0 ? 'no mês' : 'v2 — tracking pendente'}
+          </p>
         </div>
       </div>
     </div>
