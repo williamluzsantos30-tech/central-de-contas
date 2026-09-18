@@ -166,6 +166,11 @@ export default function Configuracoes() {
   // DB → shape Squad que a UI de squads espera. clientes/MRR e o "atual" de
   // churn/NRR são calculados dos clientes vinculados (cliente.squad === nome).
   const squads = useMemo<Squad[]>(() => {
+    // Fórmulas oficiais das metas (as mesmas do bloco "Como é calculado"),
+    // aplicadas ao portfólio REAL de cada squad. O valor do banco (meta_*)
+    // entra só como override manual (quando > 0); senão usa o calculado.
+    const churnPct = params.churnLimitePct // ex.: 11
+    const gapNrr = Math.max(0, 95 - (100 - churnPct)) // ex.: 6
     return squadsDB.map((row) => {
       const doSquad = clientesDB.filter((c) => c.squad === row.nome)
       const ativos = doSquad.filter((c) => c.status === 'ativo' && !c.arquivado_em)
@@ -175,6 +180,13 @@ export default function Configuracoes() {
       const baseInicio = ativos.length + churnsMes.length
       const nrrAtual = baseInicio > 0 ? (1 - churnsMes.length / baseInicio) * 100 : 100
       const hasLinkedMembers = profilesDB.some((p) => p.squad_id === row.id)
+
+      // Metas calculadas do MRR/clientes reais (override manual se houver).
+      const calcIndic = Math.max(3, Math.floor(ativos.length / 3))
+      const calcNovaReceita = Math.round(((mrr * gapNrr) / 100) * 100) / 100
+      const calcLogoChurn = Math.floor((ativos.length * churnPct) / 100)
+      const calcRevChurn = Math.round(((mrr * churnPct) / 100) * 100) / 100
+
       return {
         id: row.id,
         nome: row.nome,
@@ -187,11 +199,11 @@ export default function Configuracoes() {
         clientes: ativos.length,
         mrr,
         metas: {
-          indicacoes: row.meta_indicacoes,
-          novaReceita: Number(row.meta_nova_receita),
-          nrr: Number(row.meta_nrr),
-          logoChurn: row.meta_logo_churn,
-          revChurn: Number(row.meta_rev_churn),
+          indicacoes: row.meta_indicacoes || calcIndic,
+          novaReceita: Number(row.meta_nova_receita) || calcNovaReceita,
+          nrr: Number(row.meta_nrr) || 95,
+          logoChurn: row.meta_logo_churn || calcLogoChurn,
+          revChurn: Number(row.meta_rev_churn) || calcRevChurn,
         },
         atual: {
           indicacoes: row.atual_indicacoes,
@@ -202,7 +214,7 @@ export default function Configuracoes() {
         },
       }
     })
-  }, [squadsDB, clientesDB, profilesDB])
+  }, [squadsDB, clientesDB, profilesDB, params])
 
   const ops = useMemo(() => squadsOperacionais(squads), [squads])
   const agg = useMemo(() => agregadoMetas(squads), [squads])
