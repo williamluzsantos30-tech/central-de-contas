@@ -236,18 +236,15 @@ export default function ClienteDetalhe() {
   const ativosOk = ativos.filter((a) => a.status === 'funcional').length
   const ativosProblema = ativos.filter((a) => a.status === 'com_problema').length
 
-  // Abas operacionais na ficha = (cliente tem o serviço contratado) E
-  // (usuário pertence ao setor operacional daquele serviço, via papel).
-  //   1) Serviço do cliente: servicos_contratados (fallback pros módulos).
+  // Abas operacionais na ficha = (cliente vinculado à operação por um
+  // RESPONSÁVEL) E (usuário pertence ao setor via papel).
+  //   1) Vínculo: gestor_id preenchido → tráfego; social_media_id → social.
   //   2) Setor do usuário: se o papel carrega acessos operacionais, ele manda;
   //      senão (papel não configurado / sem papel) cai no fallback = mostra
-  //      por serviço do cliente. Admin vê tudo. Setor de Design (papel só com
+  //      pelo vínculo. Admin vê tudo. Setor de Design (papel só com
   //      "Operacional Webdesign") nunca casa Tráfego/Social → só Ficha.
-  const servicos = cliente.servicos_contratados ?? []
-  const modulos = cliente.modulos ?? ['trafego']
-  const usarServicos = servicos.length > 0
-  const clienteTemTrafego = usarServicos ? servicos.includes('trafego_pago') : modulos.includes('trafego')
-  const clienteTemSocial = usarServicos ? servicos.includes('social_media') : modulos.includes('social_media')
+  const clienteTemTrafego = !!cliente.gestor_id
+  const clienteTemSocial = !!cliente.social_media_id
 
   const SETOR_PERMS = [PERM.opTrafego, PERM.opWebdesign, PERM.opSocial]
   const papelDefineSetor = SETOR_PERMS.some((p) => minhasPermissoes.includes(p))

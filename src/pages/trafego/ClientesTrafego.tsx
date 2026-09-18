@@ -68,9 +68,9 @@ export default function ClientesTrafego() {
         .select(
           '*, gestor:profiles!gestor_id(*), account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
         )
-        // Tráfego mostra só os clientes do módulo trafego (legados sem modulos
-        // ainda assim aparecem porque a migration faz backfill com {trafego})
-        .contains('modulos', ['trafego'])
+        // Operação Tráfego = clientes com um Gestor de Tráfego vinculado.
+        // A criação/edição do vínculo é feita só no modal da página Clientes.
+        .not('gestor_id', 'is', null)
         .order('nome'),
       // Filtro "Todos gestores" só lista cargo gestor_trafego
       supabase
@@ -119,24 +119,10 @@ export default function ClientesTrafego() {
   return (
     <div>
       <PageHeader
-        title={mostrarArquivados ? 'Clientes arquivados' : 'Clientes'}
-        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'}${
-          mostrarArquivados
-            ? ' arquivados (churn)'
-            : escopo === 'meus'
-            ? ' atribuídos a você'
-            : ' cadastrados'
+        title={mostrarArquivados ? 'Clientes arquivados · Tráfego' : 'Clientes · Tráfego'}
+        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} com gestor de tráfego${
+          mostrarArquivados ? ' (arquivados)' : ''
         }`}
-        actions={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus size={14} /> Novo cliente
-          </Button>
-        }
       />
 
       {/* Resumo operacional (KPIs verba/tarefas/ativos + Minhas tarefas de hoje). */}

@@ -409,9 +409,6 @@ export default function VisaoExecutiva() {
             <Button variant="outline" onClick={() => window.print()}>
               <Download size={14} /> Exportar
             </Button>
-            <Button onClick={() => setFormOpen(true)}>
-              <Plus size={14} /> Novo cliente
-            </Button>
           </div>
         }
       />

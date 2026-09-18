@@ -98,29 +98,21 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
     isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
-  const [orfaos, setOrfaos] = useState<Cliente[]>([])
   const { nomes: squadsAtivos } = useSquads()
 
   async function load() {
     setLoading(true)
-    const [cRes, oRes, pRes, iRes, profRes] = await Promise.all([
+    const [cRes, pRes, iRes, profRes] = await Promise.all([
+      // Operação Social Media = clientes com um Social Media responsável
+      // vinculado. Criação/edição do vínculo é feita só no modal da página
+      // Clientes.
       supabase
         .from('clientes')
         .select(
           '*, account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
         )
-        // Só clientes do módulo social_media...
-        .contains('modulos', ['social_media'])
-        // ...e que têm uma Social Media responsável atribuída.
-        // Quem está em SM precisa ter alguém da equipe responsável.
         .not('social_media_id', 'is', null)
         .order('nome'),
-      // Órfãos: estão em SM mas sem responsável — pra alertar o admin
-      supabase
-        .from('clientes')
-        .select('id, nome, modulos, social_media_id')
-        .contains('modulos', ['social_media'])
-        .is('social_media_id', null),
       supabase.from('producoes_social_media').select('*'),
       supabase.from('producoes_social_media_items').select('*'),
       // Filtro de "Todos social media" só lista quem é cargo social_media
@@ -133,7 +125,6 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         .order('nome'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setOrfaos((oRes.data as Cliente[]) ?? [])
     setPlanejamentos((pRes.data as PlanejamentoSocialMedia[]) ?? [])
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
     setResponsaveis((profRes.data as Profile[]) ?? [])
@@ -306,14 +297,6 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         <FileText size={13} />
         {gerandoPdf ? 'Gerando…' : 'Relatório semanal'}
       </button>
-      <Button
-        onClick={() => {
-          setEditing(null)
-          setFormOpen(true)
-        }}
-      >
-        <Plus size={14} /> Novo cliente
-      </Button>
     </div>
   )
 
@@ -335,38 +318,6 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
           }
           actions={acoes}
         />
-      )}
-
-      {/* Banner de órfãos: clientes em SM sem responsável atribuído */}
-      {orfaos.length > 0 && (
-        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
-          <div className="flex items-start gap-2 text-xs text-amber-200">
-            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold">
-                {orfaos.length} cliente{orfaos.length > 1 ? 's' : ''} em Social Media sem responsável atribuído
-              </p>
-              <p className="mt-0.5 opacity-90">
-                Pra aparecer{orfaos.length > 1 ? 'em' : ''} na lista, atribua um Social Media responsável:
-              </p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {orfaos.map((o) => (
-                  <button
-                    key={o.id}
-                    onClick={() => {
-                      setEditing(o)
-                      setFormOpen(true)
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25"
-                  >
-                    <Pencil size={9} />
-                    {o.nome}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Calendário de postagens condensado (mini grade do mês corrente). */}
