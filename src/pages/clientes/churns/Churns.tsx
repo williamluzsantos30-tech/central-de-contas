@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { PageHeader, KPICard, FilterBar, FilterPill, OutlineButton } from '@/components/ds'
 import { cn } from '@/lib/utils'
+import { useSquads } from '@/hooks/useSquads'
 import { useChurnsData, type ClienteChurn } from './useChurnsData'
 
 // ---- cores de série (data viz; sem laranja por preferência) ----
@@ -107,6 +108,8 @@ const PERIODOS: Pico[] = [
 
 export default function Churns() {
   const d = useChurnsData()
+  // Fonte única de squads (tabela central) — filtro lista só squads ativos.
+  const { squads: squadsReais } = useSquads()
 
   // Filtros — visuais por enquanto (agregados são globais). Wire p/ API depois.
   const [fPeriodo, setFPeriodo] = useState('')
@@ -162,7 +165,7 @@ export default function Churns() {
           {/* Filtros */}
           <FilterBar className="mt-4">
             <FilterPill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
-            <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={d.porSquad.map((s) => ({ value: s.squad, label: s.squad }))} />
+            <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsReais.map((s) => ({ value: s.nome, label: s.nome }))} />
             <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={[]} />
             <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={[]} />
           </FilterBar>

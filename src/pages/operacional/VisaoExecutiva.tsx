@@ -59,6 +59,7 @@ import { FilterBar, FilterPill } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { useSquads } from '@/hooks/useSquads'
 import type { Cliente, Profile } from '@/types/database'
 
 function formatBRL(v: number): string {
@@ -179,6 +180,8 @@ export default function VisaoExecutiva() {
   const [fSquad, setFSquad] = useState('')
   const [fAM, setFAM] = useState('')
   const [fGestor, setFGestor] = useState('')
+  // Fonte única de squads (tabela central em Configurações). Só ativos.
+  const { squads: squadsReais } = useSquads()
 
   async function load() {
     setLoading(true)
@@ -221,13 +224,6 @@ export default function VisaoExecutiva() {
       return true
     })
   }, [clientes, fSquad, fAM, fGestor])
-
-  // Squads distintos pra dropdown
-  const squadsDistintos = useMemo(() => {
-    const set = new Set<string>()
-    for (const c of clientes) if (c.squad) set.add(c.squad)
-    return [...set].sort()
-  }, [clientes])
 
   const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
   const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
@@ -417,7 +413,7 @@ export default function VisaoExecutiva() {
             label: labelMes(iso).replace(/^./, (c) => c.toUpperCase()),
           }))}
         />
-        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsDistintos.map((s) => ({ value: s, label: s }))} />
+        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsReais.map((s) => ({ value: s.nome, label: s.nome }))} />
         <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={ams.map((p) => ({ value: p.id, label: p.nome }))} />
         <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={gestores.map((p) => ({ value: p.id, label: p.nome }))} />
       </FilterBar>
@@ -667,7 +663,12 @@ export default function VisaoExecutiva() {
           <EvolucaoClientes clientes={clientesFiltrados} />
 
           {/* Score e Saude por Squad */}
-          <ScoreSaudeSquads clientes={clientesFiltrados} mesISO={mesISO} />
+          <ScoreSaudeSquads
+            clientes={clientesFiltrados}
+            mesISO={mesISO}
+            squadsAtivos={squadsReais.map((s) => s.nome)}
+            fSquad={fSquad}
+          />
 
           {/* Acoes Sugeridas — fica DEPOIS dos squads porque as sugestoes
               se aplicam por squad classificado. Ordem: primeiro voce ve
@@ -1552,7 +1553,13 @@ interface ScoreSquad {
   classificacao: 'critico' | 'atencao' | 'saudavel'
 }
 
-function calculaScoreSquads(clientes: Cliente[], mesISO: string, mrrMedioSquad: number): ScoreSquad[] {
+function calculaScoreSquads(
+  clientes: Cliente[],
+  mesISO: string,
+  mrrMedioSquad: number,
+  squadsAtivos: string[],
+  incluirSemSquad: boolean,
+): ScoreSquad[] {
   const [y, m] = mesISO.split('-').map(Number)
   const inicioMes = new Date(y, m - 1, 1)
   const fimMes = new Date(y, m, 0, 23, 59, 59)
@@ -1564,8 +1571,15 @@ function calculaScoreSquads(clientes: Cliente[], mesISO: string, mrrMedioSquad: 
     byNome.get(nome)!.push(c)
   }
 
+  // Um card por squad ATIVO cadastrado (mesmo sem clientes) + "(sem squad)"
+  // quando há clientes sem squad. Squads inativos não entram. A fonte é a
+  // lista central (useSquads), nunca nomes hardcoded.
+  const nomesAlvo = [...squadsAtivos]
+  if (incluirSemSquad && byNome.has('(sem squad)')) nomesAlvo.push('(sem squad)')
+
   const resultados: ScoreSquad[] = []
-  for (const [nome, lista] of byNome) {
+  for (const nome of Array.from(new Set(nomesAlvo))) {
+    const lista = byNome.get(nome) ?? []
     const ativos = lista.filter((c) => c.status === 'ativo' && !c.arquivado_em)
     const emRisco = lista.filter((c) => c.status === 'atencao' && !c.arquivado_em)
     const churnsNoMes = lista.filter((c) => {
@@ -1631,17 +1645,29 @@ function calculaScoreSquads(clientes: Cliente[], mesISO: string, mrrMedioSquad: 
   return resultados
 }
 
-function ScoreSaudeSquads({ clientes, mesISO }: { clientes: Cliente[]; mesISO: string }) {
+function ScoreSaudeSquads({
+  clientes,
+  mesISO,
+  squadsAtivos,
+  fSquad,
+}: {
+  clientes: Cliente[]
+  mesISO: string
+  squadsAtivos: string[]
+  fSquad: string
+}) {
   const squads = useMemo(() => {
-    const nomes = new Set<string>()
-    for (const c of clientes) if (c.squad) nomes.add(c.squad)
-    const nQtd = nomes.size || 1
+    // Fonte dos cards = squads ativos (tabela central). Respeita o filtro de
+    // squad selecionado; sem filtro, mostra todos os ativos + "(sem squad)".
+    const nomesAlvo = fSquad ? [fSquad] : squadsAtivos
+    const incluirSemSquad = !fSquad
+    const nQtd = nomesAlvo.length || 1
     const mrrTotal = clientes
       .filter((c) => c.status === 'ativo' && !c.arquivado_em)
       .reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
     const mrrMedioSquad = mrrTotal / nQtd
-    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad)
-  }, [clientes, mesISO])
+    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad, nomesAlvo, incluirSemSquad)
+  }, [clientes, mesISO, squadsAtivos, fSquad])
 
   if (squads.length === 0) {
     return null
