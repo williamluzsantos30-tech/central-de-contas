@@ -62,10 +62,6 @@ type Group =
 
 const nav: Group[] = [
   { kind: 'item', item: { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true } },
-  // Lista de clientes é universal — não pertence mais a um "módulo". As
-  // operações (tráfego/social) aparecem por cliente, conforme o serviço
-  // contratado, dentro da ficha.
-  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar } },
   {
     kind: 'folder',
     key: 'operacional',
@@ -83,11 +79,12 @@ const nav: Group[] = [
   {
     kind: 'folder',
     key: 'trafego',
-    label: 'Tráfego',
+    label: 'Operacional Tráfego',
     icon: Megaphone,
     defaultOpen: true,
     modulo: 'trafego',
     items: [
+      { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
       {
         to: '/trafego/controle-head',
         label: 'Controle do Head',
@@ -99,7 +96,7 @@ const nav: Group[] = [
   {
     kind: 'folder',
     key: 'webdesign',
-    label: 'Webdesign',
+    label: 'Operacional Webdesign',
     icon: Palette,
     defaultOpen: true,
     modulo: 'webdesign',
@@ -113,13 +110,13 @@ const nav: Group[] = [
   {
     kind: 'folder',
     key: 'social_media',
-    label: 'Social Media',
+    label: 'Operacional Social Media',
     icon: Share2,
     defaultOpen: true,
     modulo: 'social_media',
     items: [
-      // Clientes de Social Media agora vivem na lista única (Tráfego > Clientes,
-      // aba "Social Media"). Aqui fica só a operação de conteúdo.
+      // Ambos os "Clientes" (Tráfego e Social) abrem a lista única de clientes.
+      { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
     ],
   },
