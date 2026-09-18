@@ -54,6 +54,8 @@ export interface Squad {
   nome: string
   descricao: string | null
   lider: string | null
+  /** id do profile líder (quando a fonte é o banco). O `lider` acima é o nome. */
+  liderId?: string | null
   ativo: boolean
   hasLinkedClients: boolean
   clientes: number

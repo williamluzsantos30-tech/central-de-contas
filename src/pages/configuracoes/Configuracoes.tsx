@@ -26,13 +26,11 @@ import {
 import { PageHeader, PrimaryButton, OutlineButton, Badge, FormField, Input, Select } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { useSquads } from '@/hooks/useSquads'
 import type { PapelOperacional, Profile } from '@/types/database'
 import {
   agregadoMetas,
   squadsOperacionais,
   PARAMS_INICIAIS,
-  SQUADS_INICIAIS,
   type Params,
   type Role,
   type Squad,
@@ -66,17 +64,47 @@ const TABS: TabDef[] = [
 
 const MESES = ['setembro 2026', 'agosto 2026', 'julho 2026', 'junho 2026']
 
+// Linha crua da tabela `squads` (com colunas de metas da migration 087).
+type SquadRow = {
+  id: string
+  nome: string
+  descricao: string | null
+  lider_id: string | null
+  ativo: boolean
+  meta_indicacoes: number
+  meta_nova_receita: number
+  meta_nrr: number
+  meta_logo_churn: number
+  meta_rev_churn: number
+  atual_indicacoes: number
+  atual_nova_receita: number
+  atual_nova_receita_desc: string | null
+  lider?: { id: string; nome: string } | null
+}
+type ClienteMini = {
+  squad: string | null
+  verba_mensal: number | null
+  status: string
+  arquivado_em: string | null
+}
+
+// Churn deste mês corrente (o "atual" de churn/NRR é calculado dos clientes).
+function noMesCorrente(iso: string | null): boolean {
+  if (!iso) return false
+  const d = new Date(iso)
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+}
+
 export default function Configuracoes() {
   const [tab, setTab] = useState('geral')
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
-  // Squads (com metas) seguem mock por enquanto — as metas/MRR não têm coluna
-  // no banco. A ligação pessoa→squad real é feita ao editar o membro.
-  const [squads, setSquads] = useState<Squad[]>(SQUADS_INICIAIS)
-  // Papéis e membros vêm do banco (migration 083). Guardamos as linhas cruas
-  // e mapeamos pros shapes que os componentes de tabela esperam.
+  // Squads (+ metas, migration 087), papéis e membros vêm do banco — fonte
+  // única. Guardamos as linhas cruas e mapeamos pros shapes dos componentes.
+  const [squadsDB, setSquadsDB] = useState<SquadRow[]>([])
+  const [clientesDB, setClientesDB] = useState<ClienteMini[]>([])
   const [papeisDB, setPapeisDB] = useState<PapelOperacional[]>([])
   const [profilesDB, setProfilesDB] = useState<Profile[]>([])
-  const { squads: squadsReais } = useSquads({ apenasAtivos: false })
   const [dirty, setDirty] = useState(false)
   const [mes, setMes] = useState(MESES[0])
   const [squadForm, setSquadForm] = useState<{ mode: 'create' | 'edit'; squad: Squad | null } | null>(null)
@@ -86,7 +114,7 @@ export default function Configuracoes() {
 
   // Carrega papéis + membros (profiles com papel/squad embarcados) do banco.
   async function loadEquipe() {
-    const [pRes, prRes] = await Promise.all([
+    const [pRes, prRes, sRes, cRes] = await Promise.all([
       supabase.from('papeis_operacionais').select('*').order('nome'),
       supabase
         .from('profiles')
@@ -94,9 +122,15 @@ export default function Configuracoes() {
         // lider_id de squads), então desambiguamos pelo nome da constraint.
         .select('*, papel:papeis_operacionais!profiles_papel_fk(*), squad:squads!profiles_squad_fk(*)')
         .order('nome'),
+      // Squads com líder embarcado (FK por coluna lider_id, pra desambiguar).
+      supabase.from('squads').select('*, lider:profiles!lider_id(id, nome)').order('nome'),
+      // Clientes (mínimo) pra calcular clientes/MRR/churn por squad em tempo real.
+      supabase.from('clientes').select('squad, verba_mensal, status, arquivado_em'),
     ])
     setPapeisDB((pRes.data as PapelOperacional[]) ?? [])
     setProfilesDB((prRes.data as Profile[]) ?? [])
+    setSquadsDB((sRes.data as SquadRow[]) ?? [])
+    setClientesDB((cRes.data as ClienteMini[]) ?? [])
   }
   useEffect(() => {
     loadEquipe()
@@ -129,6 +163,47 @@ export default function Configuracoes() {
     [profilesDB],
   )
 
+  // DB → shape Squad que a UI de squads espera. clientes/MRR e o "atual" de
+  // churn/NRR são calculados dos clientes vinculados (cliente.squad === nome).
+  const squads = useMemo<Squad[]>(() => {
+    return squadsDB.map((row) => {
+      const doSquad = clientesDB.filter((c) => c.squad === row.nome)
+      const ativos = doSquad.filter((c) => c.status === 'ativo' && !c.arquivado_em)
+      const churnsMes = doSquad.filter((c) => noMesCorrente(c.arquivado_em))
+      const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+      const revChurn = churnsMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
+      const baseInicio = ativos.length + churnsMes.length
+      const nrrAtual = baseInicio > 0 ? (1 - churnsMes.length / baseInicio) * 100 : 100
+      const hasLinkedMembers = profilesDB.some((p) => p.squad_id === row.id)
+      return {
+        id: row.id,
+        nome: row.nome,
+        descricao: row.descricao,
+        lider: row.lider?.nome ?? null,
+        liderId: row.lider_id,
+        ativo: row.ativo,
+        // Só pode excluir squad SEM vínculos (clientes ou membros).
+        hasLinkedClients: doSquad.length > 0 || hasLinkedMembers,
+        clientes: ativos.length,
+        mrr,
+        metas: {
+          indicacoes: row.meta_indicacoes,
+          novaReceita: Number(row.meta_nova_receita),
+          nrr: Number(row.meta_nrr),
+          logoChurn: row.meta_logo_churn,
+          revChurn: Number(row.meta_rev_churn),
+        },
+        atual: {
+          indicacoes: row.atual_indicacoes,
+          novaReceita: Number(row.atual_nova_receita),
+          nrr: Math.round(nrrAtual * 10) / 10,
+          logoChurn: churnsMes.length,
+          revChurn,
+        },
+      }
+    })
+  }, [squadsDB, clientesDB, profilesDB])
+
   const ops = useMemo(() => squadsOperacionais(squads), [squads])
   const agg = useMemo(() => agregadoMetas(squads), [squads])
   // Papel em uso = referenciado por algum membro → não pode ser excluído.
@@ -142,44 +217,45 @@ export default function Configuracoes() {
     setDirty(true)
   }
 
-  function toggleSquad(id: string) {
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, ativo: !s.ativo } : s)))
+  async function toggleSquad(id: string) {
+    const s = squadsDB.find((x) => x.id === id)
+    if (!s) return
+    await supabase.from('squads').update({ ativo: !s.ativo }).eq('id', id)
+    loadEquipe()
   }
-  function excluirSquad(id: string) {
-    setSquads((prev) => prev.filter((s) => s.id !== id))
+  async function excluirSquad(id: string) {
+    await supabase.from('squads').delete().eq('id', id)
+    loadEquipe()
   }
-  function criarSquad(nome: string, descricao: string, lider: string | null) {
-    setSquads((prev) => [
-      ...prev,
-      {
-        id: `s-${Date.now()}`,
-        nome,
-        descricao: descricao || null,
-        lider,
-        ativo: true,
-        hasLinkedClients: false,
-        clientes: 0,
-        mrr: 0,
-        metas: { indicacoes: 0, novaReceita: 0, nrr: 95, logoChurn: 0, revChurn: 0 },
-        atual: { novaReceita: 0, indicacoes: 0, nrr: 0, logoChurn: 0, revChurn: 0 },
-      },
-    ])
+  async function criarSquad(nome: string, descricao: string, liderId: string | null) {
+    await supabase
+      .from('squads')
+      .insert({ nome, descricao: descricao || null, lider_id: liderId || null, ativo: true })
+    loadEquipe()
   }
-  function atualizarSquad(id: string, nome: string, descricao: string, lider: string | null) {
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, nome, descricao: descricao || null, lider } : s)))
+  async function atualizarSquad(id: string, nome: string, descricao: string, liderId: string | null) {
+    await supabase
+      .from('squads')
+      .update({ nome, descricao: descricao || null, lider_id: liderId || null })
+      .eq('id', id)
+    loadEquipe()
   }
-  function salvarMetasSquad(id: string, m: MetasEdicao) {
-    setSquads((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              metas: { ...s.metas, indicacoes: m.metaIndicacoes, novaReceita: m.metaNovaReceita, logoChurn: m.logoChurn, revChurn: m.revChurn },
-              atual: { ...s.atual, indicacoes: m.indicacoesAtual, novaReceita: s.atual.novaReceita + m.novaReceitaManual },
-            }
-          : s,
-      ),
-    )
+  async function salvarMetasSquad(id: string, m: MetasEdicao) {
+    const s = squadsDB.find((x) => x.id === id)
+    const novaAtual = Number(s?.atual_nova_receita ?? 0) + m.novaReceitaManual
+    await supabase
+      .from('squads')
+      .update({
+        meta_indicacoes: m.metaIndicacoes,
+        meta_nova_receita: m.metaNovaReceita,
+        meta_logo_churn: m.logoChurn,
+        meta_rev_churn: m.revChurn,
+        atual_indicacoes: m.indicacoesAtual,
+        atual_nova_receita: novaAtual,
+        atual_nova_receita_desc: m.descricaoManual || null,
+      })
+      .eq('id', id)
+    loadEquipe()
   }
   async function toggleRole(id: string) {
     const r = papeisDB.find((x) => x.id === id)
@@ -243,7 +319,7 @@ export default function Configuracoes() {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Metas Mensais</p>
                 <Badge tone="neutral"><Lock size={9} /> Automático</Badge>
               </div>
-              <OutlineButton size="sm" onClick={() => setSquads((s) => [...s])}>
+              <OutlineButton size="sm" onClick={() => loadEquipe()}>
                 <RefreshCw size={12} /> Recalcular
               </OutlineButton>
             </div>
@@ -443,10 +519,11 @@ export default function Configuracoes() {
         open={!!squadForm}
         mode={squadForm?.mode ?? 'create'}
         squad={squadForm?.squad ?? null}
+        liders={profilesDB.filter((p) => p.ativo).map((p) => ({ id: p.id, nome: p.nome }))}
         onClose={() => setSquadForm(null)}
-        onSubmit={(nome, desc, lider) => {
-          if (squadForm?.mode === 'edit' && squadForm.squad) atualizarSquad(squadForm.squad.id, nome, desc, lider)
-          else criarSquad(nome, desc, lider)
+        onSubmit={(nome, desc, liderId) => {
+          if (squadForm?.mode === 'edit' && squadForm.squad) atualizarSquad(squadForm.squad.id, nome, desc, liderId)
+          else criarSquad(nome, desc, liderId)
         }}
       />
       <EditSquadGoalsModal open={!!metasSquad} squad={metasSquad} onClose={() => setMetasSquad(null)} onSave={salvarMetasSquad} />
@@ -456,7 +533,7 @@ export default function Configuracoes() {
         papelIdAtual={editMember?.papel_id ?? null}
         squadIdAtual={editMember?.squad_id ?? null}
         papeis={papeisDB.map((p) => ({ id: p.id, nome: p.nome }))}
-        squads={squadsReais.map((s) => ({ id: s.id, nome: s.nome }))}
+        squads={squadsDB.filter((s) => s.ativo).map((s) => ({ id: s.id, nome: s.nome }))}
         onClose={() => setEditMember(null)}
         onSave={(papelId, squadId) => {
           if (editMember) salvarMembro(editMember.id, papelId, squadId)

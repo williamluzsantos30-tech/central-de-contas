@@ -873,19 +873,22 @@ export function SquadFormModal({
   open,
   mode = 'create',
   squad,
+  liders,
   onClose,
   onSubmit,
 }: {
   open: boolean
   mode?: 'create' | 'edit'
   squad?: Squad | null
+  /** Líderes possíveis (profiles reais). Fonte central, sem lista fixa. */
+  liders: { id: string; nome: string }[]
   onClose: () => void
-  onSubmit: (nome: string, descricao: string, lider: string | null) => void
+  onSubmit: (nome: string, descricao: string, liderId: string | null) => void
 }) {
   const nomeRef = useRef<HTMLInputElement>(null)
   const [nome, setNome] = useState('')
   const [descricao, setDescricao] = useState('')
-  const [lider, setLider] = useState('')
+  const [liderId, setLiderId] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const editando = mode === 'edit'
 
@@ -894,11 +897,11 @@ export function SquadFormModal({
     if (editando && squad) {
       setNome(squad.nome)
       setDescricao(squad.descricao ?? '')
-      setLider(squad.lider ?? '')
+      setLiderId(squad.liderId ?? '')
     } else {
       setNome('')
       setDescricao('')
-      setLider('')
+      setLiderId('')
     }
     setErro(null)
     // Foca e seleciona o nome ao abrir (útil no modo edição)
@@ -914,7 +917,7 @@ export function SquadFormModal({
       setErro('Informe o nome do squad.')
       return
     }
-    onSubmit(nome.trim(), descricao.trim(), lider || null)
+    onSubmit(nome.trim(), descricao.trim(), liderId || null)
     onClose()
   }
 
@@ -939,10 +942,10 @@ export function SquadFormModal({
           <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição do squad" />
         </FormField>
         <FormField label="Líder do Squad">
-          <Select value={lider} onChange={(e) => setLider(e.target.value)}>
+          <Select value={liderId} onChange={(e) => setLiderId(e.target.value)}>
             <option value="">Nenhum</option>
-            {COLABORADORES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {liders.map((l) => (
+              <option key={l.id} value={l.id}>{l.nome}</option>
             ))}
           </Select>
         </FormField>
