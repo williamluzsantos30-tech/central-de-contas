@@ -21,7 +21,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { ResumoSocialKpi } from '@/components/clientes/ResumoSocialKpi'
+import { CalendarioPostagensCompacto } from '@/components/clientes/CalendarioPostagensCompacto'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
@@ -369,8 +369,8 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         </div>
       )}
 
-      {/* Resumo: tarefas do dia + atrasadas + clientes com problema de setup. */}
-      <ResumoSocialKpi clientes={filtered} />
+      {/* Calendário de postagens condensado (mini grade do mês corrente). */}
+      <CalendarioPostagensCompacto items={items} />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
