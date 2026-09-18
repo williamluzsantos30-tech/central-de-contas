@@ -11,6 +11,7 @@ import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
 import SocialMedia from '@/pages/webdesign/SocialMedia'
 import AgendaSocialMedia from '@/pages/social/Agenda'
+import SocialClientes from '@/pages/social/Clientes'
 import HeadSocial from '@/pages/social/HeadSocial'
 import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
@@ -137,14 +138,14 @@ export default function App() {
             <Route path="/social" element={<AgendaSocialMedia />} />
             <Route path="/social/agenda" element={<AgendaSocialMedia />} />
             <Route path="/social/head" element={<HeadSocial />} />
-            {/* Execução › Social Media = mesma lista de Clientes, filtrada por
-                Social Media vinculado (social_media_id). O Calendário de cada
-                cliente fica na ficha (aba Operacional Social). */}
+            {/* Execução › Social Media = visão especializada (Publicações do
+                mês, Apresentar próximo plano, Relatório semanal). Filtra por
+                social_media_id != null. Criação só na página Clientes. */}
             <Route
               path="/social/clientes"
               element={
                 <RequirePermissao perm={PERM.visualizar}>
-                  <Clientes filtroOperacao="social" />
+                  <SocialClientes />
                 </RequirePermissao>
               }
             />
