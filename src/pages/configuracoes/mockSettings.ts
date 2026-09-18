@@ -253,10 +253,11 @@ export function statusCrescimento(atual: number, meta: number): { pct: number; t
   return { pct, tom }
 }
 
-/** Métrica de limite (logo churn, rev churn): abaixo do limite = melhor. */
+/** Métrica de limite (logo churn, rev churn): abaixo do limite = melhor.
+ *  Limite 0 (squad pequeno): qualquer atual > 0 já estoura (crítico). */
 export function statusLimite(atual: number, limite: number): { label: string; tom: StatusTom; pct: number } {
-  const ratio = limite > 0 ? atual / limite : 0
+  const ratio = limite > 0 ? atual / limite : atual > 0 ? Infinity : 0
   const tom: StatusTom = ratio > 1 ? 'critico' : ratio >= 0.75 ? 'atencao' : 'ok'
   const label = tom === 'ok' ? 'Excelente' : tom === 'atencao' ? 'Atenção' : 'Crítico'
-  return { label, tom, pct: Math.min(100, Math.round(ratio * 100)) }
+  return { label, tom, pct: Math.min(100, Math.round(Math.min(ratio, 1) * 100)) }
 }
