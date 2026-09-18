@@ -8,6 +8,7 @@ import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
 import Admin from '@/pages/Admin'
 import ControleHead from '@/pages/trafego/ControleHead'
+import ClientesTrafego from '@/pages/trafego/ClientesTrafego'
 import ProjetosWebdesign from '@/pages/webdesign/ProjetosWebdesign'
 import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
@@ -118,6 +119,15 @@ export default function App() {
               element={
                 <RequirePermissao perm={PERM.visualizar}>
                   <ClienteDetalhe />
+                </RequirePermissao>
+              }
+            />
+            {/* Operacional Tráfego › Clientes — visão antiga (Gestor/Verba/Call). */}
+            <Route
+              path="/trafego/clientes"
+              element={
+                <RequirePermissao perm={PERM.visualizar}>
+                  <ClientesTrafego />
                 </RequirePermissao>
               }
             />

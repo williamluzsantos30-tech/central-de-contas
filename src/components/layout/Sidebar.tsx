@@ -62,6 +62,8 @@ type Group =
 
 const nav: Group[] = [
   { kind: 'item', item: { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true } },
+  // Clientes geral (com KPIs) — base inteira, acessível a todos.
+  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar } },
   {
     kind: 'folder',
     key: 'operacional',
@@ -84,7 +86,9 @@ const nav: Group[] = [
     defaultOpen: true,
     modulo: 'trafego',
     items: [
-      { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
+      // Visão antiga de tráfego (Gestor/Verba/Call). A lista geral (com KPIs)
+      // é o item "Clientes" do topo.
+      { to: '/trafego/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
       {
         to: '/trafego/controle-head',
         label: 'Controle do Head',
