@@ -13,6 +13,7 @@ import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
 import SocialMedia from '@/pages/webdesign/SocialMedia'
 import AgendaSocialMedia from '@/pages/social/Agenda'
+import SocialClientes from '@/pages/social/Clientes'
 import HeadSocial from '@/pages/social/HeadSocial'
 import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
@@ -129,9 +130,16 @@ export default function App() {
             <Route path="/social" element={<AgendaSocialMedia />} />
             <Route path="/social/agenda" element={<AgendaSocialMedia />} />
             <Route path="/social/head" element={<HeadSocial />} />
-            {/* Lista de clientes de Social Media foi unificada na lista única
-                /clientes. Mantém redirect pros links antigos. */}
-            <Route path="/social/clientes" element={<Navigate to="/clientes" replace />} />
+            {/* Lista de clientes de Social Media — visão própria (Publicações
+                do mês, Apresentar próximo plano, etc.). */}
+            <Route
+              path="/social/clientes"
+              element={
+                <RequirePermissao perm={PERM.visualizar}>
+                  <SocialClientes />
+                </RequirePermissao>
+              }
+            />
             <Route
               path="/social/clientes/:id"
               element={

@@ -115,8 +115,9 @@ const nav: Group[] = [
     defaultOpen: true,
     modulo: 'social_media',
     items: [
-      // Ambos os "Clientes" (Tráfego e Social) abrem a lista única de clientes.
-      { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
+      // Cada setor tem sua própria lista: Tráfego → /clientes; Social → a
+      // lista de Social Media (publicações do mês, etc.).
+      { to: '/social/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
       { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
     ],
   },
