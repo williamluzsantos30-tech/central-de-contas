@@ -6,6 +6,7 @@ import Clientes from '@/pages/Clientes'
 import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
 import Admin from '@/pages/Admin'
+import ClientesTrafego from '@/pages/trafego/ClientesTrafego'
 import ProjetosWebdesign from '@/pages/webdesign/ProjetosWebdesign'
 import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
@@ -120,13 +121,14 @@ export default function App() {
                 </RequirePermissao>
               }
             />
-            {/* Execução › Tráfego = mesma lista de Clientes, filtrada por Gestor
-                de Tráfego vinculado (gestor_id). */}
+            {/* Execução › Tráfego = visão especializada (Gestor de Tráfego,
+                Verba, Call Alinhamento + KPIs). Filtra por gestor_id != null;
+                criação só na página Clientes. */}
             <Route
               path="/trafego/clientes"
               element={
                 <RequirePermissao perm={PERM.visualizar}>
-                  <Clientes filtroOperacao="trafego" />
+                  <ClientesTrafego />
                 </RequirePermissao>
               }
             />
