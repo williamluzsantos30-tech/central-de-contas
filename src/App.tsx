@@ -2,19 +2,15 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Layout } from '@/components/layout/Layout'
 import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
 import Clientes from '@/pages/Clientes'
 import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
 import Admin from '@/pages/Admin'
-import ControleHead from '@/pages/trafego/ControleHead'
-import ClientesTrafego from '@/pages/trafego/ClientesTrafego'
 import ProjetosWebdesign from '@/pages/webdesign/ProjetosWebdesign'
 import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
 import EdicaoVideo from '@/pages/webdesign/EdicaoVideo'
 import SocialMedia from '@/pages/webdesign/SocialMedia'
 import AgendaSocialMedia from '@/pages/social/Agenda'
-import SocialClientes from '@/pages/social/Clientes'
 import HeadSocial from '@/pages/social/HeadSocial'
 import CalendarioPostagens from '@/pages/social/Calendario'
 import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
@@ -76,7 +72,8 @@ export default function App() {
               </Protected>
             }
           >
-            <Route path="/" element={<Dashboard />} />
+            {/* Dashboard removido — raiz abre a lista de clientes. */}
+            <Route path="/" element={<Navigate to="/clientes" replace />} />
             <Route path="/operacional/visao" element={<VisaoExecutiva />} />
             <Route path="/clientes/onboarding" element={<Onboarding />} />
             <Route path="/clientes/churns" element={<Churns />} />
@@ -122,16 +119,16 @@ export default function App() {
                 </RequirePermissao>
               }
             />
-            {/* Operacional Tráfego › Clientes — visão antiga (Gestor/Verba/Call). */}
+            {/* Execução › Tráfego = mesma lista de Clientes, filtrada por Gestor
+                de Tráfego vinculado (gestor_id). */}
             <Route
               path="/trafego/clientes"
               element={
                 <RequirePermissao perm={PERM.visualizar}>
-                  <ClientesTrafego />
+                  <Clientes filtroOperacao="trafego" />
                 </RequirePermissao>
               }
             />
-            <Route path="/trafego/controle-head" element={<ControleHead />} />
             <Route path="/minhas-tarefas" element={<MinhasTarefas />} />
             <Route path="/webdesign/projetos" element={<ProjetosWebdesign />} />
             <Route path="/webdesign/criativos" element={<CriativosWebdesign />} />
@@ -140,13 +137,14 @@ export default function App() {
             <Route path="/social" element={<AgendaSocialMedia />} />
             <Route path="/social/agenda" element={<AgendaSocialMedia />} />
             <Route path="/social/head" element={<HeadSocial />} />
-            {/* Lista de clientes de Social Media — visão própria (Publicações
-                do mês, Apresentar próximo plano, etc.). */}
+            {/* Execução › Social Media = mesma lista de Clientes, filtrada por
+                Social Media vinculado (social_media_id). O Calendário de cada
+                cliente fica na ficha (aba Operacional Social). */}
             <Route
               path="/social/clientes"
               element={
                 <RequirePermissao perm={PERM.visualizar}>
-                  <SocialClientes />
+                  <Clientes filtroOperacao="social" />
                 </RequirePermissao>
               }
             />

@@ -27,10 +27,11 @@ function mesesCasa(iso: string | null): number {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) + 1
 }
 
-export default function Clientes() {
+export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego' | 'social' } = {}) {
   const { profile } = useAuth()
-  // Lista única de clientes ("Todos") — sem tabs por setor. A diferenciação
-  // por setor acontece só na Ficha do cliente (abas operacionais dinâmicas).
+  // Mesma lista/tabela central de clientes. Com `filtroOperacao` vira a visão
+  // de Execução: 'trafego' → só clientes com Gestor de Tráfego vinculado;
+  // 'social' → só com Social Media vinculado. Sem prop = lista completa.
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [gestores, setGestores] = useState<Profile[]>([])
   const { nomes: squadsAtivos } = useSquads()
@@ -97,6 +98,9 @@ export default function Clientes() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
+      // Visão de Execução: filtra pela operação (responsável vinculado).
+      if (filtroOperacao === 'trafego' && !c.gestor_id) return false
+      if (filtroOperacao === 'social' && !c.social_media_id) return false
       // Arquivados (churn) ficam ocultos por padrão. Toggle mostra apenas eles.
       const eArquivado = !!c.arquivado_em
       if (mostrarArquivados && !eArquivado) return false
@@ -116,13 +120,29 @@ export default function Clientes() {
       }
       return true
     })
-  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
+  }, [clientes, filtroOperacao, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
   return (
     <div>
       <PageHeader
-        title={mostrarArquivados ? 'Clientes arquivados' : 'Lista de Clientes'}
-        description={mostrarArquivados ? 'Arquivados (churn)' : 'Clientes ativos na base'}
+        title={
+          mostrarArquivados
+            ? 'Clientes arquivados'
+            : filtroOperacao === 'trafego'
+              ? 'Clientes · Tráfego'
+              : filtroOperacao === 'social'
+                ? 'Clientes · Social Media'
+                : 'Lista de Clientes'
+        }
+        description={
+          mostrarArquivados
+            ? 'Arquivados (churn)'
+            : filtroOperacao === 'trafego'
+              ? 'Clientes com Gestor de Tráfego vinculado'
+              : filtroOperacao === 'social'
+                ? 'Clientes com Social Media vinculado'
+                : 'Clientes ativos na base'
+        }
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -132,14 +152,17 @@ export default function Clientes() {
             >
               <Download size={12} /> Exportar
             </button>
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              <Plus size={14} /> Novo cliente
-            </Button>
+            {/* Criação só na lista completa (ponto único). Execução não cria. */}
+            {!filtroOperacao && (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus size={14} /> Novo cliente
+              </Button>
+            )}
           </div>
         }
       />

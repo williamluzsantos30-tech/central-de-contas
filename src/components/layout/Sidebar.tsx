@@ -1,28 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Users,
-  Settings2,
-  ShieldCheck,
-  Megaphone,
-  ChevronDown,
-  Palette,
-  LayoutGrid,
-  Sparkles,
-  Share2,
-  CalendarDays,
-  Film,
-  Sun,
-  Moon,
-  Activity,
-  TrendingUp,
-  UserPlus,
-  UserMinus,
-  FileClock,
-  BookOpen,
-  Flag,
-} from 'lucide-react'
+import { ChevronDown, Sun, Moon, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -30,121 +9,39 @@ import {
   cargosDoProfile,
   temAlgumCargo,
   moduloLabel,
-  type Cargo,
   type Modulo,
 } from '@/lib/cargos'
 import { useTheme } from '@/hooks/useTheme'
-import { usePermissoes, PERM } from '@/hooks/usePermissoes'
-
-type Item = {
-  to: string
-  label: string
-  icon: React.ComponentType<{ size?: number }>
-  end?: boolean
-  adminOnly?: boolean
-  /** Se preenchido, o item só aparece pra quem tem QUALQUER um desses cargos */
-  cargosPermitidos?: Cargo[]
-  /** Se preenchido, o item só aparece pra quem tem essa permissão de papel */
-  perm?: string
-}
-
-type Group =
-  | { kind: 'item'; item: Item }
-  | {
-      kind: 'folder'
-      key: string
-      label: string
-      icon: React.ComponentType<{ size?: number }>
-      items: Item[]
-      defaultOpen?: boolean
-      modulo?: Modulo
-    }
-
-const nav: Group[] = [
-  { kind: 'item', item: { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true } },
-  // Clientes geral (com KPIs) — base inteira, acessível a todos.
-  { kind: 'item', item: { to: '/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar } },
-  {
-    kind: 'folder',
-    key: 'operacional',
-    label: 'Operacional',
-    icon: TrendingUp,
-    defaultOpen: true,
-    // Sem modulo — visao executiva e' meta-modulo, cruza tudo
-    items: [
-      { to: '/operacional/visao', label: 'Visão Executiva', icon: TrendingUp },
-      { to: '/clientes/onboarding', label: 'Onboarding', icon: UserPlus },
-      { to: '/clientes/churns', label: 'Churns', icon: UserMinus },
-      { to: '/clientes/renovacoes', label: 'Renovações', icon: FileClock },
-    ],
-  },
-  {
-    kind: 'folder',
-    key: 'trafego',
-    label: 'Operacional Tráfego',
-    icon: Megaphone,
-    defaultOpen: true,
-    modulo: 'trafego',
-    items: [
-      // Visão antiga de tráfego (Gestor/Verba/Call). A lista geral (com KPIs)
-      // é o item "Clientes" do topo.
-      { to: '/trafego/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
-      {
-        to: '/trafego/controle-head',
-        label: 'Controle do Head',
-        icon: Activity,
-        cargosPermitidos: ['head', 'diretoria'],
-      },
-    ],
-  },
-  {
-    kind: 'folder',
-    key: 'webdesign',
-    label: 'Operacional Webdesign',
-    icon: Palette,
-    defaultOpen: true,
-    modulo: 'webdesign',
-    items: [
-      { to: '/webdesign/projetos', label: 'Landing page', icon: LayoutGrid },
-      { to: '/webdesign/criativos', label: 'Criativos', icon: Sparkles },
-      { to: '/webdesign/edicao-video', label: 'Edição de vídeo', icon: Film },
-      { to: '/webdesign/social-media', label: 'Produção social media', icon: Share2 },
-    ],
-  },
-  {
-    kind: 'folder',
-    key: 'social_media',
-    label: 'Operacional Social Media',
-    icon: Share2,
-    defaultOpen: true,
-    modulo: 'social_media',
-    items: [
-      // Cada setor tem sua própria lista: Tráfego → /clientes; Social → a
-      // lista de Social Media (publicações do mês, etc.).
-      { to: '/social/clientes', label: 'Clientes', icon: Users, perm: PERM.visualizar },
-      { to: '/social/calendario', label: 'Calendário de postagens', icon: CalendarDays },
-    ],
-  },
-  { kind: 'item', item: { to: '/central-operacional', label: 'Central Operacional', icon: BookOpen } },
-  { kind: 'item', item: { to: '/flags', label: 'Flags (Performance)', icon: Flag } },
-  { kind: 'item', item: { to: '/configuracoes', label: 'Configurações', icon: Settings2 } },
-  { kind: 'item', item: { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true } },
-]
+import { usePermissoes } from '@/hooks/usePermissoes'
+import {
+  SIDEBAR_NAV,
+  SIDEBAR_SISTEMA,
+  type NavNode,
+  type NavItem as NavItemDef,
+  type NavFolder,
+} from './sidebarConfig'
 
 export function Sidebar() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
   const { can, permissoes } = usePermissoes()
   const { theme, toggle: toggleTheme } = useTheme()
-  const [open, setOpen] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      nav
-        .filter((g): g is Extract<Group, { kind: 'folder' }> => g.kind === 'folder')
-        .map((g) => [g.key, g.defaultOpen ?? true]),
-    ),
-  )
 
-  // Permissões por módulo, conforme cargo do usuário (admins veem tudo)
+  // Estado de expandir/recolher por pasta (todas abertas por padrão).
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    const o: Record<string, boolean> = {}
+    const walk = (nodes: NavNode[]) =>
+      nodes.forEach((n) => {
+        if (n.kind === 'folder') {
+          o[n.key] = n.defaultOpen ?? true
+          walk(n.children)
+        }
+      })
+    walk([...SIDEBAR_NAV, ...SIDEBAR_SISTEMA])
+    return o
+  })
+
+  // Permissões por módulo (admins veem tudo), pra gating dos itens de Execução.
   const [allowedModulos, setAllowedModulos] = useState<Set<Modulo>>(() => new Set())
   useEffect(() => {
     if (!profile) return
@@ -153,7 +50,6 @@ export function Sidebar() {
       return
     }
     const perms = loadCargoPermissoes()
-    // Soma os módulos do cargo principal + cargos_extras
     const cargos = cargosDoProfile(profile)
     const list = new Set<Modulo>()
     for (const c of cargos) {
@@ -162,10 +58,8 @@ export function Sidebar() {
     setAllowedModulos(list)
   }, [profile, isAdmin])
 
-  // Acessos operacionais podem vir do PAPEL (dobrados como permissões, ex.:
-  // "Operacional Webdesign"). Se o papel do usuário carrega algum desses
-  // acessos, ele manda; senão cai no modelo antigo por cargo (cargoPermissoes),
-  // pra não tirar acesso de quem ainda não teve o papel configurado.
+  // Papel-first: se o papel do usuário carrega acessos operacionais, ele manda;
+  // senão cai no modelo antigo por cargo (cargoPermissoes).
   const MODULOS_OPERACIONAIS: Modulo[] = ['trafego', 'webdesign', 'social_media']
   const papelDefineModulos = MODULOS_OPERACIONAIS.some((m) => permissoes.includes(moduloLabel[m]))
   function canAccessModulo(m: Modulo) {
@@ -174,67 +68,51 @@ export function Sidebar() {
     return allowedModulos.has(m)
   }
 
+  function itemVisivel(it: NavItemDef): boolean {
+    if (it.adminOnly && !isAdmin) return false
+    if (it.perm && !can(it.perm)) return false
+    if (it.modulo && !canAccessModulo(it.modulo)) return false
+    if (it.cargosPermitidos && it.cargosPermitidos.length > 0) {
+      if (!isAdmin && !temAlgumCargo(profile, it.cargosPermitidos)) return false
+    }
+    return true
+  }
+  function nodeVisivel(n: NavNode): boolean {
+    return n.kind === 'item' ? itemVisivel(n) : n.children.some(nodeVisivel)
+  }
+
+  function renderNodes(nodes: NavNode[], depth: number) {
+    return nodes.filter(nodeVisivel).map((n) =>
+      n.kind === 'item' ? (
+        <NavLinkItem key={n.to} item={n} depth={depth} />
+      ) : (
+        <FolderNode
+          key={n.key}
+          folder={n}
+          depth={depth}
+          expanded={!!open[n.key]}
+          onToggle={() => setOpen((o) => ({ ...o, [n.key]: !o[n.key] }))}
+          renderChildren={() => renderNodes(n.children, depth + 1)}
+        />
+      ),
+    )
+  }
+
   return (
-    <aside className="theme-dark fixed inset-y-0 left-0 z-30 w-60 border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
-      <div className="flex h-16 items-center border-b border-border/80 bg-black px-5">
-        {/* Wordmark temporario — substituir por SVG proprio quando o logo
-            estiver pronto. "domus" em branco frio, ".agn" em violet
-            (o herói da paleta contemporaneo tech). */}
+    <aside className="theme-dark fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
+      <div className="flex h-16 shrink-0 items-center border-b border-border/80 bg-black px-5">
         <div className="flex items-baseline">
-          <span className="text-2xl font-serif font-semibold tracking-tight text-zinc-100">
-            domus
-          </span>
-          <span className="text-2xl font-serif font-semibold tracking-tight text-brand-400">
-            .agn
-          </span>
+          <span className="text-2xl font-serif font-semibold tracking-tight text-zinc-100">domus</span>
+          <span className="text-2xl font-serif font-semibold tracking-tight text-brand-400">.agn</span>
         </div>
       </div>
-      <nav className="p-2 space-y-1">
-        {nav.map((g, i) => {
-          if (g.kind === 'item') {
-            if (g.item.adminOnly && !isAdmin) return null
-            if (g.item.perm && !can(g.item.perm)) return null
-            return <NavItem key={g.item.to} {...g.item} />
-          }
-          // Folder: bloqueia se o cargo não tem acesso a esse módulo
-          if (g.modulo && !canAccessModulo(g.modulo)) return null
-          const visibleItems = g.items.filter((it) => {
-            if (it.adminOnly && !isAdmin) return false
-            if (it.perm && !can(it.perm)) return false
-            if (it.cargosPermitidos && it.cargosPermitidos.length > 0) {
-              // Admin sempre vê; demais só se tem algum dos cargos permitidos
-              if (!isAdmin && !temAlgumCargo(profile, it.cargosPermitidos)) return false
-            }
-            return true
-          })
-          if (visibleItems.length === 0) return null
-          const expanded = open[g.key]
-          return (
-            <div key={g.key} className={cn(i > 0 && 'pt-2')}>
-              <button
-                onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
-                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-zinc-200"
-              >
-                <span className="flex items-center gap-1.5">
-                  <g.icon size={12} />
-                  {g.label}
-                </span>
-                <span className={cn('transition-transform duration-200', expanded ? 'rotate-0' : '-rotate-90')}>
-                  <ChevronDown size={12} />
-                </span>
-              </button>
-              {expanded && (
-                <div className="mt-1 space-y-0.5 animate-fade-in">
-                  {visibleItems.map((it) => (
-                    <NavItem key={it.to} {...it} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </nav>
-      <div className="absolute inset-x-0 bottom-0 border-t border-border/80 p-3">
+
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2">{renderNodes(SIDEBAR_NAV, 0)}</nav>
+
+      {/* Sistema — fixo no rodapé, fora de Operacional. */}
+      <div className="shrink-0 border-t border-border/80 p-2">{renderNodes(SIDEBAR_SISTEMA, 0)}</div>
+
+      <div className="shrink-0 border-t border-border/80 p-3">
         <div className="flex items-center justify-between gap-2 text-xs text-muted">
           <div className="flex items-center gap-2">
             <Settings2 size={14} />
@@ -255,14 +133,50 @@ export function Sidebar() {
   )
 }
 
-function NavItem({ to, label, icon: Icon, end }: Item) {
+function FolderNode({
+  folder,
+  depth,
+  expanded,
+  onToggle,
+  renderChildren,
+}: {
+  folder: NavFolder
+  depth: number
+  expanded: boolean
+  onToggle: () => void
+  renderChildren: () => React.ReactNode
+}) {
+  const Icon = folder.icon
+  return (
+    <div className={cn(depth === 0 && 'pt-1')}>
+      <button
+        onClick={onToggle}
+        style={{ paddingLeft: 12 + depth * 12 }}
+        className="flex w-full items-center justify-between rounded-md py-1.5 pr-3 text-[10px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-zinc-200"
+      >
+        <span className="flex items-center gap-1.5">
+          {Icon && <Icon size={12} />}
+          {folder.label}
+        </span>
+        <span className={cn('transition-transform duration-200', expanded ? 'rotate-0' : '-rotate-90')}>
+          <ChevronDown size={12} />
+        </span>
+      </button>
+      {expanded && <div className="mt-1 space-y-0.5 animate-fade-in">{renderChildren()}</div>}
+    </div>
+  )
+}
+
+function NavLinkItem({ item, depth }: { item: NavItemDef; depth: number }) {
+  const Icon = item.icon
   return (
     <NavLink
-      to={to}
-      end={end}
+      to={item.to}
+      end={item.end}
+      style={{ paddingLeft: 12 + depth * 12 }}
       className={({ isActive }) =>
         cn(
-          'group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+          'group relative flex items-center gap-2 rounded-lg py-2 pr-3 text-sm',
           'transition-all duration-200 ease-out',
           isActive
             ? 'bg-brand-500/15 text-brand-200 shadow-[inset_2px_0_0_0_#7c3aed]'
@@ -275,11 +189,11 @@ function NavItem({ to, label, icon: Icon, end }: Item) {
           <Icon
             size={16}
             className={cn(
-              'transition-transform duration-200',
+              'shrink-0 transition-transform duration-200',
               isActive ? 'text-brand-400' : 'group-hover:scale-110 group-hover:text-zinc-100',
             )}
           />
-          <span>{label}</span>
+          <span>{item.label}</span>
         </>
       )}
     </NavLink>
