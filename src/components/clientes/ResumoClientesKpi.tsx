@@ -132,7 +132,7 @@ export function ResumoClientesKpi({ clientes }: { clientes: Cliente[] }) {
 }
 
 /** KPI card — mesmo visual do Dashboard (glow no hover, ícone em caixa). */
-function Kpi({
+export function Kpi({
   icon,
   label,
   value,
