@@ -29,23 +29,20 @@ const PERIODOS = [
 ]
 
 export default function Flags() {
-  const { colaboradores, registrarFlag } = useFlags()
+  const { colaboradores, squadsAtivos, cargos, registrarFlag } = useFlags()
   const [modalOpen, setModalOpen] = useState(false)
   const [fSquad, setFSquad] = useState('')
   const [fCargo, setFCargo] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [fPeriodo, setFPeriodo] = useState('90')
 
-  const squads = useMemo(
-    () => [...new Set(colaboradores.map((c) => c.squad).filter(Boolean))].sort() as string[],
-    [colaboradores],
-  )
-  const cargos = useMemo(() => [...new Set(colaboradores.map((c) => c.cargo))].sort(), [colaboradores])
+  // Só membros ATIVOS aparecem na operação de flags.
+  const ativos = useMemo(() => colaboradores.filter((c) => c.ativo), [colaboradores])
 
   // Squad/Cargo escopam KPIs + tabela; Status só a tabela; Período é visual.
   const base = useMemo(
-    () => colaboradores.filter((c) => (!fSquad || c.squad === fSquad) && (!fCargo || c.cargo === fCargo)),
-    [colaboradores, fSquad, fCargo],
+    () => ativos.filter((c) => (!fSquad || c.squad === fSquad) && (!fCargo || c.cargo === fCargo)),
+    [ativos, fSquad, fCargo],
   )
   const kpis = useMemo(() => derivarKpis(base), [base])
   const linhas = useMemo(
@@ -131,7 +128,7 @@ export default function Flags() {
 
       {/* Filtros */}
       <FilterBar className="mb-4">
-        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os squads" options={squads.map((s) => ({ value: s, label: s }))} />
+        <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os squads" options={squadsAtivos.map((s) => ({ value: s, label: s }))} />
         <FilterPill value={fCargo} onChange={setFCargo} placeholder="Todos os cargos" options={cargos.map((c) => ({ value: c, label: c }))} />
         <FilterPill
           value={fStatus}
@@ -163,7 +160,7 @@ export default function Flags() {
       <RegisterFlagModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        colaboradores={colaboradores}
+        colaboradores={ativos}
         onRegister={registrarFlag}
       />
     </div>

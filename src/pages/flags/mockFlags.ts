@@ -52,41 +52,16 @@ export interface Colaborador {
   nome: string
   cargo: string
   squad: string | null
+  /** Espelha o status do Membro da Equipe (fonte central). Só ativos listam. */
+  ativo: boolean
   flags: Flag[]
 }
 
-// ---- helpers de data (relativas a hoje) ----
-function diasAtras(n: number, h = 11, m = 30): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  d.setHours(h, m, 0, 0)
-  return d.toISOString()
-}
+// ---- helpers de data ----
 export function maisDias(iso: string, n: number): string {
   const d = new Date(iso)
   d.setDate(d.getDate() + n)
   return d.toISOString()
-}
-
-let seq = 0
-function flag(
-  tipo: TipoFlag,
-  categoria: string,
-  motivo: string,
-  criadaEm: string,
-  status: StatusFlag,
-  descricao?: string,
-): Flag {
-  return {
-    id: `flag-${++seq}`,
-    tipo,
-    categoria,
-    motivo,
-    descricao,
-    criadaEm,
-    expiraEm: tipo === 'amarela' ? maisDias(criadaEm, AMARELA_VALIDADE_DIAS) : null,
-    status,
-  }
 }
 
 // ---- derivação (fonte única dos contadores) ----
@@ -149,40 +124,3 @@ export function derivarKpis(cs: Colaborador[], hoje = new Date()): FlagsKpis {
   return { colaboradoresComFlags, amarelasAtivas, vermelhasAtivas, elegiveisDesligamento }
 }
 
-// ---- dados iniciais ----
-export const COLABORADORES_INICIAIS: Colaborador[] = [
-  {
-    id: 'c-agnaldo',
-    nome: 'Agnaldo Junior',
-    cargo: 'Experiência do Cliente',
-    squad: 'BlackSkull',
-    // 2 amarelas antigas, ambas revertidas → 0 ativas (Normal)
-    flags: [
-      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(120, 11, 37), 'revertida', 'Otimizações dentro da campanha da Dra. Francileia não estavam seguindo o padrão'),
-      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(140, 17, 5), 'revertida', 'Não envio relatório no grupo do cliente.'),
-    ],
-  },
-  { id: 'c-alexandre', nome: 'Alexandre Fernandes', cargo: 'Account Manager', squad: 'Delta', flags: [] },
-  { id: 'c-arlen', nome: 'Arlen Soares', cargo: 'Designer', squad: null, flags: [] },
-  { id: 'c-beatriz', nome: 'Beatriz Barros', cargo: 'Social Media', squad: null, flags: [] },
-  { id: 'c-bruno', nome: 'Bruno Gomes', cargo: 'Head de Conteúdo', squad: null, flags: [] },
-  { id: 'c-diego', nome: 'Diego Assis', cargo: 'Diretor', squad: null, flags: [] },
-  { id: 'c-glenda', nome: 'Glenda Lima', cargo: 'Social Media', squad: null, flags: [] },
-  { id: 'c-igorm', nome: 'Igor Mandau', cargo: 'SDR', squad: null, flags: [] },
-  { id: 'c-igorr', nome: 'Igor Reis', cargo: 'Designer', squad: null, flags: [] },
-  { id: 'c-joaopedro', nome: 'João Pedro Menezes', cargo: 'Editor de Vídeo', squad: null, flags: [] },
-  { id: 'c-joaopinto', nome: 'João Pinto', cargo: 'Diretor', squad: null, flags: [] },
-  {
-    id: 'c-jorge',
-    nome: 'Jorge Luiz',
-    cargo: 'Account Manager',
-    squad: 'MovSeals',
-    // 2 amarelas ativas (a 1 do limite → banner de alerta) + 2 revertidas
-    flags: [
-      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(5, 15, 27), 'ativa', 'SLA de resposta estourado em mais de 12 horas com a Rodo/Randon.'),
-      flag('amarela', 'Comportamental', 'Risco ao cliente', diasAtras(26, 11, 48), 'ativa', 'Foram identificados 3 erros em 3 clientes diferentes: Ultramedclin (falta de atenção nos criativos Rodo/Randon), erro no número da campanha Dra. Carolina e falha na postagem solicitada. Pontos que reforçam a necessidade de maior atenção aos detalhes nas entregas.'),
-      flag('amarela', 'Operacional', 'Não seguiu POP', diasAtras(110, 11, 24), 'revertida', 'Houve falha no procedimento operacional de conferência de campanha e orçamento pelo menos 1 vez na semana. Como consequência, o Grupo Ribeiro ficou aproximadamente 1 mês com a campanha pausada por falta de verba.'),
-      flag('amarela', 'Performance', 'Atraso crítico', diasAtras(150, 8, 27), 'revertida', 'Demora na resposta a cliente de consultoria.'),
-    ],
-  },
-]
