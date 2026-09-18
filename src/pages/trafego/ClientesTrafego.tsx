@@ -9,6 +9,8 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
+import { ResumoClientesKpi } from '@/components/clientes/ResumoClientesKpi'
+import { situacaoCliente } from '@/pages/Clientes'
 import { supabase } from '@/lib/supabase'
 import { temAlgumCargo } from '@/lib/cargos'
 import {
@@ -136,6 +138,9 @@ export default function ClientesTrafego() {
           </Button>
         }
       />
+
+      {/* Resumo operacional (KPIs verba/tarefas/ativos + Minhas tarefas de hoje). */}
+      <ResumoClientesKpi clientes={filtered} />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
@@ -286,7 +291,14 @@ export default function ClientesTrafego() {
                         )}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <Badge tone={statusTone(c.status)}>{statusClienteLabel[c.status]}</Badge>
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
+                            situacaoCliente(c).cls,
+                          )}
+                        >
+                          {situacaoCliente(c).label}
+                        </span>
                       </td>
                       <td className="px-3 py-3 text-sm whitespace-nowrap">
                         {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}

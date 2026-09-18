@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Pencil, Eye, Download, CircleDollarSign, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { Plus, Search, Pencil, Eye, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
@@ -13,16 +10,13 @@ import {
   cn,
   formatCurrency,
   formatDate,
-  isOverdue,
   JORNADAS_CLIENTE,
   jornadaClienteLabel,
-  relativeDueLabel,
-  rotaCliente,
   tipoClienteLabel,
 } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Ativo, Cliente, Profile, Tarefa } from '@/types/database'
+import type { Cliente, Profile } from '@/types/database'
 
 // Meses de casa inteiros — o mes em curso conta (entrou hoje = 1).
 // Usado como "LT" (lifetime months) na tabela. Mesma regra da Ficha.
@@ -48,10 +42,6 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
-  // Dados operacionais pros KPIs reaproveitados do Dashboard
-  const [ativos, setAtivos] = useState<Pick<Ativo, 'cliente_id' | 'status'>[]>([])
-  const [atrasadasRaw, setAtrasadasRaw] = useState<{ cliente_id: string }[]>([])
-  const [minhasTarefas, setMinhasTarefas] = useState<Tarefa[]>([])
 
   // Cargos operacionais começam vendo só "os meus". Diretoria/head/admin veem todos.
   const cargoOperacional = temAlgumCargo(profile, ['gestor_trafego', 'account_manager'])
@@ -75,10 +65,8 @@ export default function Clientes() {
    */
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const today = new Date().toISOString().slice(0, 10)
-    const [cRes, gRes, ativosRes, atrasadasRes, minhasRes] = await Promise.all([
-      // Lista única — carrega TODA a base. O segmento (Todos/Tráfego/Social)
-      // filtra por módulo no cliente, em memória.
+    const [cRes, gRes] = await Promise.all([
+      // Carrega TODA a base — a lista geral mostra todos os clientes.
       supabase
         .from('clientes')
         .select(
@@ -93,31 +81,9 @@ export default function Clientes() {
         .eq('aprovado', true)
         .eq('cargo', 'gestor_trafego')
         .order('nome'),
-      // Ativos — só cliente_id + status pra contar os "com problema" por base
-      supabase.from('ativos').select('cliente_id, status'),
-      // Tarefas atrasadas (vencidas, não concluídas) — só cliente_id pra contar
-      supabase.from('tarefas').select('cliente_id').lt('data_vencimento', today).neq('status', 'concluida'),
-      // Minhas tarefas de hoje — pessoais, do usuário logado
-      profile
-        ? supabase
-            .from('tarefas')
-            .select('*, cliente:clientes(*), responsavel:profiles(*)')
-            .eq('responsavel_id', profile.id)
-            .eq('data_vencimento', today)
-            .neq('status', 'concluida')
-            .order('prioridade', { ascending: false })
-        : Promise.resolve({ data: [] as Tarefa[] }),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setGestores((gRes.data as Profile[]) ?? [])
-    setAtivos((ativosRes.data as Pick<Ativo, 'cliente_id' | 'status'>[]) ?? [])
-    setAtrasadasRaw((atrasadasRes.data as { cliente_id: string }[]) ?? [])
-    // Descarta tarefas cujo cliente está em churn/arquivado (igual ao Dashboard)
-    setMinhasTarefas(
-      ((minhasRes.data as Tarefa[]) ?? []).filter(
-        (t) => t.cliente?.status !== 'churn' && !t.cliente?.arquivado_em,
-      ),
-    )
     setLoading(false)
   }
 
@@ -152,31 +118,6 @@ export default function Clientes() {
     })
   }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
-  // KPIs operacionais derivados da base FILTRADA (só ativos; churn/arquivado
-  // ficam fora). Reaproveita as métricas do Dashboard — verba sob gestão,
-  // tarefas atrasadas e ativos com problema — agora reagindo aos filtros da lista.
-  const kpis = useMemo(() => {
-    const baseAtiva = filtered.filter((c) => !c.arquivado_em)
-    const baseIds = new Set(baseAtiva.map((c) => c.id))
-    // Onboarding é fase de estabilização — tarefas atrasadas não contam (mesma
-    // regra do Dashboard).
-    const onboardingIds = new Set(
-      baseAtiva.filter((c) => c.jornada === 'onboarding').map((c) => c.id),
-    )
-    // Verba sob gestão = verba de mídia (google + meta), com fallback pro ticket.
-    const verba = baseAtiva.reduce(
-      (s, c) => s + ((c.verba_google ?? 0) + (c.verba_meta ?? 0) || (c.verba_mensal ?? 0)),
-      0,
-    )
-    const ativosProblema = ativos.filter(
-      (a) => a.status === 'com_problema' && baseIds.has(a.cliente_id),
-    ).length
-    const atrasadas = atrasadasRaw.filter(
-      (t) => baseIds.has(t.cliente_id) && !onboardingIds.has(t.cliente_id),
-    ).length
-    return { verba, atrasadas, ativosProblema }
-  }, [filtered, ativos, atrasadasRaw])
-
   return (
     <div>
       <PageHeader
@@ -202,62 +143,6 @@ export default function Clientes() {
           </div>
         }
       />
-
-      {/* Resumo operacional — reaproveita os KPIs do Dashboard (verba sob
-          gestão, tarefas atrasadas, ativos com problema) + Minhas tarefas de
-          hoje. Os 3 KPIs seguem os filtros aplicados na lista. */}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Kpi
-          icon={<CircleDollarSign size={16} />}
-          label="Verba sob gestão"
-          value={formatCurrency(kpis.verba)}
-          tone="success"
-        />
-        <Kpi
-          icon={<AlertTriangle size={16} />}
-          label="Tarefas atrasadas"
-          value={kpis.atrasadas.toString()}
-          tone={kpis.atrasadas > 0 ? 'danger' : 'neutral'}
-        />
-        <Kpi
-          icon={<ShieldAlert size={16} />}
-          label="Ativos com problema"
-          value={kpis.ativosProblema.toString()}
-          tone={kpis.ativosProblema > 0 ? 'danger' : 'neutral'}
-        />
-      </div>
-
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Minhas tarefas de hoje</CardTitle>
-          <Link to="/minhas-tarefas" className="text-xs text-brand-300 hover:underline">
-            ver todas
-          </Link>
-        </CardHeader>
-        <CardBody className="max-h-[260px] space-y-2 overflow-y-auto">
-          {loading ? (
-            <p className="text-sm text-muted">Carregando...</p>
-          ) : minhasTarefas.length === 0 ? (
-            <EmptyState title="Nenhuma tarefa para hoje" description="Você está em dia 🎉" />
-          ) : (
-            minhasTarefas.map((t) => (
-              <Link
-                key={t.id}
-                to={rotaCliente({ id: t.cliente_id, modulos: t.cliente?.modulos })}
-                className="flex items-center justify-between rounded-lg border border-border bg-bg-soft px-3 py-2 hover:bg-bg-elev"
-              >
-                <div>
-                  <p className="text-sm font-medium">{t.nome}</p>
-                  <p className="text-xs text-muted">{t.cliente?.nome}</p>
-                </div>
-                <Badge tone={isOverdue(t.data_vencimento) ? 'danger' : 'brand'}>
-                  {relativeDueLabel(t.data_vencimento)}
-                </Badge>
-              </Link>
-            ))
-          )}
-        </CardBody>
-      </Card>
 
       {/* Filter row — chips estilo ClickUp */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -448,49 +333,6 @@ function TabelaTrafego({
   )
 }
 
-/** KPI card — mesmo visual do Dashboard (glow no hover, ícone em caixa). */
-function Kpi({
-  icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  tone?: 'neutral' | 'danger' | 'success'
-}) {
-  const valueColor =
-    tone === 'danger' ? 'text-red-400' : tone === 'success' ? 'text-emerald-300' : 'text-zinc-100'
-  const iconBox =
-    tone === 'danger'
-      ? 'border-red-500/30 bg-red-500/10 text-red-300'
-      : tone === 'success'
-      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 group-hover/kpi:border-emerald-500/60'
-      : 'border-brand-500/30 bg-brand-500/10 text-brand-300 group-hover/kpi:border-brand-500/60'
-  const glowColor =
-    tone === 'success' ? 'bg-emerald-500/10' : tone === 'danger' ? 'bg-red-500/10' : 'bg-brand-500/10'
-  return (
-    <Card className="group/kpi overflow-hidden transition-transform duration-300 hover:-translate-y-0.5">
-      <CardBody className="relative flex items-start justify-between">
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full ${glowColor} blur-3xl opacity-0 transition-opacity duration-500 group-hover/kpi:opacity-100`}
-        />
-        <div className="relative">
-          <p className="text-[11px] uppercase tracking-wider text-muted">{label}</p>
-          <p className={`mt-2 text-3xl font-semibold tabular-nums ${valueColor}`}>{value}</p>
-        </div>
-        <div
-          className={`relative grid h-10 w-10 place-items-center rounded-xl border transition-all duration-300 group-hover/kpi:scale-110 ${iconBox}`}
-        >
-          {icon}
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
-
 /** Chip select ClickUp-like — usa <select> nativo estilizado com
  *  chevron custom via SVG data-uri. */
 function ChipSelect({
@@ -531,7 +373,7 @@ function ChipSelect({
  * ganha destaque azul (fase de entrada); fora disso, mapeia o status:
  * estável (verde), atenção (amarelo), pausado (cinza), churn (vermelho).
  */
-function situacaoCliente(c: Cliente): { label: string; cls: string } {
+export function situacaoCliente(c: Cliente): { label: string; cls: string } {
   if (c.jornada === 'onboarding') {
     return { label: 'Onboarding', cls: 'border-sky-500/50 bg-sky-500/15 text-sky-200' }
   }
