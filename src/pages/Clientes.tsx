@@ -280,29 +280,6 @@ export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego
 
 /** Selos de serviço do cliente (Tráfego / Social), a partir dos serviços
  *  contratados (fallback pros módulos quando servicos_contratados vazio). */
-function ServicoBadges({ cliente: c }: { cliente: Cliente }) {
-  const servicos = c.servicos_contratados ?? []
-  const mods = c.modulos ?? ['trafego']
-  const usarServicos = servicos.length > 0
-  const temTrafego = usarServicos ? servicos.includes('trafego_pago') : mods.includes('trafego')
-  const temSocial = usarServicos ? servicos.includes('social_media') : mods.includes('social_media')
-  if (!temTrafego && !temSocial) return null
-  return (
-    <span className="inline-flex gap-1">
-      {temTrafego && (
-        <span className="inline-flex items-center rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium text-sky-200">
-          Tráfego
-        </span>
-      )}
-      {temSocial && (
-        <span className="inline-flex items-center rounded border border-pink-500/40 bg-pink-500/10 px-1.5 py-0.5 text-[9px] font-medium text-pink-200">
-          Social
-        </span>
-      )}
-    </span>
-  )
-}
-
 /** Tabela rica do setor Tráfego (Ticket/LT/NPS/Semáforo). */
 function TabelaTrafego({
   clientes,
@@ -490,7 +467,6 @@ function ClienteRow({
                   {tipoClienteLabel[c.tipo]}
                 </span>
               )}
-              <ServicoBadges cliente={c} />
             </div>
             {c.nicho && <p className="text-[10px] text-muted truncate">{c.nicho}</p>}
           </div>
