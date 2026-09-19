@@ -320,8 +320,10 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         />
       )}
 
-      {/* Calendário de postagens condensado (mini grade do mês corrente). */}
-      <CalendarioPostagensCompacto items={items} />
+      {/* Calendário de postagens condensado (mini grade do mês corrente).
+          Escopado aos clientes desta operação (filtered) — resolve o cliente
+          de cada post via planejamentos e pinta por postado/atrasado/agendado. */}
+      <CalendarioPostagensCompacto items={items} planejamentos={planejamentos} clientes={filtered} />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">

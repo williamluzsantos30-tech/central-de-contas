@@ -1,8 +1,19 @@
 /**
  * Versão CONDENSADA do Calendário de postagens pro topo da lista de Social
- * Media. Mini grade do mês corrente com pontinhos coloridos por status +
- * contadores (mês / concluídas / atrasadas). Reaproveita os `items` já
- * carregados pela lista (producoes_social_media_items).
+ * Media. Mini grade do mês corrente com pontinhos por post + contadores
+ * (mês / postados / atrasados / agendados).
+ *
+ * Fonte dos posts: os `items` já carregados pela lista
+ * (producoes_social_media_items) — não há entidade "Postagem" separada. Cada
+ * item vem do PLANEJAMENTO (producoes_social_media) e já carrega a data de
+ * postagem (`prazo`). Ligamos item → planejamento → cliente pra: (1) escopar
+ * o calendário aos clientes DAQUELA operação (os que estão na lista) e (2)
+ * mostrar o nome do cliente em cada post.
+ *
+ * O ponto do calendário é "postado ou não":
+ *   - postado   = publicado_em preenchido (foi pro ar de fato)
+ *   - atrasado  = não publicado e o prazo já passou
+ *   - agendado  = não publicado, prazo hoje/futuro (programado)
  */
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
@@ -15,27 +26,52 @@ import {
   eachDayOfInterval,
   isSameMonth,
   isToday,
-  isBefore,
   startOfDay,
-  parseISO,
   format,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import type { ItemSocialMedia, StatusSocialMedia } from '@/types/database'
+import { parseLocalDate } from '@/lib/dates'
+import type {
+  Cliente,
+  ItemSocialMedia,
+  PlanejamentoSocialMedia,
+} from '@/types/database'
 
-const statusDot: Record<StatusSocialMedia, string> = {
-  pendente: 'bg-zinc-500',
-  design: 'bg-violet-500',
-  design_finalizado: 'bg-sky-500',
-  alteracao: 'bg-red-500',
-  em_aprovacao: 'bg-amber-500',
-  conclusao: 'bg-emerald-500',
+type EstadoPost = 'postado' | 'atrasado' | 'agendado'
+
+const estadoDot: Record<EstadoPost, string> = {
+  postado: 'bg-emerald-500',
+  atrasado: 'bg-red-500',
+  agendado: 'bg-brand-400',
+}
+
+const estadoLabel: Record<EstadoPost, string> = {
+  postado: 'postado',
+  atrasado: 'não postado (prazo passou)',
+  agendado: 'agendado',
 }
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-export function CalendarioPostagensCompacto({ items }: { items: ItemSocialMedia[] }) {
+type PostDia = {
+  id: string
+  titulo: string
+  cliente: string
+  estado: EstadoPost
+}
+
+export function CalendarioPostagensCompacto({
+  items,
+  planejamentos = [],
+  clientes = [],
+}: {
+  items: ItemSocialMedia[]
+  /** Planejamentos (producoes_social_media) — liga item → cliente via producao_id. */
+  planejamentos?: PlanejamentoSocialMedia[]
+  /** Clientes da operação. Quando informado, escopa o calendário a eles. */
+  clientes?: Cliente[]
+}) {
   const hoje = new Date()
   const mesInicio = startOfMonth(hoje)
   const mesFim = endOfMonth(hoje)
@@ -49,29 +85,55 @@ export function CalendarioPostagensCompacto({ items }: { items: ItemSocialMedia[
     [format(mesInicio, 'yyyy-MM')],
   )
 
+  const planToCliente = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of planejamentos) m.set(p.id, p.cliente_id)
+    return m
+  }, [planejamentos])
+
+  const clienteNome = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of clientes) m.set(c.id, c.nome)
+    return m
+  }, [clientes])
+
   const { porDia, stats } = useMemo(() => {
-    const porDia = new Map<string, ItemSocialMedia[]>()
-    const noMes: ItemSocialMedia[] = []
+    const hojeIni = startOfDay(hoje)
+    const porDia = new Map<string, PostDia[]>()
+    let total = 0
+    let postados = 0
+    let atrasados = 0
+    let agendados = 0
     for (const it of items) {
       if (!it.prazo) continue
-      const d = parseISO(it.prazo)
-      if (d < mesInicio || d > mesFim) continue
-      noMes.push(it)
-      const key = it.prazo.slice(0, 10)
+      const clienteId = planToCliente.get(it.producao_id)
+      // Escopa aos clientes da operação quando a lista foi passada.
+      if (clientes.length > 0 && (!clienteId || !clienteNome.has(clienteId))) continue
+      const d = parseLocalDate(it.prazo)
+      if (!d || d < mesInicio || d > mesFim) continue
+
+      const estado: EstadoPost = it.publicado_em
+        ? 'postado'
+        : d < hojeIni
+          ? 'atrasado'
+          : 'agendado'
+      total++
+      if (estado === 'postado') postados++
+      else if (estado === 'atrasado') atrasados++
+      else agendados++
+
+      const key = format(d, 'yyyy-MM-dd')
       if (!porDia.has(key)) porDia.set(key, [])
-      porDia.get(key)!.push(it)
+      porDia.get(key)!.push({
+        id: it.id,
+        titulo: it.titulo,
+        cliente: (clienteId && clienteNome.get(clienteId)) || 'Cliente',
+        estado,
+      })
     }
-    const hojeIni = startOfDay(hoje)
-    const stats = {
-      total: noMes.length,
-      concluidos: noMes.filter((it) => it.status === 'conclusao').length,
-      atrasados: noMes.filter(
-        (it) => it.status !== 'conclusao' && it.prazo && isBefore(parseISO(it.prazo), hojeIni),
-      ).length,
-    }
-    return { porDia, stats }
+    return { porDia, stats: { total, postados, atrasados, agendados } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+  }, [items, planToCliente, clienteNome, clientes.length])
 
   return (
     <div className="mb-4 rounded-xl border border-border bg-bg-card p-4">
@@ -87,9 +149,17 @@ export function CalendarioPostagensCompacto({ items }: { items: ItemSocialMedia[
           <span className="text-muted">
             Mês <strong className="text-zinc-200 tabular-nums">{stats.total}</strong>
           </span>
-          <span className="text-emerald-300 tabular-nums">✓ {stats.concluidos}</span>
-          <span className={cn('tabular-nums', stats.atrasados > 0 ? 'text-red-300' : 'text-muted')}>
-            ⚠ {stats.atrasados}
+          <span className="inline-flex items-center gap-1 text-emerald-300 tabular-nums" title="Postados (publicado_em preenchido)">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {stats.postados}
+          </span>
+          <span
+            className={cn('inline-flex items-center gap-1 tabular-nums', stats.atrasados > 0 ? 'text-red-300' : 'text-muted')}
+            title="Não postados com prazo vencido"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> {stats.atrasados}
+          </span>
+          <span className="inline-flex items-center gap-1 text-brand-200 tabular-nums" title="Agendados (prazo hoje/futuro, ainda não postados)">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-400" /> {stats.agendados}
           </span>
           <Link to="/social/calendario" className="text-brand-300 hover:underline">
             abrir
@@ -122,8 +192,8 @@ export function CalendarioPostagensCompacto({ items }: { items: ItemSocialMedia[
                   {posts.slice(0, 6).map((p) => (
                     <span
                       key={p.id}
-                      className={cn('h-1.5 w-1.5 rounded-full', statusDot[p.status])}
-                      title={p.titulo}
+                      className={cn('h-1.5 w-1.5 rounded-full', estadoDot[p.estado])}
+                      title={`${p.cliente} · ${p.titulo} — ${estadoLabel[p.estado]}`}
                     />
                   ))}
                   {posts.length > 6 && (
