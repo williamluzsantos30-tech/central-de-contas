@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  ClipboardPaste,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -32,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
 import { useAuth } from '@/contexts/AuthContext'
 import { PublicarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
+import { ImportarConteudosModal } from './ImportarConteudosModal'
 // PDF lib é pesada (~1.5MB), carrega só quando o user clica em "Baixar PDF"
 // pra não inflar o bundle inicial.
 //
@@ -103,6 +105,7 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
   })
+  const [importOpen, setImportOpen] = useState(false)
 
   // Pode existir mais de um plano com o mesmo mes_referencia (duplicado
   // criado por engano, ou item ligado a outro plano). Pegamos todos os
@@ -160,6 +163,9 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
         </button>
 
         <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+            <ClipboardPaste size={12} /> Importar
+          </Button>
           {planoDoMes ? (
             <>
               <Badge tone={planoDoMes.aprovado_em ? 'success' : 'warning'}>
@@ -172,6 +178,14 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
           )}
         </div>
       </div>
+
+      <ImportarConteudosModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        cliente={cliente}
+        mesISO={mesISO}
+        onImported={onChanged}
+      />
 
       {!planoDoMes ? (
         <SemPlano cliente={cliente} mesISO={mesISO} mesLabel={mesLabel} onCreated={onChanged} />
