@@ -32,6 +32,11 @@ import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
 import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
+import SocialSelling from '@/pages/comercial/SocialSelling'
+import SDR from '@/pages/comercial/SDR'
+import CadastrarLeadQualificado from '@/pages/comercial/CadastrarLeadQualificado'
+import Closer from '@/pages/comercial/Closer'
+import { ComercialProvider } from '@/pages/comercial/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
 import { RequirePermissao } from '@/components/auth/RequirePermissao'
 import { PERM } from '@/hooks/usePermissoes'
@@ -103,6 +108,20 @@ export default function App() {
             >
               <Route path="/flags" element={<Flags />} />
               <Route path="/flags/:colabId" element={<ColaboradorDetalhe />} />
+            </Route>
+            {/* Comercial — funil Social Selling → SDR → Closer. Provider acima
+                das telas pra o Lead (fonte única) atravessar o funil. */}
+            <Route
+              element={
+                <ComercialProvider>
+                  <Outlet />
+                </ComercialProvider>
+              }
+            >
+              <Route path="/comercial/social-selling" element={<SocialSelling />} />
+              <Route path="/comercial/sdr" element={<SDR />} />
+              <Route path="/comercial/sdr/qualificar/:id" element={<CadastrarLeadQualificado />} />
+              <Route path="/comercial/closer" element={<Closer />} />
             </Route>
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route

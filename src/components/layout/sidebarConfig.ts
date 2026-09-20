@@ -30,6 +30,10 @@ import {
   Rocket,
   Settings2,
   ShieldCheck,
+  Briefcase,
+  Radio,
+  Target,
+  Headphones,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -103,6 +107,19 @@ export const SIDEBAR_NAV: NavNode[] = [
           { kind: 'item', to: '/webdesign/social-media', label: 'Produção Social Media', icon: Share2, modulo: 'webdesign' },
         ],
       },
+    ],
+  },
+  {
+    kind: 'folder',
+    key: 'comercial',
+    label: 'Comercial',
+    icon: Briefcase,
+    defaultOpen: true,
+    children: [
+      // Funil sequencial: topo → fundo do funil.
+      { kind: 'item', to: '/comercial/social-selling', label: 'Social Selling', icon: Radio },
+      { kind: 'item', to: '/comercial/sdr', label: 'SDR', icon: Target },
+      { kind: 'item', to: '/comercial/closer', label: 'Closer', icon: Headphones },
     ],
   },
 ]
