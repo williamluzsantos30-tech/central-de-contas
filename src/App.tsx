@@ -33,6 +33,7 @@ import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
 import SocialSelling from '@/pages/comercial/SocialSelling'
+import CaixaEntrada from '@/pages/comercial/CaixaEntrada'
 import SDR from '@/pages/comercial/SDR'
 import CadastrarLeadQualificado from '@/pages/comercial/CadastrarLeadQualificado'
 import Closer from '@/pages/comercial/Closer'
@@ -75,7 +76,12 @@ export default function App() {
           <Route
             element={
               <Protected>
-                <Layout />
+                {/* ComercialProvider acima do Layout: o Lead (mock, fonte única)
+                    é compartilhado entre as telas /comercial E a aba
+                    Integrações em Configurações (que injeta leads via webhook). */}
+                <ComercialProvider>
+                  <Layout />
+                </ComercialProvider>
               </Protected>
             }
           >
@@ -109,20 +115,13 @@ export default function App() {
               <Route path="/flags" element={<Flags />} />
               <Route path="/flags/:colabId" element={<ColaboradorDetalhe />} />
             </Route>
-            {/* Comercial — funil Social Selling → SDR → Closer. Provider acima
-                das telas pra o Lead (fonte única) atravessar o funil. */}
-            <Route
-              element={
-                <ComercialProvider>
-                  <Outlet />
-                </ComercialProvider>
-              }
-            >
-              <Route path="/comercial/social-selling" element={<SocialSelling />} />
-              <Route path="/comercial/sdr" element={<SDR />} />
-              <Route path="/comercial/sdr/qualificar/:id" element={<CadastrarLeadQualificado />} />
-              <Route path="/comercial/closer" element={<Closer />} />
-            </Route>
+            {/* Comercial — funil Caixa de Entrada → SDR → Closer (+ Social
+                Selling alimentando a Caixa). Provider está acima do Layout. */}
+            <Route path="/comercial/social-selling" element={<SocialSelling />} />
+            <Route path="/comercial/caixa-entrada" element={<CaixaEntrada />} />
+            <Route path="/comercial/sdr" element={<SDR />} />
+            <Route path="/comercial/sdr/qualificar/:id" element={<CadastrarLeadQualificado />} />
+            <Route path="/comercial/closer" element={<Closer />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
               path="/clientes"

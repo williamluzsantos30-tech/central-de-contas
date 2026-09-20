@@ -36,7 +36,7 @@ const mesAtual = new Date().toISOString().slice(0, 7)
 function statusView(l: Lead): { label: string; tone: Tone } {
   return l.etapaFunil === 'prospectado'
     ? { label: 'Aguardando envio', tone: 'attention' }
-    : { label: 'Enviado ao SDR', tone: 'info' }
+    : { label: 'Enviado à Caixa', tone: 'info' }
 }
 
 export default function SocialSelling() {
@@ -57,6 +57,8 @@ export default function SocialSelling() {
 
   const rows = useMemo(() => {
     return leads.filter((l) => {
+      // Social Selling só enxerga a própria prospecção — não os leads de CRM.
+      if (l.origemEntrada === 'crm_externo') return false
       if (escopo === 'meus' && l.socialSellerId !== MEU_ID) return false
       if (fOrigem && l.origem !== fOrigem) return false
       if (fStatus === 'aguardando' && l.etapaFunil !== 'prospectado') return false
@@ -135,7 +137,7 @@ export default function SocialSelling() {
         <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="w-40">
           <option value="">Todos status</option>
           <option value="aguardando">Aguardando envio</option>
-          <option value="enviado">Enviado ao SDR</option>
+          <option value="enviado">Enviado à Caixa</option>
         </Select>
       </div>
 

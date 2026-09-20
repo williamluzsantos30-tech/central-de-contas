@@ -22,6 +22,7 @@ import {
   DollarSign,
   Plus,
   BarChart3,
+  Plug,
 } from 'lucide-react'
 import { PageHeader, PrimaryButton, OutlineButton, Badge, FormField, Input, Select } from '@/components/ds'
 import { cn } from '@/lib/utils'
@@ -53,10 +54,12 @@ import {
   type TabDef,
   type MetasEdicao,
 } from './components'
+import { IntegracoesTab } from './IntegracoesTab'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
   { key: 'equipe', label: 'Equipe Operacional', icon: Users2 },
+  { key: 'integracoes', label: 'Integrações', icon: Plug },
   { key: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   { key: 'formularios', label: 'Formulários', icon: ClipboardList },
   { key: 'acessos', label: 'Gerenciar Acessos', icon: KeyRound },
@@ -519,6 +522,8 @@ export default function Configuracoes() {
           </section>
         </div>
       )}
+
+      {tab === 'integracoes' && <IntegracoesTab />}
 
       {(tab === 'seguranca' || tab === 'formularios' || tab === 'acessos') && (
         <div className="rounded-lg border border-dashed border-border bg-bg-soft/30 p-12 text-center">

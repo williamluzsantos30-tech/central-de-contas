@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   Briefcase,
   Radio,
+  Inbox,
   Target,
   Headphones,
 } from 'lucide-react'
@@ -118,6 +119,7 @@ export const SIDEBAR_NAV: NavNode[] = [
     children: [
       // Funil sequencial: topo → fundo do funil.
       { kind: 'item', to: '/comercial/social-selling', label: 'Social Selling', icon: Radio },
+      { kind: 'item', to: '/comercial/caixa-entrada', label: 'Caixa de Entrada', icon: Inbox },
       { kind: 'item', to: '/comercial/sdr', label: 'SDR', icon: Target },
       { kind: 'item', to: '/comercial/closer', label: 'Closer', icon: Headphones },
     ],

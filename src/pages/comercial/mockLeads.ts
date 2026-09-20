@@ -13,12 +13,16 @@
  */
 
 export type EtapaFunil =
-  | 'prospectado' // captado no Social Selling, aguardando envio ao SDR
-  | 'em_qualificacao' // enviado ao SDR, sendo qualificado
+  | 'prospectado' // captado no Social Selling, aguardando envio à Caixa
+  | 'caixa_entrada' // na Caixa de Entrada unificada, aguardando o SDR puxar
+  | 'em_qualificacao' // SDR assumiu e está qualificando
   | 'reuniao_agendada' // qualificado (SQL), reunião marcada com o Closer
   | 'em_negociacao' // reunião realizada, proposta em aberto
   | 'fechado' // venda fechada → virou Cliente
   | 'perdido' // desqualificado pelo SDR ou perdido pelo Closer
+
+/** Como o lead entrou na Caixa de Entrada unificada. */
+export type OrigemEntrada = 'crm_externo' | 'social_selling'
 
 export interface CriterioQualificacao {
   pergunta: string
@@ -52,8 +56,17 @@ export interface Lead {
   origem: string
   etapaFunil: EtapaFunil
 
+  // Entrada na Caixa unificada (CRM externo ou prospecção do Social Selling)
+  origemEntrada?: OrigemEntrada
+  /** Canal/fonte original (ex.: "Anúncio Meta", "Indicação", "Prospecção Instagram"). */
+  canalOriginal?: string
+  /** Nome do CRM de origem quando origemEntrada = 'crm_externo' (ex.: "RD Station"). */
+  crmProvider?: string
+  /** Quando o lead entrou na Caixa de Entrada (ISO). */
+  dataEntrada?: string
+
   // Social Selling
-  socialSellerId: string // quem captou
+  socialSellerId: string // quem captou (só quando origemEntrada = 'social_selling')
   dataCaptacao: string
   observacaoCaptacao?: string
 
@@ -154,6 +167,7 @@ export const MOTIVOS_PERDA = ['Preço', 'Timing', 'Concorrência', 'Não teve fi
 /** Rótulo curto da etapa do funil. */
 export const etapaLabel: Record<EtapaFunil, string> = {
   prospectado: 'Prospectado',
+  caixa_entrada: 'Caixa de entrada',
   em_qualificacao: 'Em qualificação',
   reuniao_agendada: 'Reunião agendada',
   em_negociacao: 'Em negociação',
@@ -179,7 +193,55 @@ export function bantCompleto(b?: BantQualificacao | null): boolean {
 
 // ── Seed mock: leads distribuídos pelas 6 etapas ──────────────────────────
 export const MOCK_LEADS: Lead[] = [
-  // Topo do funil — aguardando envio ao SDR (Social Selling)
+  // Caixa de Entrada — chegou via CRM externo (webhook), não contatado
+  {
+    id: 'lead-9',
+    nomeContato: 'Dra. Renata If',
+    empresa: 'Clínica Equilíbrio',
+    telefone: '(11) 90000-9090',
+    email: 'renata@equilibrio.com',
+    origem: 'Anúncio Meta',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Anúncio Meta',
+    dataEntrada: '2026-09-20',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-20',
+    qualificado: false,
+  },
+  {
+    id: 'lead-10',
+    nomeContato: 'Dr. Sérgio Almeida',
+    empresa: 'Ortopedia Almeida',
+    telefone: '(47) 90000-1122',
+    origem: 'Anúncio Google',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'HubSpot',
+    canalOriginal: 'Anúncio Google',
+    dataEntrada: '2026-09-19',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-19',
+    qualificado: false,
+  },
+  // Caixa de Entrada — veio da prospecção ativa (Social Selling)
+  {
+    id: 'lead-11',
+    nomeContato: 'Dra. Beatriz Lopes',
+    empresa: 'Clínica Sorriso Real',
+    telefone: '(85) 90000-3344',
+    origem: 'Prospecção Instagram',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'social_selling',
+    canalOriginal: 'Prospecção Instagram',
+    dataEntrada: '2026-09-20',
+    socialSellerId: 'ss-2',
+    dataCaptacao: '2026-09-17',
+    observacaoCaptacao: 'Prospecção via DM. Pediu pra ligarem à tarde.',
+    qualificado: false,
+  },
+  // Topo do funil — captado no Social Selling, aguardando envio à Caixa
   {
     id: 'lead-1',
     nomeContato: 'Dra. Helena Marques',
@@ -188,6 +250,8 @@ export const MOCK_LEADS: Lead[] = [
     email: 'helena@bemviver.com',
     origem: 'Instagram',
     etapaFunil: 'prospectado',
+    origemEntrada: 'social_selling',
+    canalOriginal: 'Prospecção Instagram',
     socialSellerId: 'ss-1',
     dataCaptacao: '2026-09-16',
     observacaoCaptacao: 'Respondeu story sobre gestão de agenda. Demonstrou interesse.',
@@ -200,11 +264,13 @@ export const MOCK_LEADS: Lead[] = [
     telefone: '(21) 97777-2020',
     origem: 'Prospecção Ativa',
     etapaFunil: 'prospectado',
+    origemEntrada: 'social_selling',
+    canalOriginal: 'Prospecção Ativa',
     socialSellerId: 'ss-2',
     dataCaptacao: '2026-09-18',
     qualificado: false,
   },
-  // Enviado ao SDR — em qualificação
+  // Em atendimento pelo SDR — puxado da Caixa (veio via CRM)
   {
     id: 'lead-3',
     nomeContato: 'Dra. Camila Torres',
@@ -213,7 +279,11 @@ export const MOCK_LEADS: Lead[] = [
     email: 'camila@saudeintegrada.com',
     origem: 'Indicação',
     etapaFunil: 'em_qualificacao',
-    socialSellerId: 'ss-1',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Indicação',
+    dataEntrada: '2026-09-13',
+    socialSellerId: '',
     dataCaptacao: '2026-09-12',
     sdrId: 'sdr-1',
     dataEnvioSDR: '2026-09-14',

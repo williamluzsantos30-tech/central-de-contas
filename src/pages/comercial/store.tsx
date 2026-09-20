@@ -60,8 +60,12 @@ interface ComercialCtx {
   leads: Lead[]
   /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
-  /** Social Selling → SDR: define o SDR e move pra "em_qualificacao". */
-  enviarParaSDR: (leadId: string, sdrId: string) => void
+  /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
+  enviarParaCaixa: (leadId: string) => void
+  /** CRM externo (webhook): injeta um lead já montado direto na Caixa. */
+  receberLeadExterno: (lead: Lead) => void
+  /** Caixa de Entrada: um SDR "puxa" o lead e assume o atendimento. */
+  iniciarAtendimento: (leadId: string, sdrId: string) => void
   /** SDR: salva a qualificação estruturada e envia pro Closer. */
   qualificarLead: (leadId: string, dados: DadosQualificacao) => void
   /** SDR: desqualifica o lead (vira "perdido"). */
@@ -88,6 +92,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       email: dados.email?.trim() || undefined,
       origem: dados.origem,
       etapaFunil: 'prospectado',
+      origemEntrada: 'social_selling',
+      canalOriginal: dados.origem,
       socialSellerId: dados.socialSellerId,
       dataCaptacao: todayISO(),
       observacaoCaptacao: dados.observacaoCaptacao?.trim() || undefined,
@@ -96,7 +102,22 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     setLeads((prev) => [novo, ...prev])
   }, [])
 
-  const enviarParaSDR = useCallback(
+  const enviarParaCaixa = useCallback(
+    (leadId: string) => {
+      patchLead(leadId, {
+        etapaFunil: 'caixa_entrada',
+        origemEntrada: 'social_selling',
+        dataEntrada: todayISO(),
+      })
+    },
+    [patchLead],
+  )
+
+  const receberLeadExterno = useCallback((lead: Lead) => {
+    setLeads((prev) => [lead, ...prev])
+  }, [])
+
+  const iniciarAtendimento = useCallback(
     (leadId: string, sdrId: string) => {
       patchLead(leadId, {
         etapaFunil: 'em_qualificacao',
@@ -183,8 +204,26 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo<ComercialCtx>(
-    () => ({ leads, criarLead, enviarParaSDR, qualificarLead, desqualificarLead, registrarResultado }),
-    [leads, criarLead, enviarParaSDR, qualificarLead, desqualificarLead, registrarResultado],
+    () => ({
+      leads,
+      criarLead,
+      enviarParaCaixa,
+      receberLeadExterno,
+      iniciarAtendimento,
+      qualificarLead,
+      desqualificarLead,
+      registrarResultado,
+    }),
+    [
+      leads,
+      criarLead,
+      enviarParaCaixa,
+      receberLeadExterno,
+      iniciarAtendimento,
+      qualificarLead,
+      desqualificarLead,
+      registrarResultado,
+    ],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
