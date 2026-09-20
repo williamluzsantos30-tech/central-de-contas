@@ -6,12 +6,14 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Inbox, PhoneCall, Plug, Radio } from 'lucide-react'
+import { Inbox, PhoneCall, Plug, Radio, AlertOctagon } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, Badge, type Column, type Tone } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
+import { SLABadge } from '@/components/comercial/SLABadge'
 import { useComercial } from './store'
 import { EQUIPE_COMERCIAL, pessoaComercialNome, type Lead } from './mockLeads'
+import { calculateLeadSLA, slaPrioridade } from './sla'
 
 const mesAtual = new Date().toISOString().slice(0, 7)
 const hojeISO = new Date().toISOString().slice(0, 10)
@@ -36,7 +38,7 @@ function OrigemCell({ lead }: { lead: Lead }) {
 }
 
 export default function CaixaEntrada() {
-  const { leads, iniciarAtendimento } = useComercial()
+  const { leads, slaConfig, iniciarAtendimento } = useComercial()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
 
@@ -50,14 +52,18 @@ export default function CaixaEntrada() {
     const viaSocial = leads.filter(
       (l) => l.origemEntrada === 'social_selling' && l.dataEntrada?.slice(0, 7) === mesAtual,
     ).length
-    return { hoje, fila, viaCrm, viaSocial }
-  }, [leads])
+    const foraSla = leads
+      .filter((l) => l.etapaFunil === 'caixa_entrada')
+      .filter((l) => calculateLeadSLA(l, slaConfig).status === 'estourado').length
+    return { hoje, fila, viaCrm, viaSocial, foraSla }
+  }, [leads, slaConfig])
 
   const rows = useMemo(() => {
     return leads
       .filter(naCaixa)
       .filter((l) => !q || `${l.nomeContato} ${l.empresa}`.toLowerCase().includes(q.toLowerCase()))
-  }, [leads, q])
+      .sort((a, b) => slaPrioridade(calculateLeadSLA(a, slaConfig)) - slaPrioridade(calculateLeadSLA(b, slaConfig)))
+  }, [leads, q, slaConfig])
 
   function iniciar(l: Lead) {
     iniciarAtendimento(l.id, MEU_SDR_ID)
@@ -69,6 +75,7 @@ export default function CaixaEntrada() {
     { key: 'origem', header: 'Origem', render: (l) => <OrigemCell lead={l} /> },
     { key: 'canal', header: 'Canal / Fonte original', render: (l) => l.canalOriginal ?? l.origem ?? '—' },
     { key: 'data', header: 'Data recebimento', render: (l) => fmtData(l.dataEntrada ?? l.dataCaptacao) },
+    { key: 'sla', header: 'SLA', render: (l) => <SLABadge sla={calculateLeadSLA(l, slaConfig)} /> },
     {
       key: 'captacao',
       header: 'Responsável captação',
@@ -112,11 +119,12 @@ export default function CaixaEntrada() {
         description="Leads recebidos via CRM e prospecção ativa, aguardando contato do SDR"
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <KPICard label="Leads hoje" value={String(kpis.hoje)} icon={<Inbox size={13} />} tone="accent" sub="chegaram hoje" />
         <KPICard label="Leads na fila" value={String(kpis.fila)} icon={<PhoneCall size={13} />} tone={kpis.fila > 0 ? 'warning' : 'neutral'} sub="não contatados" />
         <KPICard label="Via CRM (mês)" value={String(kpis.viaCrm)} icon={<Plug size={13} />} tone="info" sub="webhook do CRM" />
         <KPICard label="Via Social Selling (mês)" value={String(kpis.viaSocial)} icon={<Radio size={13} />} tone="purple" sub="prospecção ativa" />
+        <KPICard label="Fora do SLA" value={String(kpis.foraSla)} icon={<AlertOctagon size={13} />} tone={kpis.foraSla > 0 ? 'danger' : 'neutral'} sub="1º contato estourado" />
       </div>
 
       <LeadsTable

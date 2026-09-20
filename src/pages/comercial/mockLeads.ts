@@ -87,6 +87,14 @@ export interface Lead {
   motivoPerda?: string
   clienteId?: string // preenchido quando fechado → vira Cliente
 
+  // Pós-reunião do Closer — sub-status DENTRO de 'em_negociacao' (não é etapa
+  // nova no funil): no-show (não compareceu) e follow-up (proposta enviada,
+  // aguardando retorno).
+  subStatusNegociacao?: 'no_show' | 'em_followup'
+  contadorNoShow?: number
+  dataProximoContato?: string // follow-up: quando o Closer deve retornar
+  historicoFollowups?: { data: string; observacao: string }[]
+
   // Cadastro estruturado do SDR (tela "Cadastrar lead qualificado")
   nomeMedico?: string
   especialidade?: string
@@ -350,6 +358,11 @@ export const MOCK_LEADS: Lead[] = [
     canalAquisicao: 'Inbound',
     reuniao: { data: '2026-09-11', hora: '10:00', linkCall: 'https://meet.google.com/xyz-1234-lmn', closerId: 'cl-2' },
     resumoConversa: 'Quer escalar tráfego + social. Verba definida. Decisão com o sócio (fechamento em 2ª call).',
+    subStatusNegociacao: 'em_followup',
+    dataProximoContato: '2026-09-18', // vencido (hoje = 20/09) → sobe no topo
+    historicoFollowups: [
+      { data: '2026-09-12', observacao: 'Proposta enviada. Cliente pediu pra alinhar com o sócio.' },
+    ],
     bant: {
       orcamento: 'R$ 5k/mês pra mídia + fee',
       autoridade: 'Decisor compartilhado',
@@ -440,5 +453,40 @@ export const MOCK_LEADS: Lead[] = [
     dataEnvioSDR: '2026-09-06',
     qualificado: false,
     motivoDesqualificacao: 'Fora do ICP — não é clínica/consultório médico.',
+  },
+  // Em negociação com no-show registrado (reagendado) — 1 falta até agora
+  {
+    id: 'lead-12',
+    nomeContato: 'Dr. Gustavo Pinto',
+    empresa: 'Clínica Movimento',
+    telefone: '(11) 90000-5566',
+    email: 'gustavo@movimento.com',
+    origem: 'Anúncio Meta',
+    etapaFunil: 'em_negociacao',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Anúncio Meta',
+    dataEntrada: '2026-09-09',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-09',
+    sdrId: 'sdr-1',
+    dataEnvioSDR: '2026-09-10',
+    qualificado: true,
+    dataReuniaoAgendada: '2026-09-16',
+    closerId: 'cl-1',
+    dataEnvioCloser: '2026-09-14',
+    briefingQualificacao: 'Clínica de fisioterapia. Interesse alto, mas faltou na 1ª call. Reagendado.',
+    reuniao: { data: '2026-09-23', hora: '11:00', linkCall: 'https://meet.google.com/mv-7788-abc', closerId: 'cl-1' },
+    resumoConversa: 'Interessado, faltou na 1ª call (no-show). Reagendado.',
+    bant: {
+      orcamento: 'Confirmar na call',
+      autoridade: 'Decisor único',
+      necessidade: 'Social media + tráfego',
+      tempoUrgencia: '30 dias',
+      investimentoMensal: 2000,
+      classificacaoLead: 'Morno',
+    },
+    subStatusNegociacao: 'no_show',
+    contadorNoShow: 1,
   },
 ]

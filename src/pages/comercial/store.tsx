@@ -19,6 +19,7 @@ import {
   type Lead,
   type ReuniaoAgendada,
 } from './mockLeads'
+import { SLA_CONFIG_INICIAL, type SlaConfigComercial } from './mockComercialConfig'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -45,19 +46,18 @@ export interface NovoLeadInput {
   socialSellerId: string
 }
 
-/** Resultado da call registrado pelo Closer. */
+/** Resultado da call registrado pelo Closer (4 desfechos possíveis). */
 export type ResultadoCall =
-  | {
-      fechou: true
-      valorProposta: number
-      ticketMensal: number
-      squad: string
-      tipoServico: string
-    }
-  | { fechou: false; motivoPerda: string }
+  | { tipo: 'fechou'; valorProposta: number; ticketMensal: number; squad: string; tipoServico: string }
+  | { tipo: 'perdido'; motivoPerda: string }
+  | { tipo: 'no_show'; novaData: string; novaHora: string }
+  | { tipo: 'followup'; dataProximoContato: string; observacao: string }
 
 interface ComercialCtx {
   leads: Lead[]
+  /** Config de SLA por etapa (editável em Configurações › Geral). */
+  slaConfig: SlaConfigComercial
+  setSlaConfig: (cfg: SlaConfigComercial) => void
   /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
   /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
@@ -78,6 +78,7 @@ const Ctx = createContext<ComercialCtx | null>(null)
 
 export function ComercialProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS)
+  const [slaConfig, setSlaConfig] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
 
   const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, ...patch } : l)))
@@ -171,8 +172,44 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       if (!lead) throw new Error('Lead não encontrado.')
       const hoje = todayISO()
 
-      if (!r.fechou) {
-        patchLead(leadId, { etapaFunil: 'perdido', motivoPerda: r.motivoPerda, dataFechamento: hoje })
+      if (r.tipo === 'perdido') {
+        patchLead(leadId, {
+          etapaFunil: 'perdido',
+          motivoPerda: r.motivoPerda,
+          dataFechamento: hoje,
+          subStatusNegociacao: undefined,
+        })
+        return
+      }
+
+      if (r.tipo === 'no_show') {
+        // No-show: incrementa o contador e reagenda, mantendo o lead com o
+        // mesmo Closer e briefing (não volta ao SDR).
+        patchLead(leadId, {
+          etapaFunil: 'em_negociacao',
+          subStatusNegociacao: 'no_show',
+          contadorNoShow: (lead.contadorNoShow ?? 0) + 1,
+          dataReuniaoAgendada: r.novaData,
+          reuniao: {
+            data: r.novaData,
+            hora: r.novaHora,
+            linkCall: lead.reuniao?.linkCall ?? '',
+            closerId: lead.closerId ?? lead.reuniao?.closerId ?? '',
+          },
+        })
+        return
+      }
+
+      if (r.tipo === 'followup') {
+        patchLead(leadId, {
+          etapaFunil: 'em_negociacao',
+          subStatusNegociacao: 'em_followup',
+          dataProximoContato: r.dataProximoContato,
+          historicoFollowups: [
+            ...(lead.historicoFollowups ?? []),
+            { data: hoje, observacao: r.observacao },
+          ],
+        })
         return
       }
 
@@ -198,6 +235,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         valorProposta: r.valorProposta,
         dataFechamento: hoje,
         clienteId: (data?.id as string) ?? undefined,
+        subStatusNegociacao: undefined,
       })
     },
     [leads, patchLead],
@@ -206,6 +244,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ComercialCtx>(
     () => ({
       leads,
+      slaConfig,
+      setSlaConfig,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,
@@ -216,6 +256,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     }),
     [
       leads,
+      slaConfig,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,

@@ -32,6 +32,7 @@ import { CentralOperacionalProvider } from '@/pages/central-operacional/store'
 import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
+import VisaoExecutivaComercial from '@/pages/comercial/VisaoExecutivaComercial'
 import SocialSelling from '@/pages/comercial/SocialSelling'
 import CaixaEntrada from '@/pages/comercial/CaixaEntrada'
 import SDR from '@/pages/comercial/SDR'
@@ -117,6 +118,7 @@ export default function App() {
             </Route>
             {/* Comercial — funil Caixa de Entrada → SDR → Closer (+ Social
                 Selling alimentando a Caixa). Provider está acima do Layout. */}
+            <Route path="/comercial/visao" element={<VisaoExecutivaComercial />} />
             <Route path="/comercial/social-selling" element={<SocialSelling />} />
             <Route path="/comercial/caixa-entrada" element={<CaixaEntrada />} />
             <Route path="/comercial/sdr" element={<SDR />} />

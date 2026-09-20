@@ -117,7 +117,8 @@ export const SIDEBAR_NAV: NavNode[] = [
     icon: Briefcase,
     defaultOpen: true,
     children: [
-      // Funil sequencial: topo → fundo do funil.
+      // Visão Executiva no topo (mesmo papel da de Gestão), depois o funil.
+      { kind: 'item', to: '/comercial/visao', label: 'Visão Executiva', icon: TrendingUp },
       { kind: 'item', to: '/comercial/social-selling', label: 'Social Selling', icon: Radio },
       { kind: 'item', to: '/comercial/caixa-entrada', label: 'Caixa de Entrada', icon: Inbox },
       { kind: 'item', to: '/comercial/sdr', label: 'SDR', icon: Target },

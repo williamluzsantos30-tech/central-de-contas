@@ -55,6 +55,7 @@ import {
   type MetasEdicao,
 } from './components'
 import { IntegracoesTab } from './IntegracoesTab'
+import { useComercial } from '@/pages/comercial/store'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -101,6 +102,7 @@ function noMesCorrente(iso: string | null): boolean {
 
 export default function Configuracoes() {
   const [tab, setTab] = useState('geral')
+  const { slaConfig, setSlaConfig } = useComercial()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
   // Squads (+ metas, migration 087), papéis e membros vêm do banco — fonte
   // única. Guardamos as linhas cruas e mapeamos pros shapes dos componentes.
@@ -327,6 +329,36 @@ export default function Configuracoes() {
 
       {tab === 'geral' && (
         <div className="space-y-5">
+          {/* SLA Comercial */}
+          <section className="rounded-lg border border-border bg-bg-card p-5">
+            <div className="mb-1 flex items-center gap-2">
+              <Plug size={14} className="text-brand-300" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">SLA Comercial</p>
+            </div>
+            <p className="mb-4 text-[11px] text-muted">
+              Tempo esperado em cada etapa do funil. Usado pra sinalizar leads em{' '}
+              <span className="text-orange-300">atenção</span> e{' '}
+              <span className="text-red-300">estourados</span> nas telas do Comercial.
+            </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <SlaInput
+                label="Caixa de Entrada → 1º contato (horas)"
+                value={slaConfig.caixaPrimeiroContatoHoras}
+                onChange={(v) => setSlaConfig({ ...slaConfig, caixaPrimeiroContatoHoras: v })}
+              />
+              <SlaInput
+                label="Qualificação → envio ao Closer (horas)"
+                value={slaConfig.qualificacaoEnvioCloserHoras}
+                onChange={(v) => setSlaConfig({ ...slaConfig, qualificacaoEnvioCloserHoras: v })}
+              />
+              <SlaInput
+                label="Recebimento Closer → call (horas)"
+                value={slaConfig.closerCallHoras}
+                onChange={(v) => setSlaConfig({ ...slaConfig, closerCallHoras: v })}
+              />
+            </div>
+          </section>
+
           {/* Metas Mensais */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -566,6 +598,28 @@ export default function Configuracoes() {
           if (roleForm?.mode === 'edit' && roleForm.role) atualizarRole(roleForm.role.id, nome, tipo, escopo, perms)
           else criarRole(nome, tipo, escopo, perms)
         }}
+      />
+    </div>
+  )
+}
+
+function SlaInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted">{label}</label>
+      <Input
+        type="number"
+        min={0}
+        value={String(value)}
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
       />
     </div>
   )

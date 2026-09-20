@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Target, CheckCircle2, CalendarClock, Percent } from 'lucide-react'
+import { Target, CheckCircle2, CalendarClock, Percent, AlertOctagon } from 'lucide-react'
 import {
   PageHeader,
   KPICard,
@@ -15,8 +15,10 @@ import {
 } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
+import { SLABadge } from '@/components/comercial/SLABadge'
 import { useComercial } from './store'
 import { pessoaComercialNome, type Lead } from './mockLeads'
+import { calculateLeadSLA, slaPrioridade } from './sla'
 
 const mesAtual = new Date().toISOString().slice(0, 7)
 
@@ -34,7 +36,7 @@ function statusView(l: Lead): { label: string; tone: Tone } {
 }
 
 export default function SDR() {
-  const { leads } = useComercial()
+  const { leads, slaConfig } = useComercial()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
 
@@ -47,20 +49,25 @@ export default function SDR() {
     const reunioesMes = leads.filter((l) => l.dataReuniaoAgendada?.slice(0, 7) === mesAtual).length
     const qualificadosTotal = recebidos.filter((l) => l.qualificado).length
     const taxa = recebidos.length > 0 ? Math.round((qualificadosTotal / recebidos.length) * 100) : 0
-    return { emQualificacao, qualificadosMes, reunioesMes, taxa }
-  }, [leads])
+    const foraSla = leads
+      .filter((l) => l.etapaFunil === 'em_qualificacao')
+      .filter((l) => calculateLeadSLA(l, slaConfig).status === 'estourado').length
+    return { emQualificacao, qualificadosMes, reunioesMes, taxa, foraSla }
+  }, [leads, slaConfig])
 
   const rows = useMemo(() => {
     return leads
       .filter(chegouNoSdr)
       .filter((l) => !q || `${l.nomeContato} ${l.empresa}`.toLowerCase().includes(q.toLowerCase()))
-  }, [leads, q])
+      .sort((a, b) => slaPrioridade(calculateLeadSLA(a, slaConfig)) - slaPrioridade(calculateLeadSLA(b, slaConfig)))
+  }, [leads, q, slaConfig])
 
   const columns: Column<Lead>[] = [
     { key: 'contato', header: 'Contato / Empresa', render: (l) => <ContatoEmpresa lead={l} /> },
     { key: 'origem', header: 'Origem', render: (l) => <Badge tone="neutral">{l.origem}</Badge> },
     { key: 'enviado', header: 'Enviado por', render: (l) => pessoaComercialNome(l.socialSellerId) },
     { key: 'recebimento', header: 'Data recebimento', render: (l) => fmtData(l.dataEnvioSDR) },
+    { key: 'sla', header: 'SLA', render: (l) => <SLABadge sla={calculateLeadSLA(l, slaConfig)} /> },
     {
       key: 'status',
       header: 'Status',
@@ -102,11 +109,12 @@ export default function SDR() {
       <Breadcrumb trilha={['Comercial', 'SDR']} />
       <PageHeader title="SDR" description="Qualificação de leads e agendamento de reuniões" />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <KPICard label="Leads em qualificação" value={String(kpis.emQualificacao)} icon={<Target size={13} />} tone={kpis.emQualificacao > 0 ? 'warning' : 'neutral'} sub="fila atual" />
         <KPICard label="Qualificados no mês" value={String(kpis.qualificadosMes)} icon={<CheckCircle2 size={13} />} tone="success" sub="SQLs no mês" />
         <KPICard label="Reuniões agendadas (mês)" value={String(kpis.reunioesMes)} icon={<CalendarClock size={13} />} tone="info" sub="agendadas no mês" />
         <KPICard label="Taxa de qualificação" value={`${kpis.taxa}%`} icon={<Percent size={13} />} tone={kpis.taxa >= 50 ? 'success' : 'attention'} sub="qualificados / recebidos" />
+        <KPICard label="Fora do SLA" value={String(kpis.foraSla)} icon={<AlertOctagon size={13} />} tone={kpis.foraSla > 0 ? 'danger' : 'neutral'} sub="qualificação estourada" />
       </div>
 
       <LeadsTable
@@ -114,6 +122,7 @@ export default function SDR() {
         rows={rows}
         search={{ value: q, onChange: setQ, placeholder: 'Buscar contato ou empresa...' }}
         emptyLabel="Nenhum lead recebido do Social Selling."
+        minWidth={980}
       />
     </div>
   )
