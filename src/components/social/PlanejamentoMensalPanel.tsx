@@ -124,17 +124,17 @@ export function PlanejamentoMensalPanel({ cliente, planejamentos, items, onChang
     return planosDoMes.find((p) => items.some((i) => i.producao_id === p.id)) ?? planosDoMes[0]
   }, [planosDoMes, items])
 
-  // Itens do mes = qualquer item de um plano do mes OU agendado (prazo)
-  // dentro do mes. Isso garante que tudo que aparece no Calendario (que
-  // filtra por prazo) tambem apareca aqui — antes o Planejamento so via
-  // os itens de um unico plano e ficava vazio quando havia divergencia.
+  // Itens do planejamento = os que PERTENCEM a um plano deste mês (por
+  // producao_id). A data de postagem (prazo) posiciona o post no CALENDÁRIO,
+  // não define a que planejamento ele pertence — por isso NÃO unimos por
+  // prazo. (Antes uníamos por prazo, e um post de setembro agendado pra
+  // outubro aparecia também no planejamento de outubro.)
   const itemsDoMes = useMemo(() => {
-    const m = mesISO.slice(0, 7)
     const planoIds = new Set(planosDoMes.map((p) => p.id))
     return items
-      .filter((i) => planoIds.has(i.producao_id) || (i.prazo && i.prazo.slice(0, 7) === m))
+      .filter((i) => planoIds.has(i.producao_id))
       .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? '') || a.ordem - b.ordem)
-  }, [items, planosDoMes, mesISO])
+  }, [items, planosDoMes])
 
   function shiftMes(delta: number) {
     const [y, m] = mesISO.split('-').map(Number)
