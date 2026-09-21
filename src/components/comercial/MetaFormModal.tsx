@@ -27,11 +27,17 @@ export function MetaFormModal({
   onClose,
   meta,
   periodicidadePadrao = 'mensal',
+  mesPadrao,
+  semanaPadrao,
 }: {
   open: boolean
   onClose: () => void
   meta: MetaComercial | null
   periodicidadePadrao?: Periodicidade
+  /** Ref usada ao criar uma meta mensal (default: mês atual). */
+  mesPadrao?: string
+  /** Ref (2ª-feira) usada ao criar uma meta semanal (default: semana atual). */
+  semanaPadrao?: string
 }) {
   const { criarMetas, atualizarMeta } = useComercial()
   const edit = !!meta
@@ -66,7 +72,8 @@ export function MetaFormModal({
   }, [open, meta, periodicidadePadrao])
 
   const info = metricaInfo(metrica)
-  const nSemanas = semanasDoMes(mesAtual).length
+  const mesRef = mesPadrao ?? mesAtual
+  const nSemanas = semanasDoMes(mesRef).length
   const valorNum = Number(valor) || 0
   const metaMensalEquivalente = valorNum * nSemanas
 
@@ -78,14 +85,16 @@ export function MetaFormModal({
       canal: escopo === 'canal' ? canal || undefined : undefined,
       responsavelId: escopo === 'responsavel' ? responsavelId || undefined : undefined,
       valorMeta: valorNum,
-      periodoReferencia: meta?.periodoReferencia ?? (periodicidade === 'mensal' ? mesAtual : weekRefOf()),
+      periodoReferencia:
+        meta?.periodoReferencia ??
+        (periodicidade === 'mensal' ? (mesPadrao ?? mesAtual) : (semanaPadrao ?? weekRefOf())),
     }
     if (edit && meta) {
       atualizarMeta(meta.id, base)
     } else if (periodicidade === 'mensal' && dividir) {
       // Meta mensal + divisão proporcional em metas semanais do mês.
       const porSemana = Math.round(valorNum / nSemanas)
-      const semanais: Omit<MetaComercial, 'id'>[] = semanasDoMes(mesAtual).map((ref) => ({
+      const semanais: Omit<MetaComercial, 'id'>[] = semanasDoMes(mesRef).map((ref) => ({
         ...base,
         periodicidade: 'semanal',
         valorMeta: porSemana,

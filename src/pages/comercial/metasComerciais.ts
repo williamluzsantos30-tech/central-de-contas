@@ -35,6 +35,23 @@ export function metricaValor(f: MarketingFunnel, metrica: MetricaMeta): number {
   }
 }
 
+/**
+ * Status/percentual de um valor vs. a meta. Normal: verde ≥100 / laranja
+ * 50-99 / vermelho <50. Invertida (menos é melhor): por consumo do limite.
+ */
+export function statusDeProgresso(
+  valorAtual: number,
+  valorMeta: number,
+  invertida: boolean,
+): { percentual: number; status: StatusMeta } {
+  if (invertida) {
+    const ratio = valorMeta > 0 ? valorAtual / valorMeta : valorAtual > 0 ? Infinity : 0
+    return { percentual: ratio * 100, status: ratio <= 0.7 ? 'success' : ratio <= 1 ? 'atencao' : 'critico' }
+  }
+  const percentual = valorMeta > 0 ? (valorAtual / valorMeta) * 100 : 0
+  return { percentual, status: percentual >= 100 ? 'success' : percentual >= 50 ? 'atencao' : 'critico' }
+}
+
 export function calculateGoalProgress(
   meta: MetaComercial,
   leads: Lead[],
@@ -48,15 +65,6 @@ export function calculateGoalProgress(
   const f = calculateMarketingFunnel(base, investimentos, periodo, meta.canal)
   const valorAtual = metricaValor(f, meta.metrica)
   const invertida = !!metricaInfo(meta.metrica).invertida
-
-  if (invertida) {
-    // Meta = limite máximo. Quanto do limite foi consumido.
-    const ratio = meta.valorMeta > 0 ? valorAtual / meta.valorMeta : valorAtual > 0 ? Infinity : 0
-    const status: StatusMeta = ratio <= 0.7 ? 'success' : ratio <= 1 ? 'atencao' : 'critico'
-    return { valorAtual, percentual: ratio * 100, status, invertida }
-  }
-
-  const percentual = meta.valorMeta > 0 ? (valorAtual / meta.valorMeta) * 100 : 0
-  const status: StatusMeta = percentual >= 100 ? 'success' : percentual >= 50 ? 'atencao' : 'critico'
+  const { percentual, status } = statusDeProgresso(valorAtual, meta.valorMeta, invertida)
   return { valorAtual, percentual, status, invertida }
 }

@@ -36,6 +36,7 @@ import {
   Target,
   Headphones,
   BarChart3,
+  Goal,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -125,6 +126,7 @@ export const SIDEBAR_NAV: NavNode[] = [
       { kind: 'item', to: '/comercial/sdr', label: 'SDR', icon: Target },
       { kind: 'item', to: '/comercial/closer', label: 'Closer', icon: Headphones },
       { kind: 'item', to: '/comercial/marketing', label: 'Marketing', icon: BarChart3 },
+      { kind: 'item', to: '/comercial/metas', label: 'Metas', icon: Goal },
     ],
   },
 ]
