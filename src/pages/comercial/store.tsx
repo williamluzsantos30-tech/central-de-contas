@@ -26,6 +26,7 @@ import {
   type MetasMarketing,
 } from './mockComercialConfig'
 import { MOCK_INVESTIMENTOS, type InvestimentoMarketing } from './mockInvestimentos'
+import { MOCK_METAS_COMERCIAIS, type MetaComercial } from './mockMetasComerciais'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -85,6 +86,11 @@ interface ComercialCtx {
   /** Metas de Marketing (editáveis em Configurações › Geral). */
   metasMarketing: MetasMarketing
   setMetasMarketing: (m: MetasMarketing) => void
+  /** Metas Comerciais (mensais/semanais por métrica do funil). */
+  metasComerciais: MetaComercial[]
+  criarMetas: (metas: Omit<MetaComercial, 'id'>[]) => void
+  atualizarMeta: (id: string, patch: Partial<Omit<MetaComercial, 'id'>>) => void
+  excluirMeta: (id: string) => void
   /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
   /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
@@ -108,6 +114,18 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const [slaConfig, setSlaConfig] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
   const [investimentos, setInvestimentos] = useState<InvestimentoMarketing[]>(MOCK_INVESTIMENTOS)
   const [metasMarketing, setMetasMarketing] = useState<MetasMarketing>(METAS_MARKETING_INICIAL)
+  const [metasComerciais, setMetasComerciais] = useState<MetaComercial[]>(MOCK_METAS_COMERCIAIS)
+
+  const criarMetas = useCallback((metas: Omit<MetaComercial, 'id'>[]) => {
+    const novas = metas.map((m, i) => ({ ...m, id: `meta-${Date.now()}-${i}` }))
+    setMetasComerciais((prev) => [...prev, ...novas])
+  }, [])
+  const atualizarMeta = useCallback((id: string, patch: Partial<Omit<MetaComercial, 'id'>>) => {
+    setMetasComerciais((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
+  }, [])
+  const excluirMeta = useCallback((id: string) => {
+    setMetasComerciais((prev) => prev.filter((m) => m.id !== id))
+  }, [])
 
   const registrarInvestimentos = useCallback((periodo: string, lancamentos: LancamentoInvestimento[]) => {
     setInvestimentos((prev) => [
@@ -294,6 +312,10 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       registrarInvestimentos,
       metasMarketing,
       setMetasMarketing,
+      metasComerciais,
+      criarMetas,
+      atualizarMeta,
+      excluirMeta,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,
@@ -308,6 +330,10 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       investimentos,
       registrarInvestimentos,
       metasMarketing,
+      metasComerciais,
+      criarMetas,
+      atualizarMeta,
+      excluirMeta,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,

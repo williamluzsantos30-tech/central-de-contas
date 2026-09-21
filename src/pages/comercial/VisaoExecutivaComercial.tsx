@@ -11,6 +11,7 @@ import { fmtBRL } from '@/components/comercial/LeadsTable'
 import { FunnelChart, type FunnelEtapa } from '@/components/comercial/FunnelChart'
 import { BottleneckAlert, type Gargalo } from '@/components/comercial/BottleneckAlert'
 import { LossReasonsChart } from '@/components/comercial/LossReasonsChart'
+import { MetasAcompanhamento } from '@/components/comercial/MetasAcompanhamento'
 import { useComercial } from './store'
 import { EQUIPE_COMERCIAL, type Lead } from './mockLeads'
 import { calculateLeadSLA, formatDuracao } from './sla'
@@ -166,6 +167,10 @@ export default function VisaoExecutivaComercial() {
             <BottleneckAlert gargalo={m.gargalo} />
           </div>
         </div>
+      </div>
+
+      <div className="mb-5">
+        <MetasAcompanhamento />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

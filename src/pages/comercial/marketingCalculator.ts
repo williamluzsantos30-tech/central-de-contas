@@ -57,6 +57,61 @@ export function mesAnterior(mes: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+// ── Semanas (segunda a domingo) ─────────────────────────────────────────────
+function isoDia(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+/** Segunda-feira da semana da data informada (hoje se vazio). */
+export function mondayOf(ref?: string | Date): Date {
+  const d = ref ? (typeof ref === 'string' ? new Date(ref.slice(0, 10) + 'T12:00:00') : new Date(ref)) : new Date()
+  const day = (d.getDay() + 6) % 7 // 0 = segunda
+  d.setDate(d.getDate() - day)
+  d.setHours(12, 0, 0, 0)
+  return d
+}
+/** Ref de semana = data (YYYY-MM-DD) da segunda-feira. */
+export function weekRefOf(ref?: string | Date): string {
+  return isoDia(mondayOf(ref))
+}
+/** Avança/retrocede semanas a partir de uma ref de segunda-feira. */
+export function addSemanas(mondayIso: string, n: number): string {
+  const m = mondayOf(mondayIso)
+  m.setDate(m.getDate() + n * 7)
+  return isoDia(m)
+}
+/** PeriodoFiltro cobrindo a semana (segunda→domingo) da ref. */
+export function periodoSemana(mondayIso: string): PeriodoFiltro {
+  const monday = mondayOf(mondayIso)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const p = periodoRange(isoDia(monday), isoDia(sunday))
+  return { ...p, mesRef: isoDia(monday).slice(0, 7) }
+}
+/** Rótulo "Semana N de Setembro (15/09 - 21/09)". */
+export function weekLabel(mondayIso: string): string {
+  const monday = mondayOf(mondayIso)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const n = Math.ceil(monday.getDate() / 7)
+  const mes = monday.toLocaleDateString('pt-BR', { month: 'long' })
+  const dd = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `Semana ${n} de ${mes} (${dd(monday)} - ${dd(sunday)})`
+}
+/** Segundas-feiras cujas semanas tocam o mês "YYYY-MM". */
+export function semanasDoMes(mes: string): string[] {
+  const [y, m] = mes.split('-').map(Number)
+  const last = new Date(y, m, 0)
+  let monday = mondayOf(new Date(y, m - 1, 1))
+  const out: string[] = []
+  while (monday <= last) {
+    out.push(isoDia(monday))
+    const nx = new Date(monday)
+    nx.setDate(monday.getDate() + 7)
+    monday = nx
+  }
+  return out
+}
+
 function mesesEntre(de: string, ate: string): string[] {
   if (!de || !ate) return [de || ate].map((s) => s.slice(0, 7)).filter(Boolean)
   const out: string[] = []

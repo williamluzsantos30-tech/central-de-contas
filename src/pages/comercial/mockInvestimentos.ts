@@ -10,6 +10,9 @@ export interface InvestimentoMarketing {
   valor: number
 }
 
+/** Canais canônicos (base pros selects de investimento/meta por canal). */
+export const CANAIS_MARKETING = ['Meta Ads', 'Google Ads', 'Indicação', 'Social Selling', 'Inbound', 'Orgânico']
+
 // Seed: 3+ canais no mês corrente (set/2026) + mês anterior pra comparação.
 export const MOCK_INVESTIMENTOS: InvestimentoMarketing[] = [
   { id: 'inv-1', periodo: '2026-09', canal: 'Meta Ads', valor: 5200 },

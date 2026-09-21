@@ -57,6 +57,7 @@ import {
 import { IntegracoesTab } from './IntegracoesTab'
 import { useComercial } from '@/pages/comercial/store'
 import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
+import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -362,6 +363,9 @@ export default function Configuracoes() {
 
           {/* Metas de Marketing */}
           <MetasMarketingSection metas={metasMarketing} onChange={setMetasMarketing} />
+
+          {/* Metas Comerciais (mensais/semanais por métrica do funil) */}
+          <MetasComerciaisSection />
 
           {/* Metas Mensais */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
