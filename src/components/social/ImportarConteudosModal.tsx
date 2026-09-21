@@ -169,39 +169,32 @@ export function ImportarConteudosModal({
         return
       }
 
-      // Agrupa por mês de destino (data do item; backlog/sem data -> mês atual).
-      const grupos = new Map<string, ItemParseado[]>()
-      for (const it of novos) {
-        const mes01 = it.data ? `${it.data.slice(0, 7)}-01` : mesISO
-        const arr = grupos.get(mes01)
-        if (arr) arr.push(it)
-        else grupos.set(mes01, [it])
-      }
-
-      const rows: NovoItem[] = []
-      for (const [mes01, lista] of grupos) {
-        const planoId = await planoIdParaMes(mes01)
-        let ord = await baseOrdem(planoId)
-        for (const it of lista) {
-          ord += 1
-          rows.push({
-            producao_id: planoId,
-            formato: it.formato,
-            titulo: it.titulo,
-            ideia_conteudo: it.conteudo,
-            legenda: it.legenda,
-            link_drive_video: it.linkDrive,
-            prazo: it.data,
-            status: 'pendente',
-            ordem: ord,
-            artes_prontas: [],
-            is_backlog: it.isBacklog,
-            observacoes: it.pendencias.length
-              ? `⚠ Importado — pendências: ${it.pendencias.join(', ')}`
-              : null,
-          })
+      // TODOS os itens entram no planejamento do mês SELECIONADO no painel
+      // (mesISO) — o planejamento é o documento daquele mês. A data de
+      // postagem (prazo) de cada post pode cair em qualquer mês; ela só
+      // posiciona o post no calendário, não muda a que planejamento ele
+      // pertence.
+      const planoId = await planoIdParaMes(mesISO)
+      let ord = await baseOrdem(planoId)
+      const rows: NovoItem[] = novos.map((it) => {
+        ord += 1
+        return {
+          producao_id: planoId,
+          formato: it.formato,
+          titulo: it.titulo,
+          ideia_conteudo: it.conteudo,
+          legenda: it.legenda,
+          link_drive_video: it.linkDrive,
+          prazo: it.data,
+          status: 'pendente',
+          ordem: ord,
+          artes_prontas: [],
+          is_backlog: it.isBacklog,
+          observacoes: it.pendencias.length
+            ? `⚠ Importado — pendências: ${it.pendencias.join(', ')}`
+            : null,
         }
-      }
+      })
 
       const { data, error } = await supabase
         .from('producoes_social_media_items')
