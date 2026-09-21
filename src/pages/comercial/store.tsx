@@ -57,10 +57,9 @@ export interface NovoLeadInput {
 export type ResultadoCall =
   | {
       tipo: 'fechou'
-      valorProposta: number
-      ticketMensal: number
+      mrr: number
       caixaRecolhido: number
-      duracaoContratoMeses: number
+      contratoFechado: number
       squad: string
       tipoServico: string
     }
@@ -281,7 +280,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         modulos: ['trafego'],
         status: 'ativo',
         jornada: 'onboarding',
-        verba_mensal: r.ticketMensal,
+        verba_mensal: r.mrr,
         data_inicio: hoje,
         fonte_crm: 'nativo',
         observacoes: `Origem: Comercial · fechado por ${lead.closerId ?? '—'} (lead ${lead.id})`,
@@ -291,10 +290,9 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
 
       patchLead(leadId, {
         etapaFunil: 'fechado',
-        valorProposta: r.valorProposta,
-        ticketMensal: r.ticketMensal,
+        mrr: r.mrr,
         caixaRecolhido: r.caixaRecolhido,
-        duracaoContratoMeses: r.duracaoContratoMeses,
+        contratoFechado: r.contratoFechado,
         dataFechamento: hoje,
         clienteId: (data?.id as string) ?? undefined,
         subStatusNegociacao: undefined,

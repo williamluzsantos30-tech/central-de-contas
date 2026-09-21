@@ -210,17 +210,19 @@ export function receiveWebhookLead(
   }
   const hoje = todayISO()
   const nome = campos.nomeContato || 'Lead sem nome'
+  // Sem origem mapeada = gap de rastreamento → "Sem Origem Identificada"
+  // (canalOriginal fica indefinido; canalDoLead classifica pelo fallback).
   return {
     id: `lead-crm-${Date.now()}`,
     nomeContato: nome,
     empresa: campos.empresa || nome,
     telefone: campos.telefone || '',
     email: campos.email || undefined,
-    origem: campos.origem || 'CRM externo',
+    origem: campos.origem || 'Sem Origem Identificada',
     etapaFunil: 'caixa_entrada',
     origemEntrada: 'crm_externo',
     crmProvider: presetLabel(config.provider),
-    canalOriginal: campos.origem || 'CRM externo',
+    canalOriginal: campos.origem || undefined,
     especialidade: campos.especialidade || undefined,
     dataEntrada: hoje,
     socialSellerId: '',

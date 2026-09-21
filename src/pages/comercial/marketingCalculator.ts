@@ -6,8 +6,6 @@
 import type { Lead } from './mockLeads'
 import type { InvestimentoMarketing } from './mockInvestimentos'
 
-/** Duração padrão do contrato (meses) quando o lead não informou. */
-const DURACAO_PADRAO = 12
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 
 /**
@@ -15,8 +13,12 @@ const hojeISO = () => new Date().toISOString().slice(0, 10)
  * rótulos variados que chegam dos CRMs/prospecção pra um conjunto estável,
  * usado tanto pra agrupar leads quanto pra casar com o investimento lançado.
  */
+export const SEM_ORIGEM = 'Sem Origem Identificada'
+
 export function canalDoLead(lead: Lead): string {
-  const raw = (lead.canalOriginal ?? lead.origem ?? '').toLowerCase()
+  const raw = (lead.canalOriginal ?? lead.origem ?? '').trim().toLowerCase()
+  // Sem canalOriginal/origem (ex.: webhook do CRM sem o campo) → gap de rastreio.
+  if (!raw || raw.includes('sem origem')) return SEM_ORIGEM
   if (raw.includes('meta') || raw.includes('facebook') || raw.includes('instagram ads')) return 'Meta Ads'
   if (raw.includes('google') || raw.includes('search')) return 'Google Ads'
   if (raw.includes('prospec') || raw.includes('social selling')) return 'Social Selling'
@@ -32,10 +34,17 @@ export interface PeriodoFiltro {
   /** Mês de referência (o "atual" do período) — base pro comparativo. */
   mesRef: string
   inPeriodo: (iso?: string | null) => boolean
+  /** Período anterior equivalente (mês anterior / semana anterior / range deslocado). */
+  anterior: () => PeriodoFiltro
 }
 
 export function periodoMes(mes: string): PeriodoFiltro {
-  return { meses: [mes], mesRef: mes, inPeriodo: (iso) => !!iso && iso.slice(0, 7) === mes }
+  return {
+    meses: [mes],
+    mesRef: mes,
+    inPeriodo: (iso) => !!iso && iso.slice(0, 7) === mes,
+    anterior: () => periodoMes(mesAnterior(mes)),
+  }
 }
 
 export function periodoRange(de: string, ate: string): PeriodoFiltro {
@@ -47,6 +56,17 @@ export function periodoRange(de: string, ate: string): PeriodoFiltro {
       if (!iso) return false
       const d = iso.slice(0, 10)
       return (!de || d >= de) && (!ate || d <= ate)
+    },
+    anterior: () => {
+      // Desloca o intervalo pra trás pelo mesmo tamanho (em dias).
+      const d0 = new Date((de || ate) + 'T12:00:00')
+      const d1 = new Date((ate || de) + 'T12:00:00')
+      const dias = Math.max(0, Math.round((d1.getTime() - d0.getTime()) / 86400000)) + 1
+      const novoAte = new Date(d0)
+      novoAte.setDate(novoAte.getDate() - 1)
+      const novoDe = new Date(novoAte)
+      novoDe.setDate(novoDe.getDate() - (dias - 1))
+      return periodoRange(isoDia(novoDe), isoDia(novoAte))
     },
   }
 }
@@ -190,9 +210,9 @@ export function calculateMarketingFunnel(
   const cancelamentos = 0 // sem status de cancelamento no modelo (mock)
 
   const fechados = doCanal.filter((l) => l.etapaFunil === 'fechado' && periodo.inPeriodo(l.dataFechamento))
-  const mrr = fechados.reduce((s, l) => s + (l.ticketMensal ?? 0), 0)
-  const caixaRecolhido = fechados.reduce((s, l) => s + (l.caixaRecolhido ?? l.valorProposta ?? 0), 0)
-  const contratoFechado = fechados.reduce((s, l) => s + (l.ticketMensal ?? 0) * (l.duracaoContratoMeses ?? DURACAO_PADRAO), 0)
+  const mrr = fechados.reduce((s, l) => s + (l.mrr ?? 0), 0)
+  const caixaRecolhido = fechados.reduce((s, l) => s + (l.caixaRecolhido ?? 0), 0)
+  const contratoFechado = fechados.reduce((s, l) => s + (l.contratoFechado ?? 0), 0)
 
   const mesPass = mesAnterior(periodo.mesRef)
   const reunioesMesPassado = doCanal.filter((l) => l.dataReuniaoAgendada?.slice(0, 7) === mesPass).length

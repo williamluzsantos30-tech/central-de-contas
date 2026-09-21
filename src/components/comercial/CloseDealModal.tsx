@@ -28,10 +28,9 @@ export function CloseDealModal({
   const { registrarResultado } = useComercial()
   const { nomes: squadsAtivos } = useSquads()
   const [resultado, setResultado] = useState<Resultado | null>(null)
-  const [valorProposta, setValorProposta] = useState('')
-  const [ticketMensal, setTicketMensal] = useState('')
+  const [mrr, setMrr] = useState('')
   const [caixaRecolhido, setCaixaRecolhido] = useState('')
-  const [duracaoMeses, setDuracaoMeses] = useState('12')
+  const [contratoFechado, setContratoFechado] = useState('')
   const [squad, setSquad] = useState('')
   const [tipoServico, setTipoServico] = useState('')
   const [motivoPerda, setMotivoPerda] = useState('')
@@ -45,10 +44,9 @@ export function CloseDealModal({
   useEffect(() => {
     if (open) {
       setResultado(null)
-      setValorProposta('')
-      setTicketMensal('')
+      setMrr('')
       setCaixaRecolhido('')
-      setDuracaoMeses('12')
+      setContratoFechado('')
       setSquad('')
       setTipoServico('')
       setMotivoPerda('')
@@ -67,21 +65,20 @@ export function CloseDealModal({
     setErro(null)
     try {
       if (resultado === 'fechou') {
-        const vp = Number(valorProposta)
-        const tm = Number(ticketMensal)
-        const cr = caixaRecolhido === '' ? vp : Number(caixaRecolhido)
-        const dur = Number(duracaoMeses) || 12
-        if (!vp || vp <= 0) return setErro('Informe o valor da proposta.')
-        if (!tm || tm <= 0) return setErro('Informe o ticket mensal (vai pro cadastro do Cliente).')
+        const vMrr = Number(mrr)
+        const vCaixa = Number(caixaRecolhido)
+        const vContrato = Number(contratoFechado)
+        if (!vMrr || vMrr <= 0) return setErro('Informe o MRR (receita recorrente mensal).')
+        if (!vCaixa || vCaixa <= 0) return setErro('Informe o caixa recolhido no fechamento.')
+        if (!vContrato || vContrato <= 0) return setErro('Informe o valor total do contrato fechado.')
         if (!squad) return setErro('Selecione a squad.')
         if (!tipoServico) return setErro('Selecione o tipo de serviço.')
         setSalvando(true)
         await registrarResultado(lead.id, {
           tipo: 'fechou',
-          valorProposta: vp,
-          ticketMensal: tm,
-          caixaRecolhido: cr,
-          duracaoContratoMeses: dur,
+          mrr: vMrr,
+          caixaRecolhido: vCaixa,
+          contratoFechado: vContrato,
           squad,
           tipoServico,
         })
@@ -182,23 +179,35 @@ export function CloseDealModal({
         </div>
 
         {resultado === 'fechou' && (
-          <div className="grid grid-cols-2 gap-3">
-            <Campo label="Valor da proposta (R$)"><Input type="number" min={0} value={valorProposta} onChange={(e) => setValorProposta(e.target.value)} placeholder="4200" /></Campo>
-            <Campo label="Ticket mensal (R$)"><Input type="number" min={0} value={ticketMensal} onChange={(e) => setTicketMensal(e.target.value)} placeholder="2500" /></Campo>
-            <Campo label="Caixa recolhido / entrada (R$)"><Input type="number" min={0} value={caixaRecolhido} onChange={(e) => setCaixaRecolhido(e.target.value)} placeholder="= valor da proposta" /></Campo>
-            <Campo label="Duração do contrato (meses)"><Input type="number" min={1} value={duracaoMeses} onChange={(e) => setDuracaoMeses(e.target.value)} placeholder="12" /></Campo>
-            <Campo label="Squad">
-              <Select value={squad} onChange={(e) => setSquad(e.target.value)}>
-                <option value="">Selecione</option>
-                {squadsAtivos.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </Campo>
-            <Campo label="Tipo de serviço">
-              <Select value={tipoServico} onChange={(e) => setTipoServico(e.target.value)}>
-                <option value="">Selecione</option>
-                {TIPOS_CLIENTE.map((t) => <option key={t} value={t}>{tipoClienteLabel[t]}</option>)}
-              </Select>
-            </Campo>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Campo label="MRR — Receita Recorrente Mensal (R$)">
+                <Input type="number" min={0} value={mrr} onChange={(e) => setMrr(e.target.value)} placeholder="2500" />
+                <p className="mt-1 text-[10px] text-muted">Valor que se repete todo mês (alimenta o MRR da operação).</p>
+              </Campo>
+              <Campo label="Caixa Recolhido (R$)">
+                <Input type="number" min={0} value={caixaRecolhido} onChange={(e) => setCaixaRecolhido(e.target.value)} placeholder="4200" />
+                <p className="mt-1 text-[10px] text-muted">Valor já recebido no ato do fechamento.</p>
+              </Campo>
+              <Campo label="Contrato Fechado (R$)">
+                <Input type="number" min={0} value={contratoFechado} onChange={(e) => setContratoFechado(e.target.value)} placeholder="30000" />
+                <p className="mt-1 text-[10px] text-muted">Valor total do contrato assinado (ex: ticket × meses de vigência).</p>
+              </Campo>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Squad">
+                <Select value={squad} onChange={(e) => setSquad(e.target.value)}>
+                  <option value="">Selecione</option>
+                  {squadsAtivos.map((s) => <option key={s} value={s}>{s}</option>)}
+                </Select>
+              </Campo>
+              <Campo label="Tipo de serviço">
+                <Select value={tipoServico} onChange={(e) => setTipoServico(e.target.value)}>
+                  <option value="">Selecione</option>
+                  {TIPOS_CLIENTE.map((t) => <option key={t} value={t}>{tipoClienteLabel[t]}</option>)}
+                </Select>
+              </Campo>
+            </div>
           </div>
         )}
 

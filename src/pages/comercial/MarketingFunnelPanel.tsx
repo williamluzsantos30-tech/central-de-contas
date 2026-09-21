@@ -17,6 +17,7 @@ import {
   canaisDoPeriodo,
   periodoMes,
   periodoRange,
+  SEM_ORIGEM,
   type MarketingFunnel,
 } from './marketingCalculator'
 
@@ -40,6 +41,11 @@ export default function MarketingFunnelPanel() {
   const canais = useMemo(() => canaisDoPeriodo(leads, investimentos, filtro), [leads, investimentos, filtro])
   const canalSel = view === 'Geral' ? undefined : view
   const f = useMemo(() => calculateMarketingFunnel(leads, investimentos, filtro, canalSel), [leads, investimentos, filtro, canalSel])
+  // Período anterior equivalente (mês/intervalo anterior) — comparação nos cards.
+  const fAnt = useMemo(
+    () => calculateMarketingFunnel(leads, investimentos, filtro.anterior(), canalSel),
+    [leads, investimentos, filtro, canalSel],
+  )
   const comparativo = useMemo(
     () => (view === 'Geral' ? calculateChannelComparison(leads, investimentos, filtro) : []),
     [view, leads, investimentos, filtro],
@@ -90,49 +96,47 @@ export default function MarketingFunnelPanel() {
 
       {/* BLOCO 1 — Topo de funil */}
       <Bloco titulo="Topo de funil" icon={<Megaphone size={13} />}>
-        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" />
-        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" />
-        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" />
-        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" />
-        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" />
-        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" />
+        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" valorAtual={f.investimento} valorAnterior={fAnt.investimento} direcaoFavoravel="maior" />
+        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" valorAtual={f.leads} valorAnterior={fAnt.leads} direcaoFavoravel="maior" />
+        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" valorAtual={f.cpl} valorAnterior={fAnt.cpl} direcaoFavoravel="menor" />
+        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" valorAtual={f.qualificados} valorAnterior={fAnt.qualificados} direcaoFavoravel="maior" />
+        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" valorAtual={f.mqlPct} valorAnterior={fAnt.mqlPct} direcaoFavoravel="maior" />
+        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" valorAtual={f.cpmql} valorAnterior={fAnt.cpmql} direcaoFavoravel="menor" />
       </Bloco>
 
       {/* BLOCO 2 — Reuniões */}
       <Bloco titulo="Reuniões" icon={<Megaphone size={13} />}>
-        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" />
-        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" />
-        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" />
-        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" />
-        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" />
-        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" />
+        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" valorAtual={f.reunioesAgendadas} valorAnterior={fAnt.reunioesAgendadas} direcaoFavoravel="maior" />
+        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" valorAtual={f.custoPorAgendada} valorAnterior={fAnt.custoPorAgendada} direcaoFavoravel="menor" />
+        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" valorAtual={f.reunioesRealizadas} valorAnterior={fAnt.reunioesRealizadas} direcaoFavoravel="maior" />
+        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" valorAtual={f.custoPorRealizada} valorAnterior={fAnt.custoPorRealizada} direcaoFavoravel="menor" />
+        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" valorAtual={f.reunioesASerem} valorAnterior={fAnt.reunioesASerem} direcaoFavoravel="maior" />
+        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" valorAtual={f.noShowPct} valorAnterior={fAnt.noShowPct} direcaoFavoravel="menor" />
       </Bloco>
       <SubLinhas>
         <SubItem label="Taxa de agendamento" valor={pct(f.taxaAgendamento)} tone={toneAgend} meta={`Meta ${pct(metaAgend)}`} />
         <SubItem label="Cancelamentos" valor={`${f.cancelamentos} · ${pct(f.taxaCancelamentos)}`} />
-        <SubItem label="Reuniões mês passado" valor={String(f.reunioesMesPassado)} />
       </SubLinhas>
 
       {/* BLOCO 3 — Fechamentos e receita */}
       <Bloco titulo="Fechamentos e receita" icon={<DollarSign size={13} />}>
-        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" />
-        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" />
-        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="ticket mensal somado" />
-        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" />
-        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="ticket × duração" />
-        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" />
+        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" valorAtual={f.fechamentos} valorAnterior={fAnt.fechamentos} direcaoFavoravel="maior" />
+        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" valorAtual={f.txConversao} valorAnterior={fAnt.txConversao} direcaoFavoravel="maior" />
+        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" valorAtual={f.mrr} valorAnterior={fAnt.mrr} direcaoFavoravel="maior" />
+        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" valorAtual={f.caixaRecolhido} valorAnterior={fAnt.caixaRecolhido} direcaoFavoravel="maior" />
+        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="total dos contratos" valorAtual={f.contratoFechado} valorAnterior={fAnt.contratoFechado} direcaoFavoravel="maior" />
+        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" valorAtual={f.ticketMedio} valorAnterior={fAnt.ticketMedio} direcaoFavoravel="maior" />
       </Bloco>
       <SubLinhas>
-        <SubItem label="Fechamentos mês passado" valor={String(f.fechamentosMesPassado)} />
         <SubItem label="Conversão reuniões do mês" valor={pct(f.txConversaoReunioesDoMes)} />
       </SubLinhas>
 
       {/* BLOCO 4 — Retorno */}
       <Bloco titulo="Retorno" icon={<DollarSign size={13} />} cols4>
-        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" />
-        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" />
-        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} />
-        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} />
+        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" valorAtual={f.roasMrr} valorAnterior={fAnt.roasMrr} direcaoFavoravel="maior" />
+        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" valorAtual={f.roasCaixa} valorAnterior={fAnt.roasCaixa} direcaoFavoravel="maior" />
+        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} valorAtual={f.roasContrato} valorAnterior={fAnt.roasContrato} direcaoFavoravel="maior" />
+        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} valorAtual={f.cac} valorAnterior={fAnt.cac} direcaoFavoravel="menor" />
       </Bloco>
 
       {/* BLOCO 5 — Comparativo entre canais (só na visão Geral) */}
@@ -276,7 +280,15 @@ function ComparativoCanais({
         <tbody>
           {ordenados.map((r) => (
             <tr key={r.canal} className="border-b border-border/60 last:border-b-0 hover:bg-bg-soft/40">
-              <td className="px-3 py-2 text-zinc-200">{r.canal}</td>
+              <td className="px-3 py-2 text-zinc-200">
+                {r.canal === SEM_ORIGEM ? (
+                  <span className="inline-flex items-center gap-1 text-orange-300" title="Gap de rastreamento — corrigir o mapeamento no CRM">
+                    ⚠ {SEM_ORIGEM}
+                  </span>
+                ) : (
+                  r.canal
+                )}
+              </td>
               <td className="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtBRL(r.investimento)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-zinc-300">{r.leads}</td>
               <td className="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtBRL(r.cpl)}</td>

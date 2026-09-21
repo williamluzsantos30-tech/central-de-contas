@@ -46,7 +46,7 @@ export default function Closer() {
     const naAgenda = leads.filter((l) => l.etapaFunil === 'reuniao_agendada').length
     const emNegociacao = leads.filter((l) => l.etapaFunil === 'em_negociacao').length
     const fechadosMes = leads.filter((l) => l.etapaFunil === 'fechado' && l.dataFechamento?.slice(0, 7) === mesAtual)
-    const totalFechado = fechadosMes.reduce((s, l) => s + (l.valorProposta ?? 0), 0)
+    const totalFechado = fechadosMes.reduce((s, l) => s + (l.mrr ?? 0), 0)
     const perdidosCloserMes = leads.filter(
       (l) => l.etapaFunil === 'perdido' && l.motivoPerda && l.dataFechamento?.slice(0, 7) === mesAtual,
     ).length
@@ -99,8 +99,8 @@ export default function Closer() {
         return (
           <div className="flex flex-col gap-0.5">
             <StatusBadge label={s.label} tone={s.tone} />
-            {l.etapaFunil === 'fechado' && l.valorProposta != null && (
-              <span className="text-[10px] text-green-300">{fmtBRL(l.valorProposta)}</span>
+            {l.etapaFunil === 'fechado' && l.mrr != null && (
+              <span className="text-[10px] text-green-300">MRR {fmtBRL(l.mrr)}</span>
             )}
             {l.etapaFunil === 'perdido' && l.motivoPerda && <span className="text-[10px] text-muted">{l.motivoPerda}</span>}
           </div>

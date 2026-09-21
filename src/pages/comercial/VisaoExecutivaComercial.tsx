@@ -15,6 +15,7 @@ import { MetasAcompanhamento } from '@/components/comercial/MetasAcompanhamento'
 import { useComercial } from './store'
 import { EQUIPE_COMERCIAL, type Lead } from './mockLeads'
 import { calculateLeadSLA, formatDuracao } from './sla'
+import { mesAnterior } from './marketingCalculator'
 
 type Periodo = 'mes' | 'trimestre' | 'tudo' | 'custom'
 
@@ -28,18 +29,39 @@ function diasEntre(aIso?: string, bIso?: string): number | null {
   return Math.max(0, (b - a) / DIA_MS)
 }
 
+/** 6 KPIs escalares do topo (reusado pro período atual e o anterior). */
+function kpiScalars(leads: Lead[], inPeriodo: (iso?: string) => boolean) {
+  const teveCall = (l: Lead) =>
+    l.etapaFunil === 'em_negociacao' || l.etapaFunil === 'fechado' || (l.etapaFunil === 'perdido' && !!l.motivoPerda)
+  const recebidos = leads.filter((l) => inPeriodo(l.dataEntrada))
+  const qualificados = recebidos.filter((l) => l.qualificado)
+  const reunioes = recebidos.filter(teveCall)
+  const fechados = recebidos.filter((l) => l.etapaFunil === 'fechado')
+  const receita = fechados.reduce((s, l) => s + (l.mrr ?? 0), 0)
+  const ciclos = fechados.map((l) => diasEntre(l.dataEntrada, l.dataFechamento)).filter((x): x is number => x != null)
+  const pct = (a: number, b: number) => (b > 0 ? (a / b) * 100 : 0)
+  return {
+    recebidos: recebidos.length,
+    taxaQualificacao: pct(qualificados.length, recebidos.length),
+    taxaFechamento: pct(fechados.length, reunioes.length),
+    ticketMedio: fechados.length ? receita / fechados.length : 0,
+    receita,
+    cicloMedio: ciclos.length ? ciclos.reduce((s, x) => s + x, 0) / ciclos.length : 0,
+  }
+}
+
 export default function VisaoExecutivaComercial() {
   const { leads, slaConfig } = useComercial()
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
 
-  const inPeriodo = useMemo(() => {
+  const { inPeriodo, inPeriodoAnterior } = useMemo(() => {
     const now = new Date()
     const mesAtual = now.toISOString().slice(0, 7)
     const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
     const qEnd = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0)
-    return (iso?: string): boolean => {
+    const inPeriodo = (iso?: string): boolean => {
       if (!iso) return false
       const d = iso.slice(0, 10)
       if (periodo === 'tudo') return true
@@ -48,7 +70,30 @@ export default function VisaoExecutivaComercial() {
       const dt = new Date(d + 'T12:00:00')
       return dt >= qStart && dt <= qEnd
     }
+    // Período anterior equivalente — só pra mês e intervalo custom.
+    let inPeriodoAnterior: ((iso?: string) => boolean) | null = null
+    if (periodo === 'mes') {
+      const mesAnt = mesAnterior(mesAtual)
+      inPeriodoAnterior = (iso) => !!iso && iso.slice(0, 7) === mesAnt
+    } else if (periodo === 'custom' && (de || ate)) {
+      const d0 = new Date((de || ate) + 'T12:00:00')
+      const d1 = new Date((ate || de) + 'T12:00:00')
+      const dias = Math.max(0, Math.round((d1.getTime() - d0.getTime()) / DIA_MS)) + 1
+      const antAte = new Date(d0)
+      antAte.setDate(antAte.getDate() - 1)
+      const antDe = new Date(antAte)
+      antDe.setDate(antDe.getDate() - (dias - 1))
+      const deA = antDe.toISOString().slice(0, 10)
+      const ateA = antAte.toISOString().slice(0, 10)
+      inPeriodoAnterior = (iso) => !!iso && iso.slice(0, 10) >= deA && iso.slice(0, 10) <= ateA
+    }
+    return { inPeriodo, inPeriodoAnterior }
   }, [periodo, de, ate])
+
+  const kAnt = useMemo(
+    () => (inPeriodoAnterior ? kpiScalars(leads, inPeriodoAnterior) : null),
+    [leads, inPeriodoAnterior],
+  )
 
   const m = useMemo(() => {
     // Coorte: leads que ENTRARAM no funil (Caixa) dentro do período.
@@ -60,7 +105,7 @@ export default function VisaoExecutivaComercial() {
     const emNeg = recebidos.filter((l) => l.etapaFunil === 'em_negociacao')
     const fechados = recebidos.filter((l) => l.etapaFunil === 'fechado')
 
-    const receita = fechados.reduce((s, l) => s + (l.valorProposta ?? 0), 0)
+    const receita = fechados.reduce((s, l) => s + (l.mrr ?? 0), 0)
     const ticketMedio = fechados.length ? receita / fechados.length : 0
     const ciclos = fechados.map((l) => diasEntre(l.dataEntrada, l.dataFechamento)).filter((x): x is number => x != null)
     const cicloMedio = ciclos.length ? ciclos.reduce((s, x) => s + x, 0) / ciclos.length : 0
@@ -148,12 +193,12 @@ export default function VisaoExecutivaComercial() {
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <KPICard label="Leads recebidos" value={String(m.recebidos)} icon={<Inbox size={13} />} tone="accent" sub="entraram na Caixa" />
-        <KPICard label="Taxa de qualificação" value={`${m.taxaQualificacao.toFixed(0)}%`} icon={<Target size={13} />} tone="info" sub="viram SQL" />
-        <KPICard label="Taxa de fechamento" value={`${m.taxaFechamento.toFixed(0)}%`} icon={<Handshake size={13} />} tone="success" sub="reuniões que fecham" />
-        <KPICard label="Ticket médio fechado" value={fmtBRL(m.ticketMedio)} icon={<DollarSign size={13} />} tone="neutral" sub="média dos fechados" />
-        <KPICard label="Receita gerada" value={fmtBRL(m.receita)} icon={<TrendingUp size={13} />} tone="success" sub="soma das propostas fechadas" />
-        <KPICard label="Ciclo médio de venda" value={`${m.cicloMedio.toFixed(1)}d`} icon={<Clock size={13} />} tone="neutral" sub="entrada → fechamento" />
+        <KPICard label="Leads recebidos" value={String(m.recebidos)} icon={<Inbox size={13} />} tone="accent" sub="entraram na Caixa" valorAtual={m.recebidos} valorAnterior={kAnt?.recebidos} direcaoFavoravel="maior" />
+        <KPICard label="Taxa de qualificação" value={`${m.taxaQualificacao.toFixed(0)}%`} icon={<Target size={13} />} tone="info" sub="viram SQL" valorAtual={m.taxaQualificacao} valorAnterior={kAnt?.taxaQualificacao} direcaoFavoravel="maior" />
+        <KPICard label="Taxa de fechamento" value={`${m.taxaFechamento.toFixed(0)}%`} icon={<Handshake size={13} />} tone="success" sub="reuniões que fecham" valorAtual={m.taxaFechamento} valorAnterior={kAnt?.taxaFechamento} direcaoFavoravel="maior" />
+        <KPICard label="Ticket médio fechado" value={fmtBRL(m.ticketMedio)} icon={<DollarSign size={13} />} tone="neutral" sub="média (MRR) dos fechados" valorAtual={m.ticketMedio} valorAnterior={kAnt?.ticketMedio} direcaoFavoravel="maior" />
+        <KPICard label="Receita gerada" value={fmtBRL(m.receita)} icon={<TrendingUp size={13} />} tone="success" sub="MRR dos fechados" valorAtual={m.receita} valorAnterior={kAnt?.receita} direcaoFavoravel="maior" />
+        <KPICard label="Ciclo médio de venda" value={`${m.cicloMedio.toFixed(1)}d`} icon={<Clock size={13} />} tone="neutral" sub="entrada → fechamento" valorAtual={m.cicloMedio} valorAnterior={kAnt?.cicloMedio} direcaoFavoravel="menor" />
       </div>
 
       <div className="mb-5 grid gap-4 lg:grid-cols-3">

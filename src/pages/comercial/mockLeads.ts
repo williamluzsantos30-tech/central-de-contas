@@ -82,13 +82,13 @@ export interface Lead {
   closerId?: string
   dataEnvioCloser?: string
   briefingQualificacao?: string
-  valorProposta?: number
-  /** Ticket mensal contratado (MRR do negócio). Preenchido no fechamento. */
-  ticketMensal?: number
-  /** Valor efetivamente recebido no fechamento (entrada/1ª parcela). */
+  // Valores do fechamento (preenchidos pelo Closer ao marcar "Fechou").
+  /** MRR — receita recorrente mensal do negócio (vira o ticket do Cliente). */
+  mrr?: number
+  /** Caixa recolhido no ato do fechamento (entrada/1ª parcela/implantação). */
   caixaRecolhido?: number
-  /** Duração contratada em meses (pra calcular o valor total do contrato). */
-  duracaoContratoMeses?: number
+  /** Valor total do contrato assinado (ex.: ticket × meses + taxas). */
+  contratoFechado?: number
   dataFechamento?: string
   motivoPerda?: string
   clienteId?: string // preenchido quando fechado → vira Cliente
@@ -411,10 +411,9 @@ export const MOCK_LEADS: Lead[] = [
       investimentoMensal: 4000,
       classificacaoLead: 'Quente',
     },
-    valorProposta: 4200,
-    ticketMensal: 4000,
+    mrr: 4000,
     caixaRecolhido: 4200,
-    duracaoContratoMeses: 12,
+    contratoFechado: 48000,
     dataFechamento: '2026-09-05',
     clienteId: 'cliente-demo-vidaplena',
   },
@@ -530,11 +529,25 @@ export const MOCK_LEADS: Lead[] = [
       investimentoMensal: 3000,
       classificacaoLead: 'Quente',
     },
-    valorProposta: 3200,
-    ticketMensal: 3000,
+    mrr: 3000,
     caixaRecolhido: 3200,
-    duracaoContratoMeses: 12,
+    contratoFechado: 36000,
     dataFechamento: '2026-09-12',
     clienteId: 'cliente-demo-moreirakids',
+  },
+  // Lead via CRM SEM origem identificada (gap de rastreamento na integração)
+  {
+    id: 'lead-14',
+    nomeContato: 'Dr. Fábio Nogueira',
+    empresa: 'Clínica Nogueira',
+    telefone: '(11) 90000-0001',
+    origem: 'Sem Origem Identificada',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    dataEntrada: '2026-09-20',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-20',
+    qualificado: false,
   },
 ]
