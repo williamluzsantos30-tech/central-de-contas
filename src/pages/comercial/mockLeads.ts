@@ -83,6 +83,12 @@ export interface Lead {
   dataEnvioCloser?: string
   briefingQualificacao?: string
   valorProposta?: number
+  /** Ticket mensal contratado (MRR do negócio). Preenchido no fechamento. */
+  ticketMensal?: number
+  /** Valor efetivamente recebido no fechamento (entrada/1ª parcela). */
+  caixaRecolhido?: number
+  /** Duração contratada em meses (pra calcular o valor total do contrato). */
+  duracaoContratoMeses?: number
   dataFechamento?: string
   motivoPerda?: string
   clienteId?: string // preenchido quando fechado → vira Cliente
@@ -406,6 +412,9 @@ export const MOCK_LEADS: Lead[] = [
       classificacaoLead: 'Quente',
     },
     valorProposta: 4200,
+    ticketMensal: 4000,
+    caixaRecolhido: 4200,
+    duracaoContratoMeses: 12,
     dataFechamento: '2026-09-05',
     clienteId: 'cliente-demo-vidaplena',
   },
@@ -488,5 +497,44 @@ export const MOCK_LEADS: Lead[] = [
     },
     subStatusNegociacao: 'no_show',
     contadorNoShow: 1,
+  },
+  // Fechado no mês, canal Meta Ads (alimenta ROAS do canal pago)
+  {
+    id: 'lead-13',
+    nomeContato: 'Dra. Tânia Moreira',
+    empresa: 'Clínica Moreira Kids',
+    telefone: '(11) 90000-2244',
+    email: 'tania@moreirakids.com',
+    origem: 'Anúncio Meta',
+    etapaFunil: 'fechado',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Anúncio Meta',
+    dataEntrada: '2026-09-04',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-04',
+    sdrId: 'sdr-2',
+    dataEnvioSDR: '2026-09-05',
+    qualificado: true,
+    dataReuniaoAgendada: '2026-09-11',
+    closerId: 'cl-2',
+    dataEnvioCloser: '2026-09-08',
+    briefingQualificacao: 'Pediatria, quer previsibilidade de agenda. Fechou no plano intermediário.',
+    reuniao: { data: '2026-09-11', hora: '15:00', linkCall: 'https://meet.google.com/mk-1010-abc', closerId: 'cl-2' },
+    resumoConversa: 'Fechou plano intermediário. Boa fit.',
+    bant: {
+      orcamento: 'Aprovado',
+      autoridade: 'Decisor único',
+      necessidade: 'Tráfego + social',
+      tempoUrgencia: 'Imediato',
+      investimentoMensal: 3000,
+      classificacaoLead: 'Quente',
+    },
+    valorProposta: 3200,
+    ticketMensal: 3000,
+    caixaRecolhido: 3200,
+    duracaoContratoMeses: 12,
+    dataFechamento: '2026-09-12',
+    clienteId: 'cliente-demo-moreirakids',
   },
 ]

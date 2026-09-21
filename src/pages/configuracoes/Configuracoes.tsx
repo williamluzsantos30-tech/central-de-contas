@@ -56,6 +56,7 @@ import {
 } from './components'
 import { IntegracoesTab } from './IntegracoesTab'
 import { useComercial } from '@/pages/comercial/store'
+import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -102,7 +103,7 @@ function noMesCorrente(iso: string | null): boolean {
 
 export default function Configuracoes() {
   const [tab, setTab] = useState('geral')
-  const { slaConfig, setSlaConfig } = useComercial()
+  const { slaConfig, setSlaConfig, metasMarketing, setMetasMarketing } = useComercial()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
   // Squads (+ metas, migration 087), papéis e membros vêm do banco — fonte
   // única. Guardamos as linhas cruas e mapeamos pros shapes dos componentes.
@@ -359,6 +360,9 @@ export default function Configuracoes() {
             </div>
           </section>
 
+          {/* Metas de Marketing */}
+          <MetasMarketingSection metas={metasMarketing} onChange={setMetasMarketing} />
+
           {/* Metas Mensais */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -600,6 +604,74 @@ export default function Configuracoes() {
         }}
       />
     </div>
+  )
+}
+
+const CANAIS_META = ['Meta Ads', 'Google Ads', 'Indicação', 'Social Selling', 'Inbound', 'Orgânico']
+
+function MetasMarketingSection({
+  metas,
+  onChange,
+}: {
+  metas: MetasMarketing
+  onChange: (m: MetasMarketing) => void
+}) {
+  const setGlobal = (campo: keyof MetaMarketingValores, v: number) => onChange({ ...metas, [campo]: v })
+  const setOverride = (canal: string, campo: keyof MetaMarketingValores, raw: string) => {
+    const cur: Partial<MetaMarketingValores> = { ...(metas.overridesPorCanal[canal] ?? {}) }
+    if (raw === '') delete cur[campo]
+    else cur[campo] = Math.max(0, Number(raw) || 0)
+    const overrides = { ...metas.overridesPorCanal, [canal]: cur }
+    if (Object.keys(cur).length === 0) delete overrides[canal]
+    onChange({ ...metas, overridesPorCanal: overrides })
+  }
+
+  return (
+    <section className="rounded-lg border border-border bg-bg-card p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <BarChart3 size={14} className="text-brand-300" />
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Metas de Marketing</p>
+      </div>
+      <p className="mb-4 text-[11px] text-muted">
+        Alvos usados pra colorir os KPIs do painel de Marketing (verde = dentro/acima; vermelho = abaixo).
+        Meta global + sobrescrita por canal.
+      </p>
+
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <SlaInput label="Taxa de agendamento (%)" value={metas.taxaAgendamento} onChange={(v) => setGlobal('taxaAgendamento', v)} />
+        <SlaInput label="ROAS contrato (x)" value={metas.roasContrato} onChange={(v) => setGlobal('roasContrato', v)} />
+        <SlaInput label="CAC alvo (R$)" value={metas.cacAlvo} onChange={(v) => setGlobal('cacAlvo', v)} />
+      </div>
+
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-muted">Sobrescrita por canal (em branco = herda o global)</p>
+      <div className="overflow-hidden rounded-lg border border-border">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
+              <th className="px-3 py-2 font-semibold">Canal</th>
+              <th className="px-3 py-2 font-semibold">Taxa agend. (%)</th>
+              <th className="px-3 py-2 font-semibold">CAC alvo (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CANAIS_META.map((c) => {
+              const ov = metas.overridesPorCanal[c] ?? {}
+              return (
+                <tr key={c} className="border-b border-border/60 last:border-b-0">
+                  <td className="px-3 py-2 text-zinc-200">{c}</td>
+                  <td className="px-3 py-2">
+                    <Input type="number" min={0} value={ov.taxaAgendamento ?? ''} onChange={(e) => setOverride(c, 'taxaAgendamento', e.target.value)} placeholder={String(metas.taxaAgendamento)} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input type="number" min={0} value={ov.cacAlvo ?? ''} onChange={(e) => setOverride(c, 'cacAlvo', e.target.value)} placeholder={String(metas.cacAlvo)} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

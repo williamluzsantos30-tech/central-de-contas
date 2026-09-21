@@ -33,6 +33,7 @@ import Flags from '@/pages/flags/Flags'
 import ColaboradorDetalhe from '@/pages/flags/ColaboradorDetalhe'
 import { FlagsProvider } from '@/pages/flags/store'
 import VisaoExecutivaComercial from '@/pages/comercial/VisaoExecutivaComercial'
+import MarketingFunnelPanel from '@/pages/comercial/MarketingFunnelPanel'
 import SocialSelling from '@/pages/comercial/SocialSelling'
 import CaixaEntrada from '@/pages/comercial/CaixaEntrada'
 import SDR from '@/pages/comercial/SDR'
@@ -124,6 +125,7 @@ export default function App() {
             <Route path="/comercial/sdr" element={<SDR />} />
             <Route path="/comercial/sdr/qualificar/:id" element={<CadastrarLeadQualificado />} />
             <Route path="/comercial/closer" element={<Closer />} />
+            <Route path="/comercial/marketing" element={<MarketingFunnelPanel />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
               path="/clientes"

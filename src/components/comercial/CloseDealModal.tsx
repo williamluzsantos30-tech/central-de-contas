@@ -30,6 +30,8 @@ export function CloseDealModal({
   const [resultado, setResultado] = useState<Resultado | null>(null)
   const [valorProposta, setValorProposta] = useState('')
   const [ticketMensal, setTicketMensal] = useState('')
+  const [caixaRecolhido, setCaixaRecolhido] = useState('')
+  const [duracaoMeses, setDuracaoMeses] = useState('12')
   const [squad, setSquad] = useState('')
   const [tipoServico, setTipoServico] = useState('')
   const [motivoPerda, setMotivoPerda] = useState('')
@@ -45,6 +47,8 @@ export function CloseDealModal({
       setResultado(null)
       setValorProposta('')
       setTicketMensal('')
+      setCaixaRecolhido('')
+      setDuracaoMeses('12')
       setSquad('')
       setTipoServico('')
       setMotivoPerda('')
@@ -65,12 +69,22 @@ export function CloseDealModal({
       if (resultado === 'fechou') {
         const vp = Number(valorProposta)
         const tm = Number(ticketMensal)
+        const cr = caixaRecolhido === '' ? vp : Number(caixaRecolhido)
+        const dur = Number(duracaoMeses) || 12
         if (!vp || vp <= 0) return setErro('Informe o valor da proposta.')
         if (!tm || tm <= 0) return setErro('Informe o ticket mensal (vai pro cadastro do Cliente).')
         if (!squad) return setErro('Selecione a squad.')
         if (!tipoServico) return setErro('Selecione o tipo de serviço.')
         setSalvando(true)
-        await registrarResultado(lead.id, { tipo: 'fechou', valorProposta: vp, ticketMensal: tm, squad, tipoServico })
+        await registrarResultado(lead.id, {
+          tipo: 'fechou',
+          valorProposta: vp,
+          ticketMensal: tm,
+          caixaRecolhido: cr,
+          duracaoContratoMeses: dur,
+          squad,
+          tipoServico,
+        })
       } else if (resultado === 'perdido') {
         if (!motivoPerda) return setErro('Selecione o motivo da perda.')
         setSalvando(true)
@@ -171,6 +185,8 @@ export function CloseDealModal({
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Valor da proposta (R$)"><Input type="number" min={0} value={valorProposta} onChange={(e) => setValorProposta(e.target.value)} placeholder="4200" /></Campo>
             <Campo label="Ticket mensal (R$)"><Input type="number" min={0} value={ticketMensal} onChange={(e) => setTicketMensal(e.target.value)} placeholder="2500" /></Campo>
+            <Campo label="Caixa recolhido / entrada (R$)"><Input type="number" min={0} value={caixaRecolhido} onChange={(e) => setCaixaRecolhido(e.target.value)} placeholder="= valor da proposta" /></Campo>
+            <Campo label="Duração do contrato (meses)"><Input type="number" min={1} value={duracaoMeses} onChange={(e) => setDuracaoMeses(e.target.value)} placeholder="12" /></Campo>
             <Campo label="Squad">
               <Select value={squad} onChange={(e) => setSquad(e.target.value)}>
                 <option value="">Selecione</option>

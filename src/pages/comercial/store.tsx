@@ -19,7 +19,13 @@ import {
   type Lead,
   type ReuniaoAgendada,
 } from './mockLeads'
-import { SLA_CONFIG_INICIAL, type SlaConfigComercial } from './mockComercialConfig'
+import {
+  SLA_CONFIG_INICIAL,
+  METAS_MARKETING_INICIAL,
+  type SlaConfigComercial,
+  type MetasMarketing,
+} from './mockComercialConfig'
+import { MOCK_INVESTIMENTOS, type InvestimentoMarketing } from './mockInvestimentos'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -48,16 +54,37 @@ export interface NovoLeadInput {
 
 /** Resultado da call registrado pelo Closer (4 desfechos possíveis). */
 export type ResultadoCall =
-  | { tipo: 'fechou'; valorProposta: number; ticketMensal: number; squad: string; tipoServico: string }
+  | {
+      tipo: 'fechou'
+      valorProposta: number
+      ticketMensal: number
+      caixaRecolhido: number
+      duracaoContratoMeses: number
+      squad: string
+      tipoServico: string
+    }
   | { tipo: 'perdido'; motivoPerda: string }
   | { tipo: 'no_show'; novaData: string; novaHora: string }
   | { tipo: 'followup'; dataProximoContato: string; observacao: string }
+
+/** Um lançamento de investimento de mídia (por canal) no modal. */
+export interface LancamentoInvestimento {
+  canal: string
+  valor: number
+}
 
 interface ComercialCtx {
   leads: Lead[]
   /** Config de SLA por etapa (editável em Configurações › Geral). */
   slaConfig: SlaConfigComercial
   setSlaConfig: (cfg: SlaConfigComercial) => void
+  /** Investimento de mídia por período/canal (input manual do Marketing). */
+  investimentos: InvestimentoMarketing[]
+  /** Substitui os lançamentos de um período pelos informados. */
+  registrarInvestimentos: (periodo: string, lancamentos: LancamentoInvestimento[]) => void
+  /** Metas de Marketing (editáveis em Configurações › Geral). */
+  metasMarketing: MetasMarketing
+  setMetasMarketing: (m: MetasMarketing) => void
   /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
   /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
@@ -79,6 +106,20 @@ const Ctx = createContext<ComercialCtx | null>(null)
 export function ComercialProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS)
   const [slaConfig, setSlaConfig] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
+  const [investimentos, setInvestimentos] = useState<InvestimentoMarketing[]>(MOCK_INVESTIMENTOS)
+  const [metasMarketing, setMetasMarketing] = useState<MetasMarketing>(METAS_MARKETING_INICIAL)
+
+  const registrarInvestimentos = useCallback((periodo: string, lancamentos: LancamentoInvestimento[]) => {
+    setInvestimentos((prev) => [
+      ...prev.filter((i) => i.periodo !== periodo),
+      ...lancamentos.map((l) => ({
+        id: `inv-${periodo}-${l.canal}`,
+        periodo,
+        canal: l.canal,
+        valor: l.valor,
+      })),
+    ])
+  }, [])
 
   const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, ...patch } : l)))
@@ -233,6 +274,9 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       patchLead(leadId, {
         etapaFunil: 'fechado',
         valorProposta: r.valorProposta,
+        ticketMensal: r.ticketMensal,
+        caixaRecolhido: r.caixaRecolhido,
+        duracaoContratoMeses: r.duracaoContratoMeses,
         dataFechamento: hoje,
         clienteId: (data?.id as string) ?? undefined,
         subStatusNegociacao: undefined,
@@ -246,6 +290,10 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       leads,
       slaConfig,
       setSlaConfig,
+      investimentos,
+      registrarInvestimentos,
+      metasMarketing,
+      setMetasMarketing,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,
@@ -257,6 +305,9 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     [
       leads,
       slaConfig,
+      investimentos,
+      registrarInvestimentos,
+      metasMarketing,
       criarLead,
       enviarParaCaixa,
       receberLeadExterno,
