@@ -85,6 +85,7 @@ export function ImportarConteudosModal({
   const [raw, setRaw] = useState('')
   const [importing, setImporting] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [sucesso, setSucesso] = useState<string | null>(null)
 
   const { itens, rejeitados } = useMemo(() => parseConteudos(raw), [raw])
   const comPendencia = itens.filter((i) => i.pendencias.length > 0).length
@@ -119,13 +120,58 @@ export function ImportarConteudosModal({
   }
 
   async function importar() {
+    if (importing) return // trava anti-duplo-envio
     if (itens.length === 0) return
     setImporting(true)
     setErro(null)
+    setSucesso(null)
     try {
+      // Remove duplicados EXATOS do lote (mesma categoria/título/conteúdo/
+      // legenda/link/data) — evita subir o mesmo post repetido quando o texto
+      // colado repetiu blocos. Posts com qualquer campo diferente são mantidos.
+      const vistos = new Set<string>()
+      const unicos = itens.filter((it) => {
+        const k = [it.categoria, it.titulo, it.conteudo ?? '', it.legenda ?? '', it.linkDrive ?? '', it.data ?? ''].join('|')
+        if (vistos.has(k)) return false
+        vistos.add(k)
+        return true
+      })
+      const duplicados = itens.length - unicos.length
+
+      // Idempotência: pula itens que JÁ EXISTEM no cliente (mesmo formato +
+      // data + título), pra reimportar o mesmo conteúdo não triplicar.
+      const chaveItem = (formato: string, prazo: string | null | undefined, titulo: string) =>
+        `${formato}|${(prazo ?? '').slice(0, 10)}|${titulo.trim().toLowerCase()}`
+      const existentes = new Set<string>()
+      const { data: planosCliente } = await supabase
+        .from('producoes_social_media')
+        .select('id')
+        .eq('cliente_id', cliente.id)
+      const planoIds = (planosCliente ?? []).map((p) => p.id as string)
+      if (planoIds.length > 0) {
+        const { data: itensExist } = await supabase
+          .from('producoes_social_media_items')
+          .select('titulo, formato, prazo')
+          .in('producao_id', planoIds)
+        for (const i of itensExist ?? []) {
+          existentes.add(chaveItem(i.formato as string, i.prazo as string, (i.titulo as string) ?? ''))
+        }
+      }
+      const novos = unicos.filter((it) => !existentes.has(chaveItem(it.formato, it.data, it.titulo)))
+      const jaExistiam = unicos.length - novos.length
+
+      if (novos.length === 0) {
+        setSucesso(
+          `Nada novo pra importar — ${jaExistiam} item(ns) já existiam` +
+            (duplicados > 0 ? ` · ${duplicados} repetido(s) no texto` : ''),
+        )
+        setImporting(false)
+        return
+      }
+
       // Agrupa por mês de destino (data do item; backlog/sem data -> mês atual).
       const grupos = new Map<string, ItemParseado[]>()
-      for (const it of itens) {
+      for (const it of novos) {
         const mes01 = it.data ? `${it.data.slice(0, 7)}-01` : mesISO
         const arr = grupos.get(mes01)
         if (arr) arr.push(it)
@@ -157,11 +203,19 @@ export function ImportarConteudosModal({
         }
       }
 
-      const { error } = await supabase.from('producoes_social_media_items').insert(rows)
+      const { data, error } = await supabase
+        .from('producoes_social_media_items')
+        .insert(rows)
+        .select('id')
       if (error) throw error
+      const inseridos = data?.length ?? rows.length
       setRaw('')
       onImported()
-      onClose()
+      setSucesso(
+        `${inseridos} ${inseridos === 1 ? 'conteúdo importado' : 'conteúdos importados'}` +
+          (jaExistiam > 0 ? ` · ${jaExistiam} já existiam` : '') +
+          (duplicados > 0 ? ` · ${duplicados} repetido(s) no texto` : ''),
+      )
     } catch (e) {
       setErro((e as Error)?.message ?? 'Falha ao importar os conteúdos.')
     } finally {
@@ -231,12 +285,22 @@ export function ImportarConteudosModal({
           </div>
           <Textarea
             value={raw}
-            onChange={(e) => setRaw(e.target.value)}
+            onChange={(e) => {
+              setRaw(e.target.value)
+              if (sucesso) setSucesso(null)
+            }}
             rows={8}
             placeholder={EXEMPLO}
             className="font-mono text-xs"
           />
         </div>
+
+        {sucesso && (
+          <div className="flex items-start gap-2 rounded-lg border border-green-500/40 bg-green-500/10 p-3 text-xs text-green-200">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            <span>{sucesso} Pode colar mais conteúdos ou fechar.</span>
+          </div>
+        )}
 
         {erro && (
           <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
