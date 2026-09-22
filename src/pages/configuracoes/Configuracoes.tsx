@@ -364,9 +364,14 @@ export default function Configuracoes() {
                 onChange={(v) => setSlaConfig({ ...slaConfig, slaEntreTentativasHoras: v })}
               />
               <SlaInput
-                label="Limite de tentativas antes de sugerir desqualificar"
+                label="Limite de tentativas antes de sugerir desqualificar (SDR)"
                 value={slaConfig.limiteTentativasContato}
                 onChange={(v) => setSlaConfig({ ...slaConfig, limiteTentativasContato: v })}
+              />
+              <SlaInput
+                label="Limite de tentativas de abordagem antes de sugerir descarte (Social Selling)"
+                value={slaConfig.limiteTentativasAbordagem}
+                onChange={(v) => setSlaConfig({ ...slaConfig, limiteTentativasAbordagem: v })}
               />
             </div>
           </section>

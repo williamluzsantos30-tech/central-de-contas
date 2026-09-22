@@ -20,7 +20,7 @@ import {
 } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { ContactAttemptForm } from '@/components/comercial/ContactAttemptForm'
-import { AttemptHistoryCard } from '@/components/comercial/AttemptHistoryCard'
+import { AttemptHistoryCard, histTentativasSdr } from '@/components/comercial/AttemptHistoryCard'
 import { LeadCard } from '@/components/comercial/LeadCard'
 import { useComercial } from './store'
 import {
@@ -274,7 +274,7 @@ export default function CadastrarLeadQualificado() {
 
       {(lead.tentativasContato?.length ?? 0) > 0 && (
         <div className="mt-4">
-          <AttemptHistoryCard tentativas={lead.tentativasContato ?? []} />
+          <AttemptHistoryCard itens={histTentativasSdr(lead)} />
         </div>
       )}
 

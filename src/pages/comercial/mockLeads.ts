@@ -65,6 +65,38 @@ export function resultadoTentativaLabel(r: ResultadoTentativa): string {
   return RESULTADO_TENTATIVA_OPCOES.find((o) => o.key === r)?.label ?? r
 }
 
+/** Tipo de abordagem do Social Selling (prospecção antes do envio à Caixa). */
+export type TipoAbordagemSocial =
+  | 'dm_enviada'
+  | 'comentario'
+  | 'engajamento'
+  | 'conexao'
+  | 'resposta_recebida'
+  | 'sem_resposta'
+  | 'outro'
+
+export interface TentativaAbordagemSocial {
+  id: string
+  data: string // ISO datetime
+  tipo: TipoAbordagemSocial
+  observacao?: string
+  socialSellerId: string
+}
+
+export const TIPOS_ABORDAGEM_OPCOES: { key: TipoAbordagemSocial; label: string }[] = [
+  { key: 'dm_enviada', label: 'DM enviada' },
+  { key: 'comentario', label: 'Comentário em post' },
+  { key: 'engajamento', label: 'Curtida/Engajamento' },
+  { key: 'conexao', label: 'Conexão solicitada' },
+  { key: 'resposta_recebida', label: 'Resposta recebida' },
+  { key: 'sem_resposta', label: 'Sem resposta' },
+  { key: 'outro', label: 'Outro' },
+]
+
+export function tipoAbordagemLabel(t: TipoAbordagemSocial): string {
+  return TIPOS_ABORDAGEM_OPCOES.find((o) => o.key === t)?.label ?? t
+}
+
 export interface CriterioQualificacao {
   pergunta: string
   resposta: string
@@ -112,6 +144,12 @@ export interface Lead {
   socialSellerId: string // quem captou (só quando origemEntrada = 'social_selling')
   dataCaptacao: string
   observacaoCaptacao?: string
+  // Follow-up de abordagem (prospecção antes de enviar à Caixa)
+  tentativasAbordagemSocial?: TentativaAbordagemSocial[]
+  proximaAbordagem?: string
+  contadorTentativasSocial?: number
+  /** Prospecção arquivada (não engajou) — sai da lista ativa do Social Selling. */
+  arquivado?: boolean
 
   // SDR
   sdrId?: string
@@ -332,6 +370,13 @@ export const MOCK_LEADS: Lead[] = [
     dataCaptacao: '2026-09-16',
     observacaoCaptacao: 'Respondeu story sobre gestão de agenda. Demonstrou interesse.',
     qualificado: false,
+    // Em abordagem: 2 tentativas, próxima abordagem vencida
+    contadorTentativasSocial: 2,
+    proximaAbordagem: '2026-09-19',
+    tentativasAbordagemSocial: [
+      { id: 'a1', data: '2026-09-16T10:00', tipo: 'dm_enviada', observacao: 'Enviei DM apresentando o serviço.', socialSellerId: 'ss-1' },
+      { id: 'a2', data: '2026-09-18T14:00', tipo: 'sem_resposta', socialSellerId: 'ss-1' },
+    ],
   },
   {
     id: 'lead-2',
@@ -345,6 +390,14 @@ export const MOCK_LEADS: Lead[] = [
     socialSellerId: 'ss-2',
     dataCaptacao: '2026-09-18',
     qualificado: false,
+    // Perto do limite (3 de 4) — dispara aviso de descarte
+    contadorTentativasSocial: 3,
+    proximaAbordagem: '2026-09-20',
+    tentativasAbordagemSocial: [
+      { id: 'b1', data: '2026-09-12T09:00', tipo: 'conexao', socialSellerId: 'ss-2' },
+      { id: 'b2', data: '2026-09-15T11:00', tipo: 'dm_enviada', socialSellerId: 'ss-2' },
+      { id: 'b3', data: '2026-09-18T16:00', tipo: 'sem_resposta', observacao: 'Visualizou e não respondeu.', socialSellerId: 'ss-2' },
+    ],
   },
   // Em atendimento pelo SDR — puxado da Caixa (veio via CRM)
   {

@@ -14,6 +14,8 @@ export interface SlaConfigComercial {
   slaEntreTentativasHoras: number
   /** Nº de tentativas de contato antes de sugerir desqualificar o lead. */
   limiteTentativasContato: number
+  /** Nº de tentativas de abordagem (Social Selling) antes de sugerir descartar. */
+  limiteTentativasAbordagem: number
 }
 
 export const SLA_CONFIG_INICIAL: SlaConfigComercial = {
@@ -22,6 +24,7 @@ export const SLA_CONFIG_INICIAL: SlaConfigComercial = {
   closerCallHoras: 48,
   slaEntreTentativasHoras: 24,
   limiteTentativasContato: 5,
+  limiteTentativasAbordagem: 4,
 }
 
 /**

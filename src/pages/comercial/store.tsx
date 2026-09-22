@@ -20,6 +20,8 @@ import {
   type ReuniaoAgendada,
   type ResultadoTentativa,
   type TentativaContato,
+  type TipoAbordagemSocial,
+  type TentativaAbordagemSocial,
 } from './mockLeads'
 import {
   SLA_CONFIG_INICIAL,
@@ -94,6 +96,13 @@ interface ComercialCtx {
   excluirMeta: (id: string) => void
   /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
+  /** Social Selling: registra uma tentativa de abordagem (mantém "prospectado"). */
+  registrarAbordagemSocial: (
+    leadId: string,
+    dados: { tipo: TipoAbordagemSocial; observacao?: string; proximaAbordagem?: string },
+  ) => void
+  /** Social Selling: arquiva a prospecção que não engajou. */
+  arquivarLead: (leadId: string) => void
   /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
   enviarParaCaixa: (leadId: string) => void
   /** CRM externo (webhook): injeta um lead já montado direto na Caixa. */
@@ -167,6 +176,35 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     }
     setLeads((prev) => [novo, ...prev])
   }, [])
+
+  const registrarAbordagemSocial = useCallback(
+    (leadId: string, dados: { tipo: TipoAbordagemSocial; observacao?: string; proximaAbordagem?: string }) => {
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (l.id !== leadId) return l
+          const nova: TentativaAbordagemSocial = {
+            id: `abord-${Date.now()}`,
+            data: new Date().toISOString(),
+            tipo: dados.tipo,
+            observacao: dados.observacao?.trim() || undefined,
+            socialSellerId: l.socialSellerId,
+          }
+          return {
+            ...l,
+            tentativasAbordagemSocial: [...(l.tentativasAbordagemSocial ?? []), nova],
+            contadorTentativasSocial: (l.contadorTentativasSocial ?? 0) + 1,
+            proximaAbordagem: dados.proximaAbordagem || undefined,
+          }
+        }),
+      )
+    },
+    [],
+  )
+
+  const arquivarLead = useCallback(
+    (leadId: string) => patchLead(leadId, { arquivado: true }),
+    [patchLead],
+  )
 
   const enviarParaCaixa = useCallback(
     (leadId: string) => {
@@ -350,6 +388,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       atualizarMeta,
       excluirMeta,
       criarLead,
+      registrarAbordagemSocial,
+      arquivarLead,
       enviarParaCaixa,
       receberLeadExterno,
       iniciarAtendimento,
@@ -369,6 +409,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       atualizarMeta,
       excluirMeta,
       criarLead,
+      registrarAbordagemSocial,
+      arquivarLead,
       enviarParaCaixa,
       receberLeadExterno,
       iniciarAtendimento,
