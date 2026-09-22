@@ -54,6 +54,10 @@ import {
   Instagram,
   Archive,
   Lock,
+  Share2,
+  Minus,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -93,6 +97,32 @@ function shiftMes(mesISO: string, delta: number): string {
   const [y, m] = mesISO.split('-').map(Number)
   const nova = new Date(y, m - 1 + delta, 1)
   return `${nova.getFullYear()}-${String(nova.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+const MES_CURTO = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+
+/** mesISO -> "AGO/26" (usado no rotulo de comparacao MoM dos squads). */
+function labelMesCurto(mesISO: string): string {
+  const [y, m] = mesISO.split('-').map(Number)
+  return `${MES_CURTO[m - 1]}/${String(y).slice(-2)}`
+}
+
+/**
+ * MRR reconstruido de um squad num mes: soma verba_mensal dos clientes
+ * que ja tinham iniciado ate o fim do mes e ainda nao estavam arquivados
+ * naquele momento (data_inicio <= fimMes E arquivado_em nulo ou > fimMes).
+ * Base pro NRR (mrrInicio) e pra comparacao mes-a-mes.
+ */
+function mrrSquadNoMes(lista: Cliente[], mesISO: string): number {
+  const [y, m] = mesISO.split('-').map(Number)
+  const fimMes = new Date(y, m, 0, 23, 59, 59)
+  return lista.reduce((s, c) => {
+    if (!c.data_inicio) return s
+    const ini = new Date(c.data_inicio)
+    if (isNaN(ini.getTime()) || ini > fimMes) return s
+    if (c.arquivado_em && new Date(c.arquivado_em) <= fimMes) return s
+    return s + (c.verba_mensal ?? 0)
+  }, 0)
 }
 
 /** ISO datetime → "dd/mm/aaaa às HH:MM". */
@@ -804,6 +834,7 @@ export default function VisaoExecutiva() {
             squadsAtivos={squadsReais.map((s) => s.nome)}
             fSquad={fSquad}
             indicacoesPorSquad={indicacoesPorSquad}
+            eventosMov={eventosMov}
           />
 
           {/* Acoes Sugeridas — fica DEPOIS dos squads porque as sugestoes
@@ -1680,6 +1711,7 @@ interface ScoreSquad {
   nome: string
   clientes: Cliente[]
   mrr: number
+  mrrMes: number // MRR reconstruido do mes (base do NRR e da comparacao MoM)
   nrr: number
   churnsCount: number
   emRiscoCount: number
@@ -1690,6 +1722,17 @@ interface ScoreSquad {
   classificacao: 'critico' | 'atencao' | 'saudavel'
 }
 
+// Comparacao mes-a-mes de um squad. temAnterior=false quando nao ha base
+// do mes anterior (ou MRR anterior = 0) — nesse caso a UI mostra "—".
+interface ComparacaoMoM {
+  temAnterior: boolean
+  mrrDelta: number
+  mrrDeltaPct: number
+  scoreDelta: number
+  mesLabel: string
+  mesAntLabel: string
+}
+
 function calculaScoreSquads(
   clientes: Cliente[],
   mesISO: string,
@@ -1697,6 +1740,7 @@ function calculaScoreSquads(
   squadsAtivos: string[],
   incluirSemSquad: boolean,
   indicacoesPorSquad: Map<string, number>,
+  eventosMov: EventoMovimento[],
 ): ScoreSquad[] {
   const [y, m] = mesISO.split('-').map(Number)
   const inicioMes = new Date(y, m - 1, 1)
@@ -1729,9 +1773,32 @@ function calculaScoreSquads(
     const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
     const revChurn = churnsNoMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
 
-    const baseInicio = ativos.length + churnsNoMes.length
-    const churnRateSquad = baseInicio > 0 ? churnsNoMes.length / baseInicio : 0
-    const nrr = 1 - churnRateSquad
+    // NRR com expansao — pode passar de 100%. Puxa os eventos de movimento
+    // comercial DAQUELE squad no mes (prioriza meta.data, cai pra criado_em).
+    const squadClienteIds = new Set(lista.map((c) => c.id))
+    const eventosDoMes = eventosMov.filter((ev) => {
+      if (!squadClienteIds.has(ev.cliente_id)) return false
+      const d = new Date(ev.meta?.data ?? ev.criado_em)
+      return d >= inicioMes && d <= fimMes
+    })
+    const expansao = eventosDoMes
+      .filter((ev) => ev.tipo === 'expansao')
+      .reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+    const reducao = eventosDoMes
+      .filter((ev) => ev.tipo === 'perda')
+      .reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
+    const churnsEv = eventosDoMes.filter((ev) => ev.tipo === 'churn')
+    // Churn perdido = soma dos eventos tipo 'churn'; sem eventos, cai pro
+    // rev churn reconstruido de arquivado_em (retrocompativel).
+    const churnPerdido =
+      churnsEv.length > 0
+        ? churnsEv.reduce((s, ev) => s + (ev.meta?.valor_perdido ?? 0), 0)
+        : revChurn
+
+    // mrrInicio = MRR do mes reconstruido. NRR = (inicio + exp - red - churn)
+    // / inicio; se inicio=0, NRR=1 (evita divisao por zero).
+    const mrrMes = mrrSquadNoMes(lista, mesISO)
+    const nrr = mrrMes > 0 ? (mrrMes + expansao - reducao - churnPerdido) / mrrMes : 1
 
     // Score components
     let score = 0
@@ -1775,6 +1842,7 @@ function calculaScoreSquads(
       nome,
       clientes: lista,
       mrr,
+      mrrMes,
       nrr,
       churnsCount: churnsNoMes.length,
       emRiscoCount: emRisco.length,
@@ -1797,14 +1865,16 @@ function ScoreSaudeSquads({
   squadsAtivos,
   fSquad,
   indicacoesPorSquad,
+  eventosMov,
 }: {
   clientes: Cliente[]
   mesISO: string
   squadsAtivos: string[]
   fSquad: string
   indicacoesPorSquad: Map<string, number>
+  eventosMov: EventoMovimento[]
 }) {
-  const squads = useMemo(() => {
+  const { squads, comparacoes } = useMemo(() => {
     // Fonte dos cards = squads ativos (tabela central). Respeita o filtro de
     // squad selecionado; sem filtro, mostra todos os ativos + "(sem squad)".
     const nomesAlvo = fSquad ? [fSquad] : squadsAtivos
@@ -1814,8 +1884,42 @@ function ScoreSaudeSquads({
       .filter((c) => c.status === 'ativo' && !c.arquivado_em)
       .reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
     const mrrMedioSquad = mrrTotal / nQtd
-    return calculaScoreSquads(clientes, mesISO, mrrMedioSquad, nomesAlvo, incluirSemSquad, indicacoesPorSquad)
-  }, [clientes, mesISO, squadsAtivos, fSquad, indicacoesPorSquad])
+    const atual = calculaScoreSquads(
+      clientes,
+      mesISO,
+      mrrMedioSquad,
+      nomesAlvo,
+      incluirSemSquad,
+      indicacoesPorSquad,
+      eventosMov,
+    )
+
+    // Roda o mesmo calculo pro mes anterior pra montar a comparacao MoM.
+    const mesAnt = shiftMes(mesISO, -1)
+    const anterior = calculaScoreSquads(
+      clientes,
+      mesAnt,
+      mrrMedioSquad,
+      nomesAlvo,
+      incluirSemSquad,
+      indicacoesPorSquad,
+      eventosMov,
+    )
+    const mapAnt = new Map(anterior.map((s) => [s.nome, { score: s.score, mrrMes: s.mrrMes }]))
+
+    const mesLabel = labelMesCurto(mesISO)
+    const mesAntLabel = labelMesCurto(mesAnt)
+    const comps = new Map<string, ComparacaoMoM>()
+    for (const sq of atual) {
+      const ant = mapAnt.get(sq.nome)
+      const temAnterior = !!ant && ant.mrrMes > 0
+      const mrrDelta = temAnterior ? sq.mrrMes - ant!.mrrMes : 0
+      const mrrDeltaPct = temAnterior && ant!.mrrMes > 0 ? mrrDelta / ant!.mrrMes : 0
+      const scoreDelta = temAnterior ? sq.score - ant!.score : 0
+      comps.set(sq.nome, { temAnterior, mrrDelta, mrrDeltaPct, scoreDelta, mesLabel, mesAntLabel })
+    }
+    return { squads: atual, comparacoes: comps }
+  }, [clientes, mesISO, squadsAtivos, fSquad, indicacoesPorSquad, eventosMov])
 
   if (squads.length === 0) {
     return null
@@ -1828,14 +1932,14 @@ function ScoreSaudeSquads({
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {squads.map((sq) => (
-          <SquadCard key={sq.nome} squad={sq} />
+          <SquadCard key={sq.nome} squad={sq} comparacao={comparacoes.get(sq.nome)!} />
         ))}
       </div>
     </div>
   )
 }
 
-function SquadCard({ squad }: { squad: ScoreSquad }) {
+function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: ComparacaoMoM }) {
   const cls =
     squad.classificacao === 'saudavel'
       ? 'border-emerald-500/40'
@@ -1860,30 +1964,105 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
   // Progress bar — score varia de -3 a +8, normaliza pra 0-100
   const scoreNorm = Math.max(0, Math.min(100, ((squad.score + 3) / 11) * 100))
 
+  // Pill neutro reutilizado quando nao ha base do mes anterior.
+  const pillNeutro = 'border-border bg-bg-elev text-muted'
+
+  // Δ MRR (vs mes anterior)
+  const mrrUp = comparacao.temAnterior && comparacao.mrrDelta > 0
+  const mrrDown = comparacao.temAnterior && comparacao.mrrDelta < 0
+  const MrrIcon = mrrUp ? ArrowUpRight : mrrDown ? ArrowDownRight : Minus
+  const mrrPillCls = mrrUp
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+    : mrrDown
+      ? 'border-red-500/30 bg-red-500/10 text-red-200'
+      : pillNeutro
+  const mrrTexto = comparacao.temAnterior
+    ? `${formatBRLSigned(comparacao.mrrDelta)} MRR (${comparacao.mrrDeltaPct > 0 ? '+' : ''}${(comparacao.mrrDeltaPct * 100).toFixed(1)}%)`
+    : '— MRR'
+
+  // Δ Score (vs mes anterior)
+  const scoreUp = comparacao.temAnterior && comparacao.scoreDelta > 0
+  const scoreDown = comparacao.temAnterior && comparacao.scoreDelta < 0
+  const scorePillCls = scoreUp
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+    : scoreDown
+      ? 'border-red-500/30 bg-red-500/10 text-red-200'
+      : pillNeutro
+  const scoreTexto = comparacao.temAnterior
+    ? `${comparacao.scoreDelta > 0 ? '+' : ''}${comparacao.scoreDelta} pts Score`
+    : '— Score'
+
+  // NRR — pode passar de 100%. Barra verde quando >= 100% da meta.
+  const nrrPct = squad.nrr * 100
+  const nrrGood = squad.nrr >= 1
+  const nrrWarn = squad.nrr >= 0.9
+  const nrrValCls = nrrGood ? 'text-emerald-300' : nrrWarn ? 'text-amber-300' : 'text-red-300'
+  const nrrBarCls = nrrGood ? 'bg-emerald-400' : nrrWarn ? 'bg-amber-400' : 'bg-red-400'
+  const nrrBarW = Math.max(0, Math.min(100, nrrPct))
+  const nrrSub = nrrGood
+    ? 'Meta de retenção atingida'
+    : `Faltam ${(100 - nrrPct).toFixed(1)}pp para 100%`
+
+  // Rev. Churn — barra vermelha proporcional ao % do MRR.
+  const base = squad.clientes.length
+  const revPct = squad.mrr + squad.revChurn > 0 ? (squad.revChurn / (squad.mrr + squad.revChurn)) * 100 : 0
+  const revSub = squad.revChurn === 0 ? 'Sem perda de receita' : `${revPct.toFixed(1)}% do MRR`
+  const churnSub =
+    squad.churnsCount === 0
+      ? 'Nenhum cliente perdido'
+      : `${base > 0 ? ((squad.churnsCount / base) * 100).toFixed(1) : '0'}% da base`
+  const indSub =
+    squad.indicacoes > 0
+      ? `${base > 0 ? Math.round((squad.indicacoes / base) * 100) : 0}% da base indicou`
+      : 'Nenhuma indicação registrada'
+
   return (
     <div className={cn('rounded-xl border bg-bg-card p-5', cls)}>
-      {/* Header */}
+      {/* Header + badge de score */}
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h4 className="text-sm font-semibold text-zinc-100">{squad.nome}</h4>
-          <p className="mt-1 text-[11px] text-muted">
-            <Users size={10} className="inline mr-1" />
+        <div className="min-w-0">
+          <h4 className="truncate text-sm font-semibold text-zinc-100">{squad.nome}</h4>
+          <p className="mt-1 flex items-center gap-1 text-[11px] tabular-nums text-muted">
+            <Users size={11} />
             {squad.clientes.length} clientes · {formatBRL(squad.mrr)} MRR
           </p>
         </div>
-        <div className={cn('rounded-md border px-3 py-2 text-right', scoreCls)}>
-          <p className="text-lg font-bold tabular-nums leading-none">
+        <div className={cn('flex shrink-0 flex-col items-center rounded-lg border px-3 py-1.5', scoreCls)}>
+          <span className="text-2xl font-bold leading-none tabular-nums">
             {squad.score > 0 ? '+' : ''}
             {squad.score}
-          </p>
-          <p className="mt-1 text-[9px] uppercase tracking-wider opacity-80">
-            de 8 · {classLabel}
-          </p>
+          </span>
+          <span className="mt-1 text-[9px] uppercase tracking-wider opacity-60">de 8</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide">{classLabel}</span>
         </div>
       </div>
 
+      {/* Comparacao com o mes anterior */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-muted">
+          {comparacao.mesLabel} vs {comparacao.mesAntLabel}
+        </span>
+        <span
+          className={cn(
+            'inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
+            mrrPillCls,
+          )}
+        >
+          <MrrIcon size={10} />
+          {mrrTexto}
+        </span>
+        <span
+          className={cn(
+            'inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
+            scorePillCls,
+          )}
+        >
+          {scoreTexto}
+        </span>
+      </div>
+
       {/* Progress bar 3 zonas */}
-      <div className="relative h-2 rounded-full bg-bg-elev overflow-hidden">
+      <div className="relative h-2 overflow-hidden rounded-full bg-bg-elev">
         <div className="absolute inset-0 flex">
           <div className="w-1/3 bg-red-500/20" />
           <div className="w-1/3 bg-amber-500/20" />
@@ -1891,7 +2070,7 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
         </div>
         <div
           className={cn(
-            'absolute top-0 h-full w-1 rounded transition-all',
+            'absolute top-0 h-full w-1 rounded transition-all duration-300',
             squad.classificacao === 'saudavel'
               ? 'bg-emerald-400'
               : squad.classificacao === 'atencao'
@@ -1925,28 +2104,30 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
       </div>
 
       {/* Sub-KPIs 2x2 */}
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-muted">NRR</span>
-            <span
-              className={cn(
-                'text-xs font-semibold tabular-nums',
-                squad.nrr >= 0.95 ? 'text-emerald-300' : squad.nrr >= 0.9 ? 'text-amber-300' : 'text-red-300',
-              )}
-            >
-              {(squad.nrr * 100).toFixed(1)}%
+      <div className="mt-4 grid grid-cols-2 gap-2.5 border-t border-border pt-4">
+        {/* NRR */}
+        <div className="flex flex-col rounded-lg border border-border/60 bg-bg-elev/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted">
+              <TrendingUp size={11} /> NRR
             </span>
+            <span className={cn('text-xs font-semibold tabular-nums', nrrValCls)}>{nrrPct.toFixed(1)}%</span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted">
-            {squad.nrr >= 0.95
-              ? 'Meta atingida (≥ 95%)'
-              : `Faltam ${((0.95 - squad.nrr) * 100).toFixed(1)}pp para meta`}
-          </p>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-bg-card">
+            <div
+              className={cn('h-full rounded-full transition-all duration-300', nrrBarCls)}
+              style={{ width: `${nrrBarW}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-muted">{nrrSub}</p>
         </div>
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-muted">Logo Churn</span>
+
+        {/* Logo Churn */}
+        <div className="flex flex-col rounded-lg border border-border/60 bg-bg-elev/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted">
+              <Users size={11} /> Logo Churn
+            </span>
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
@@ -1956,35 +2137,39 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
               {squad.churnsCount}
             </span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted">
-            {squad.churnsCount === 0
-              ? 'Nenhum cliente perdido'
-              : `${((squad.churnsCount / squad.clientes.length) * 100).toFixed(1)}% da base`}
-          </p>
+          <p className="mt-auto pt-1.5 text-[10px] text-muted">{churnSub}</p>
         </div>
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-muted">Rev. Churn</span>
+
+        {/* Rev. Churn */}
+        <div className="flex flex-col rounded-lg border border-border/60 bg-bg-elev/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted">
+              <DollarSign size={11} /> Rev. Churn
+            </span>
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
-                squad.revChurn === 0 ? 'text-emerald-300' : 'text-red-300',
+                squad.revChurn > 0 ? 'text-red-300' : 'text-emerald-300',
               )}
             >
               {formatBRL(squad.revChurn)}
             </span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted">
-            {squad.revChurn === 0
-              ? 'Sem perda de receita'
-              : squad.mrr > 0
-                ? `${((squad.revChurn / (squad.mrr + squad.revChurn)) * 100).toFixed(1)}% do MRR`
-                : ''}
-          </p>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-bg-card">
+            <div
+              className="h-full rounded-full bg-red-400 transition-all duration-300"
+              style={{ width: `${Math.max(0, Math.min(100, revPct))}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-muted">{revSub}</p>
         </div>
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-muted">Indicações</span>
+
+        {/* Indicações */}
+        <div className="flex flex-col rounded-lg border border-border/60 bg-bg-elev/40 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted">
+              <Share2 size={11} /> Indicações
+            </span>
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
@@ -1994,9 +2179,7 @@ function SquadCard({ squad }: { squad: ScoreSquad }) {
               {squad.indicacoes}
             </span>
           </div>
-          <p className="mt-0.5 text-[10px] text-muted italic">
-            {squad.indicacoes > 0 ? 'no mês' : 'v2 — tracking pendente'}
-          </p>
+          <p className="mt-auto pt-1.5 text-[10px] text-muted">{indSub}</p>
         </div>
       </div>
     </div>
