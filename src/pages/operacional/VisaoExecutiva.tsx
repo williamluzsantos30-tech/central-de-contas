@@ -880,16 +880,6 @@ export default function VisaoExecutiva() {
 
           {/* Visao rapida do setor de Social Media */}
           <SocialMediaVisao clientes={clientesFiltrados} profiles={profiles} />
-
-          {/* Rodape com placeholders v2 */}
-          <div className="mt-8 rounded-xl border border-dashed border-border bg-bg-soft/30 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-              Próximos blocos (v2)
-            </p>
-            <ul className="mt-2 space-y-1 text-[11px] text-muted">
-              <li>· Tracking de indicações por squad</li>
-            </ul>
-          </div>
         </>
       )}
 
