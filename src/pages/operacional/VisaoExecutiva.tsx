@@ -52,6 +52,8 @@ import {
   ExternalLink,
   Calendar,
   Instagram,
+  Archive,
+  Lock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -91,6 +93,17 @@ function shiftMes(mesISO: string, delta: number): string {
   const [y, m] = mesISO.split('-').map(Number)
   const nova = new Date(y, m - 1 + delta, 1)
   return `${nova.getFullYear()}-${String(nova.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+/** ISO datetime → "dd/mm/aaaa às HH:MM". */
+function fmtDataHora(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}/${mm}/${d.getFullYear()} às ${hh}:${mi}`
 }
 
 /** Ultimos N meses (do atual pra tras) como array de mesISO. */
@@ -171,6 +184,10 @@ export default function VisaoExecutiva() {
   const [eventosMov, setEventosMov] = useState<EventoMovimento[]>([])
   const [eventosJornada, setEventosJornada] = useState<EventoJornada[]>([])
   const [loading, setLoading] = useState(true)
+  // Períodos arquivados (histórico congelado): mes "YYYY-MM" → snapshot + data.
+  const [arquivados, setArquivados] = useState<Map<string, { snapshot: Record<string, unknown>; arquivadoEm: string | null }>>(new Map())
+  const [arquivDisponivel, setArquivDisponivel] = useState(true) // false = migration 090 não rodada
+  const [arquivando, setArquivando] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [movTipo, setMovTipo] = useState<TipoMov | null>(null)
   const [mesISO, setMesISO] = useState<string>(() => {
@@ -205,6 +222,23 @@ export default function VisaoExecutiva() {
     setEventosMov((eRes.data as EventoMovimento[]) ?? [])
     setEventosJornada((jRes.data as EventoJornada[]) ?? [])
     setLoading(false)
+    void loadArquivados()
+  }
+
+  // Carrega os períodos já arquivados (histórico congelado). Se a tabela não
+  // existir (migration 090 não rodada), desativa o recurso sem quebrar a tela.
+  async function loadArquivados() {
+    const { data, error } = await supabase.from('resumo_periodos_arquivados').select('mes, snapshot, arquivado_em')
+    if (error) {
+      setArquivDisponivel(false)
+      return
+    }
+    setArquivDisponivel(true)
+    const m = new Map<string, { snapshot: Record<string, unknown>; arquivadoEm: string | null }>()
+    for (const r of (data as { mes: string; snapshot: Record<string, unknown>; arquivado_em: string | null }[]) ?? []) {
+      m.set(r.mes, { snapshot: r.snapshot, arquivadoEm: r.arquivado_em })
+    }
+    setArquivados(m)
   }
 
   useEffect(() => {
@@ -241,7 +275,7 @@ export default function VisaoExecutiva() {
   const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
   const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
 
-  const kpis = useMemo(() => {
+  const kpisLive = useMemo(() => {
     const [y, m] = mesISO.split('-').map(Number)
     const inicioMes = new Date(y, m - 1, 1)
     const fimMes = new Date(y, m, 0, 23, 59, 59)
@@ -389,6 +423,33 @@ export default function VisaoExecutiva() {
     }
   }, [clientesFiltrados, mesISO, eventosMov, eventosJornada])
 
+  // Se o mês está arquivado, os números vêm do snapshot CONGELADO (não do
+  // cálculo em tempo real) — assim o histórico não se altera. A forma do
+  // objeto é a mesma, então todo o resto da tela renderiza sem mudança.
+  const mesRef = mesISO.slice(0, 7)
+  const arquivoDoMes = arquivados.get(mesRef)
+  const arquivado = !!arquivoDoMes
+  const kpis = (arquivoDoMes?.snapshot as typeof kpisLive) ?? kpisLive
+  // Mês encerrado (passado) e ainda não arquivado → pode arquivar.
+  const podeArquivar = !eMesAtual && !arquivado
+
+  async function arquivarMes() {
+    if (!arquivDisponivel) {
+      alert('Rode a migration 090 no Supabase para habilitar o arquivamento de períodos.')
+      return
+    }
+    setArquivando(true)
+    const { error } = await supabase
+      .from('resumo_periodos_arquivados')
+      .upsert({ mes: mesRef, snapshot: kpisLive as unknown as Record<string, unknown>, arquivado_em: new Date().toISOString() })
+    setArquivando(false)
+    if (error) {
+      alert('Não foi possível arquivar: ' + error.message)
+      return
+    }
+    await loadArquivados()
+  }
+
   // Farol do banner de alerta — dispara quando qualquer meta comercial
   // e' quebrada. Metas fixadas pelo user:
   //   NRR   >= 95%   (abaixo = nao esta crescendo)
@@ -402,7 +463,17 @@ export default function VisaoExecutiva() {
         title="Resumo Geral"
         description="Visão executiva da saúde da operação"
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {arquivado && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-300">
+                <CheckCircle2 size={13} /> Período Arquivado
+              </span>
+            )}
+            {podeArquivar && (
+              <Button variant="outline" onClick={arquivarMes} disabled={arquivando}>
+                <Archive size={14} /> {arquivando ? 'Arquivando…' : 'Arquivar Período'}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => alert('Código de Cultura — em breve')}>
               <BookOpen size={14} /> Código de Cultura
             </Button>
@@ -434,8 +505,24 @@ export default function VisaoExecutiva() {
         </div>
       ) : (
         <>
-          {/* Banner Mes Atual — tempo real */}
-          {eMesAtual && (
+          {/* Banner de estado do período: arquivado (congelado) / mês atual
+              (tempo real) / mês encerrado a arquivar. */}
+          {arquivado ? (
+            <div className="mb-3 rounded-xl border border-green-500/40 bg-green-500/[0.06] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Lock size={13} className="text-green-300" />
+                <p className="text-xs font-semibold text-green-200">
+                  Período Arquivado
+                  <span className="ml-2 rounded border border-green-500/40 bg-green-500/10 px-1.5 py-0.5 text-[10px] uppercase text-green-300">
+                    Histórico Congelado
+                  </span>
+                </p>
+              </div>
+              <p className="mt-1 text-[11px] text-green-300/80">
+                Dados de {labelMes(mesISO)} foram arquivados{arquivoDoMes?.arquivadoEm ? ` em ${fmtDataHora(arquivoDoMes.arquivadoEm)}` : ''}. Estes valores são históricos e não serão alterados.
+              </p>
+            </div>
+          ) : eMesAtual ? (
             <div className="mb-3 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] px-4 py-3">
               <div className="flex items-center gap-2">
                 <Clock size={13} className="text-sky-300" />
@@ -451,7 +538,22 @@ export default function VisaoExecutiva() {
                 mudar conforme novas movimentações são registradas.
               </p>
             </div>
-          )}
+          ) : podeArquivar ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/[0.06] px-4 py-3">
+              <div className="flex items-start gap-2">
+                <Archive size={14} className="mt-0.5 shrink-0 text-amber-300" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-200">Mês encerrado</p>
+                  <p className="mt-0.5 text-[11px] text-amber-300/80">
+                    {labelMes(mesISO)} já terminou. Arquive para <strong>congelar</strong> estas métricas e preservar o histórico — depois disso os valores não mudam mais.
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" onClick={arquivarMes} disabled={arquivando} className="shrink-0">
+                <Archive size={14} /> {arquivando ? 'Arquivando…' : 'Arquivar Período'}
+              </Button>
+            </div>
+          ) : null}
 
           {/* Farol rapido — NRR / Churn Rate / Saldo / Risco.
               Verde = dentro da meta, vermelho = fora. Sempre visivel;
