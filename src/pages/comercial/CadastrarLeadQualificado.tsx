@@ -21,6 +21,7 @@ import {
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { ContactAttemptForm } from '@/components/comercial/ContactAttemptForm'
 import { AttemptHistoryCard } from '@/components/comercial/AttemptHistoryCard'
+import { LeadCard } from '@/components/comercial/LeadCard'
 import { useComercial } from './store'
 import {
   AUTORIDADE_OPCOES,
@@ -152,8 +153,13 @@ export default function CadastrarLeadQualificado() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Coluna esquerda — Dados do lead */}
+      <div className="grid gap-4 lg:grid-cols-4">
+        {/* Painel lateral — Dados Originais do CRM (contexto, só leitura) */}
+        <div className="lg:col-span-1">
+          <LeadCard lead={lead} secoes={['originais']} />
+        </div>
+
+        {/* Coluna central — Dados do lead */}
         <div className="space-y-4 lg:col-span-2">
           <Card titulo="Dados do lead">
             <div className="grid grid-cols-2 gap-3">

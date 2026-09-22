@@ -181,18 +181,37 @@ export const INTEGRACAO_INICIAL: IntegracaoConfig = (() => {
 
 /** Payload fake de um CRM, pro botão "Simular Lead Recebido via Webhook". */
 export function fakeWebhookPayload(provider: CrmProvider): Record<string, string> {
-  const amostras: Record<string, string>[] = [
-    { name: 'Dr. Túlio Barreto', company: 'Clínica Barreto', personal_phone: '(11) 90000-7777', email: 'tulio@barreto.com', source: 'Anúncio Meta', cf_especialidade: 'Cardiologia' },
-    { name: 'Dra. Paula Andrade', company: 'Andrade Estética', personal_phone: '(21) 90000-8888', email: 'paula@andradeestetica.com', source: 'Anúncio Google', cf_especialidade: 'Dermatologia' },
-    { name: 'Dr. Ivan Correia', company: 'Instituto Correia', personal_phone: '(31) 90000-9999', email: 'ivan@correia.com', source: 'Formulário do site', cf_especialidade: 'Ortopedia' },
+  const amostras: {
+    name: string
+    company: string
+    personal_phone: string
+    email: string
+    source: string
+    cf_especialidade: string
+    extras: Record<string, string>
+  }[] = [
+    {
+      name: 'Dr. Túlio Barreto', company: 'Clínica Barreto', personal_phone: '(11) 90000-7777', email: 'tulio@barreto.com', source: 'Anúncio Meta', cf_especialidade: 'Cardiologia',
+      // Campos EXTRA do formulário (não mapeados) → caem em dadosOriginaisCRM
+      extras: { 'Quanto você fatura por mês': 'R$ 60 a 80 mil', 'Já investe em anúncios?': 'Sim, no Meta', 'Melhor horário pra contato': 'Manhã' },
+    },
+    {
+      name: 'Dra. Paula Andrade', company: 'Andrade Estética', personal_phone: '(21) 90000-8888', email: 'paula@andradeestetica.com', source: 'Anúncio Google', cf_especialidade: 'Dermatologia',
+      extras: { 'Nº de unidades': '2', 'Principal objetivo': 'Escalar aquisição' },
+    },
+    {
+      name: 'Dr. Ivan Correia', company: 'Instituto Correia', personal_phone: '(31) 90000-9999', email: 'ivan@correia.com', source: 'Formulário do site', cf_especialidade: 'Ortopedia',
+      extras: { 'Cidade': 'Belo Horizonte - MG', 'Como conheceu a gente': 'Indicação de colega', 'Urgência': 'Alta' },
+    },
   ]
   const base = amostras[Math.floor(Math.random() * amostras.length)]
-  // Adapta as CHAVES ao provedor escolhido (cada CRM nomeia diferente), pra
-  // exercitar o mapeamento de campos configurado.
-  if (provider === 'hubspot') return { firstname: base.name, company: base.company, phone: base.personal_phone, email: base.email, hs_analytics_source: base.source }
-  if (provider === 'meta_ads') return { full_name: base.name, phone_number: base.personal_phone, email: base.email, ad_name: base.source }
-  if (provider === 'pipedrive') return { name: base.name, org_name: base.company, phone: base.personal_phone, email: base.email, source_channel: base.source }
-  return base // rd_station / genérico usam as chaves base
+  const extras = base.extras
+  // Adapta as CHAVES mapeadas ao provedor (cada CRM nomeia diferente) e sempre
+  // anexa os EXTRAS (chaves não mapeadas) pra exercitar o dadosOriginaisCRM.
+  if (provider === 'hubspot') return { firstname: base.name, company: base.company, phone: base.personal_phone, email: base.email, hs_analytics_source: base.source, ...extras }
+  if (provider === 'meta_ads') return { full_name: base.name, phone_number: base.personal_phone, email: base.email, ad_name: base.source, ...extras }
+  if (provider === 'pipedrive') return { name: base.name, org_name: base.company, phone: base.personal_phone, email: base.email, source_channel: base.source, ...extras }
+  return { name: base.name, company: base.company, personal_phone: base.personal_phone, email: base.email, source: base.source, cf_especialidade: base.cf_especialidade, ...extras }
 }
 
 /**
@@ -208,6 +227,13 @@ export function receiveWebhookLead(
     const valor = payload[m.externo]
     if (valor != null && valor !== '') campos[m.interno] = valor
   }
+  // Tudo que NÃO foi mapeado pra um campo fixo cai em dadosOriginaisCRM
+  // (schema livre — só contexto). Campanha nova com pergunta nova aparece
+  // automaticamente, sem configurar nada.
+  const usados = new Set(config.mapeamento.map((m) => m.externo))
+  const dadosOriginaisCRM = Object.entries(payload)
+    .filter(([k, v]) => !usados.has(k) && v != null && v !== '')
+    .map(([campo, valor]) => ({ campo, valor: String(valor) }))
   const hoje = todayISO()
   const nome = campos.nomeContato || 'Lead sem nome'
   // Sem origem mapeada = gap de rastreamento → "Sem Origem Identificada"
@@ -224,6 +250,7 @@ export function receiveWebhookLead(
     crmProvider: presetLabel(config.provider),
     canalOriginal: campos.origem || undefined,
     especialidade: campos.especialidade || undefined,
+    dadosOriginaisCRM: dadosOriginaisCRM.length ? dadosOriginaisCRM : undefined,
     dataEntrada: hoje,
     socialSellerId: '',
     dataCaptacao: hoje,

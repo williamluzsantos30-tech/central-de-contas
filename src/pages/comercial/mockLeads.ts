@@ -41,6 +41,17 @@ export interface TentativaContato {
   sdrId: string
 }
 
+/**
+ * Resposta bruta do formulário/CRM de origem. Schema LIVRE — `campo` e
+ * `grupo` variam por campanha/formulário. SÓ pra leitura/contexto humano:
+ * NUNCA usar em lógica (cálculo, filtro, validação, regra condicional).
+ */
+export interface DadoOriginalCRM {
+  campo: string
+  valor: string
+  grupo?: string
+}
+
 export const RESULTADO_TENTATIVA_OPCOES: { key: ResultadoTentativa; label: string }[] = [
   { key: 'nao_atendeu', label: 'Não atendeu' },
   { key: 'caixa_postal', label: 'Caixa postal' },
@@ -94,6 +105,8 @@ export interface Lead {
   crmProvider?: string
   /** Quando o lead entrou na Caixa de Entrada (ISO). */
   dataEntrada?: string
+  /** Respostas brutas do formulário/CRM de origem (schema livre, só contexto). */
+  dadosOriginaisCRM?: DadoOriginalCRM[]
 
   // Social Selling
   socialSellerId: string // quem captou (só quando origemEntrada = 'social_selling')
@@ -258,6 +271,14 @@ export const MOCK_LEADS: Lead[] = [
     socialSellerId: '',
     dataCaptacao: '2026-09-20',
     qualificado: false,
+    // Formulário com grupo (um dos formatos possíveis) + 1 campo solto.
+    dadosOriginaisCRM: [
+      { grupo: 'FORM NATIVO MOV', campo: 'Você é', valor: 'Médico(a)' },
+      { grupo: 'FORM NATIVO MOV', campo: 'Especialidade', valor: 'Psiquiatria' },
+      { grupo: 'FORM NATIVO MOV', campo: 'Quanto você fatura por mês', valor: 'R$ 40 a 60 mil' },
+      { grupo: 'FORM NATIVO MOV', campo: 'Já investe em tráfego pago?', valor: 'Sim, no Meta' },
+      { campo: 'UTM Campanha', valor: 'set26-psiquiatria-frio' },
+    ],
   },
   {
     id: 'lead-10',
@@ -273,6 +294,12 @@ export const MOCK_LEADS: Lead[] = [
     socialSellerId: '',
     dataCaptacao: '2026-09-19',
     qualificado: false,
+    // Conjunto DIFERENTE: menos campos, sem grupo, nomes distintos.
+    dadosOriginaisCRM: [
+      { campo: 'Nome da clínica', valor: 'Ortopedia Almeida' },
+      { campo: 'Cidade', valor: 'Joinville - SC' },
+      { campo: 'Melhor horário pra contato', valor: 'À tarde' },
+    ],
   },
   // Caixa de Entrada — veio da prospecção ativa (Social Selling)
   {

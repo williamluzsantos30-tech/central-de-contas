@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Inbox, PhoneCall, Plug, Radio, AlertOctagon } from 'lucide-react'
+import { Inbox, PhoneCall, Plug, Radio, AlertOctagon, ChevronDown } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, Badge, type Column, type Tone } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
@@ -35,6 +35,35 @@ function OrigemCell({ lead }: { lead: Lead }) {
     return <Badge tone="accent">🔌 CRM · {lead.crmProvider ?? 'CRM'}</Badge>
   }
   return <Badge tone="purple">📡 Social Selling</Badge>
+}
+
+/** Preview expansível dos dados originais do CRM (primeiros 4 campos). */
+function CrmPreviewCell({ lead }: { lead: Lead }) {
+  const [aberto, setAberto] = useState(false)
+  const dados = lead.dadosOriginaisCRM ?? []
+  if (dados.length === 0) return <span className="text-[11px] text-muted">—</span>
+  return (
+    <div className="text-[11px]">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="inline-flex items-center gap-1 text-brand-300 hover:underline"
+      >
+        <ChevronDown size={11} className={aberto ? '' : '-rotate-90'} />
+        {dados.length} campo{dados.length > 1 ? 's' : ''}
+      </button>
+      {aberto && (
+        <ul className="mt-1 space-y-0.5">
+          {dados.slice(0, 4).map((d, i) => (
+            <li key={i} className="text-muted">
+              <span className="text-zinc-400">{d.campo}:</span> <span className="text-zinc-200">{d.valor}</span>
+            </li>
+          ))}
+          {dados.length > 4 && <li className="text-[10px] text-muted">+{dados.length - 4} — ver na ficha</li>}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 export default function CaixaEntrada() {
@@ -74,6 +103,7 @@ export default function CaixaEntrada() {
     { key: 'contato', header: 'Contato', render: (l) => <ContatoEmpresa lead={l} /> },
     { key: 'origem', header: 'Origem', render: (l) => <OrigemCell lead={l} /> },
     { key: 'canal', header: 'Canal / Fonte original', render: (l) => l.canalOriginal ?? l.origem ?? '—' },
+    { key: 'crm', header: 'Dados CRM', render: (l) => <CrmPreviewCell lead={l} /> },
     { key: 'data', header: 'Data recebimento', render: (l) => fmtData(l.dataEntrada ?? l.dataCaptacao) },
     { key: 'sla', header: 'SLA', render: (l) => <SLABadge sla={calculateLeadSLA(l, slaConfig)} /> },
     {
@@ -132,7 +162,7 @@ export default function CaixaEntrada() {
         rows={rows}
         search={{ value: q, onChange: setQ, placeholder: 'Buscar contato ou empresa...' }}
         emptyLabel="Caixa vazia — nenhum lead aguardando."
-        minWidth={960}
+        minWidth={1080}
       />
     </div>
   )
