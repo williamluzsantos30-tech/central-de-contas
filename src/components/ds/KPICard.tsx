@@ -38,6 +38,9 @@ interface Props {
   metaInvertida?: boolean
   /** Salva o valor da meta editado inline. */
   onSalvarMeta?: (valor: number) => void
+  /** Métrica CALCULADA (metas): mostra "Planejado: X" (derivado das metas de
+   *  input), sem edição. O `value` grande é o Realizado. */
+  planejadoLabel?: string
 }
 
 const BARRA: Record<string, string> = { ok: 'bg-green-500', med: 'bg-orange-500', ruim: 'bg-red-500' }
@@ -89,6 +92,7 @@ export function KPICard({
   metaLabel,
   metaInvertida,
   onSalvarMeta,
+  planejadoLabel,
 }: Props) {
   const temSpark = sparkline && sparkline.some((v) => v !== 0)
   const comparacao =
@@ -163,6 +167,10 @@ export function KPICard({
             <Plus size={11} /> Definir meta
           </button>
         )
+      ) : planejadoLabel != null ? (
+        <p className="mt-1.5 text-[10px] text-muted">
+          Planejado: <span className="font-semibold text-brand-300">{planejadoLabel}</span>
+        </p>
       ) : (
         <p className="mt-1.5 text-[10px] text-muted">{sub ?? 'vs. mês anterior'}</p>
       )}

@@ -21,17 +21,17 @@ export interface GoalProgress {
 /** Extrai da MarketingFunnel o valor correspondente à métrica da meta. */
 export function metricaValor(f: MarketingFunnel, metrica: MetricaMeta): number {
   switch (metrica) {
+    case 'investimento': return f.investimento
     case 'leads': return f.leads
     case 'leads_qualificados': return f.qualificados
     case 'reunioes_agendadas': return f.reunioesAgendadas
     case 'reunioes_realizadas': return f.reunioesRealizadas
+    case 'reunioes_a_serem': return f.reunioesASerem
+    case 'cancelamentos': return f.cancelamentos
     case 'fechamentos': return f.fechamentos
     case 'mrr': return f.mrr
     case 'caixa_recolhido': return f.caixaRecolhido
     case 'contrato_fechado': return f.contratoFechado
-    case 'taxa_agendamento': return f.taxaAgendamento
-    case 'taxa_conversao': return f.txConversao
-    case 'no_show_max': return f.noShowPct
   }
 }
 

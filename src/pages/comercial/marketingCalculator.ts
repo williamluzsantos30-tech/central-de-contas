@@ -255,6 +255,59 @@ export function calculateMarketingFunnel(
   }
 }
 
+/**
+ * Funil PLANEJADO — calcula as métricas DERIVADAS a partir das metas de INPUT,
+ * usando EXATAMENTE as mesmas fórmulas do funil realizado (nunca diverge).
+ * Recebe as metas de input por chave (investimento, leads, fechamentos…).
+ */
+export interface PlannedFunnel {
+  cpl: number
+  mqlPct: number
+  cpmql: number
+  custoPorAgendada: number
+  custoPorRealizada: number
+  noShowPct: number
+  taxaAgendamento: number
+  taxaCancelamentos: number
+  txConversao: number
+  ticketMedio: number
+  roasMrr: number
+  roasCaixa: number
+  roasContrato: number
+  cac: number
+}
+
+export function calculatePlannedFunnel(metas: Partial<Record<string, number>>): PlannedFunnel {
+  const inv = metas.investimento ?? 0
+  const leads = metas.leads ?? 0
+  const q = metas.leads_qualificados ?? 0
+  const ag = metas.reunioes_agendadas ?? 0
+  const real = metas.reunioes_realizadas ?? 0
+  const aSerem = metas.reunioes_a_serem ?? 0
+  const canc = metas.cancelamentos ?? 0
+  const fech = metas.fechamentos ?? 0
+  const mrr = metas.mrr ?? 0
+  const caixa = metas.caixa_recolhido ?? 0
+  const contrato = metas.contrato_fechado ?? 0
+  const ocorreram = ag - aSerem
+  return {
+    cpl: div(inv, leads),
+    mqlPct: div(q, leads) * 100,
+    cpmql: div(inv, q),
+    custoPorAgendada: div(inv, ag),
+    custoPorRealizada: div(inv, real),
+    noShowPct: ocorreram > 0 ? (div(real, ocorreram) - 1) * 100 : 0,
+    taxaAgendamento: div(ag, q) * 100,
+    taxaCancelamentos: div(canc, ag) * 100,
+    txConversao: div(fech, real) * 100,
+    ticketMedio: div(caixa, fech),
+    roasMrr: div(mrr, inv),
+    roasCaixa: div(caixa, inv),
+    roasContrato: div(contrato, inv),
+    cac: div(inv, fech),
+  }
+}
+
 /** Canais presentes no período (leads) ∪ canais com investimento lançado. */
 export function canaisDoPeriodo(
   leads: Lead[],

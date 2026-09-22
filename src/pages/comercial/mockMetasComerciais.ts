@@ -8,18 +8,23 @@ import { weekRefOf } from './marketingCalculator'
 
 export type Periodicidade = 'semanal' | 'mensal'
 
+/**
+ * Métricas de INPUT — as ÚNICAS que podem ter meta própria. Todas as demais
+ * (CPL, MQL, taxas, ROAS, CAC, ticket…) são CALCULADAS a partir destas e
+ * nunca têm meta direta (ver calculatePlannedFunnel).
+ */
 export type MetricaMeta =
+  | 'investimento'
   | 'leads'
   | 'leads_qualificados'
   | 'reunioes_agendadas'
   | 'reunioes_realizadas'
+  | 'reunioes_a_serem'
+  | 'cancelamentos'
   | 'fechamentos'
   | 'mrr'
   | 'caixa_recolhido'
   | 'contrato_fechado'
-  | 'taxa_agendamento'
-  | 'taxa_conversao'
-  | 'no_show_max'
 
 export interface MetaComercial {
   id: string
@@ -40,17 +45,17 @@ export const METRICAS_META: {
   /** true quando "menos é melhor" (meta = limite máximo). */
   invertida?: boolean
 }[] = [
+  { key: 'investimento', label: 'Investimento', formato: 'brl' },
   { key: 'leads', label: 'Leads', formato: 'num' },
   { key: 'leads_qualificados', label: 'Leads Qualificados', formato: 'num' },
   { key: 'reunioes_agendadas', label: 'Reuniões Agendadas', formato: 'num' },
   { key: 'reunioes_realizadas', label: 'Reuniões Realizadas', formato: 'num' },
+  { key: 'reunioes_a_serem', label: 'A Serem Realizadas', formato: 'num' },
+  { key: 'cancelamentos', label: 'Cancelamentos', formato: 'num' },
   { key: 'fechamentos', label: 'Fechamentos', formato: 'num' },
   { key: 'mrr', label: 'MRR', formato: 'brl' },
   { key: 'caixa_recolhido', label: 'Caixa Recolhido', formato: 'brl' },
   { key: 'contrato_fechado', label: 'Contrato Fechado', formato: 'brl' },
-  { key: 'taxa_agendamento', label: 'Taxa de Agendamento', formato: 'pct' },
-  { key: 'taxa_conversao', label: 'Taxa de Conversão', formato: 'pct' },
-  { key: 'no_show_max', label: 'No-show Máximo', formato: 'pct', invertida: true },
 ]
 
 export function metricaInfo(metrica: MetricaMeta) {

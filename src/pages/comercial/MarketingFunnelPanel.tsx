@@ -16,6 +16,7 @@ import { metaDoCanal } from './mockComercialConfig'
 import {
   calculateMarketingFunnel,
   calculateChannelComparison,
+  calculatePlannedFunnel,
   canaisDoPeriodo,
   periodoMes,
   periodoRange,
@@ -23,6 +24,7 @@ import {
   weekRefOf,
   SEM_ORIGEM,
   type MarketingFunnel,
+  type PlannedFunnel,
 } from './marketingCalculator'
 import {
   formatMetaValor,
@@ -92,20 +94,35 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
     if (existente) atualizarMeta(existente.id, { valorMeta: valor })
     else criarMetas([{ periodicidade, metrica, valorMeta: valor, periodoReferencia: refMeta }])
   }
-  /** Props do KPICard por card: comparação (marketing) OU meta editável (metas). */
-  function extra(metrica: MetricaMeta | null, atual: number, anterior: number, dir: 'maior' | 'menor') {
+
+  // Metas de INPUT do período (Geral) → funil PLANEJADO (métricas calculadas).
+  const metasInput = useMemo(() => {
+    const r: Partial<Record<string, number>> = {}
+    for (const m of metasComerciais) {
+      if (m.periodicidade === periodicidade && m.periodoReferencia === refMeta && !m.canal && !m.responsavelId) {
+        r[m.metrica] = m.valorMeta
+      }
+    }
+    return r
+  }, [metasComerciais, periodicidade, refMeta])
+  const planned = useMemo(() => calculatePlannedFunnel(metasInput), [metasInput])
+
+  /** Card de métrica de INPUT: meta editável (metas) ou comparação (marketing). */
+  function pIn(metrica: MetricaMeta, atual: number, anterior: number, dir: 'maior' | 'menor') {
     if (!ehMetas) return { valorAtual: atual, valorAnterior: anterior, direcaoFavoravel: dir }
-    if (!metrica) return {}
     const m = metaGeralDe(metrica)
-    const info = metricaInfo(metrica)
     return {
       comMeta: true,
       valorAtual: atual,
       meta: m?.valorMeta ?? null,
       metaLabel: m ? formatMetaValor(metrica, m.valorMeta) : undefined,
-      metaInvertida: !!info.invertida,
       onSalvarMeta: (v: number) => salvarMetaInline(metrica, v),
     }
+  }
+  /** Card CALCULADO: Realizado + Planejado (metas) ou comparação (marketing). */
+  function pCalc(calcKey: keyof PlannedFunnel, atual: number, anterior: number, dir: 'maior' | 'menor', fmt: (n: number) => string) {
+    if (!ehMetas) return { valorAtual: atual, valorAnterior: anterior, direcaoFavoravel: dir }
+    return { planejadoLabel: fmt(planned[calcKey]) }
   }
 
   const metaAgend = metaDoCanal(metasMarketing, view, 'taxaAgendamento')
@@ -171,22 +188,22 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
       {/* BLOCO 1 — Topo de funil */}
       <Bloco titulo="Topo de funil" icon={<Megaphone size={13} />}>
-        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" {...extra(null, f.investimento, fAnt.investimento, 'maior')} />
-        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" {...extra('leads', f.leads, fAnt.leads, 'maior')} />
-        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" {...extra(null, f.cpl, fAnt.cpl, 'menor')} />
-        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" {...extra('leads_qualificados', f.qualificados, fAnt.qualificados, 'maior')} />
-        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" {...extra(null, f.mqlPct, fAnt.mqlPct, 'maior')} />
-        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" {...extra(null, f.cpmql, fAnt.cpmql, 'menor')} />
+        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" {...pIn('investimento', f.investimento, fAnt.investimento, 'maior')} />
+        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" {...pIn('leads', f.leads, fAnt.leads, 'maior')} />
+        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" {...pCalc('cpl', f.cpl, fAnt.cpl, 'menor', fmtBRL)} />
+        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" {...pIn('leads_qualificados', f.qualificados, fAnt.qualificados, 'maior')} />
+        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" {...pCalc('mqlPct', f.mqlPct, fAnt.mqlPct, 'maior', pct)} />
+        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" {...pCalc('cpmql', f.cpmql, fAnt.cpmql, 'menor', fmtBRL)} />
       </Bloco>
 
       {/* BLOCO 2 — Reuniões */}
       <Bloco titulo="Reuniões" icon={<Megaphone size={13} />}>
-        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" {...extra('reunioes_agendadas', f.reunioesAgendadas, fAnt.reunioesAgendadas, 'maior')} />
-        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" {...extra(null, f.custoPorAgendada, fAnt.custoPorAgendada, 'menor')} />
-        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" {...extra('reunioes_realizadas', f.reunioesRealizadas, fAnt.reunioesRealizadas, 'maior')} />
-        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" {...extra(null, f.custoPorRealizada, fAnt.custoPorRealizada, 'menor')} />
-        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" {...extra(null, f.reunioesASerem, fAnt.reunioesASerem, 'maior')} />
-        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" {...extra('no_show_max', f.noShowPct, fAnt.noShowPct, 'menor')} />
+        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" {...pIn('reunioes_agendadas', f.reunioesAgendadas, fAnt.reunioesAgendadas, 'maior')} />
+        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" {...pCalc('custoPorAgendada', f.custoPorAgendada, fAnt.custoPorAgendada, 'menor', fmtBRL)} />
+        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" {...pIn('reunioes_realizadas', f.reunioesRealizadas, fAnt.reunioesRealizadas, 'maior')} />
+        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" {...pCalc('custoPorRealizada', f.custoPorRealizada, fAnt.custoPorRealizada, 'menor', fmtBRL)} />
+        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" {...pIn('reunioes_a_serem', f.reunioesASerem, fAnt.reunioesASerem, 'maior')} />
+        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" {...pCalc('noShowPct', f.noShowPct, fAnt.noShowPct, 'menor', pct)} />
       </Bloco>
       <SubLinhas>
         <SubItem label="Taxa de agendamento" valor={pct(f.taxaAgendamento)} tone={ehMetas ? 'neutral' : toneAgend} meta={ehMetas ? undefined : `Meta ${pct(metaAgend)}`} />
@@ -195,12 +212,12 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
       {/* BLOCO 3 — Fechamentos e receita */}
       <Bloco titulo="Fechamentos e receita" icon={<DollarSign size={13} />}>
-        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" {...extra('fechamentos', f.fechamentos, fAnt.fechamentos, 'maior')} />
-        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" {...extra('taxa_conversao', f.txConversao, fAnt.txConversao, 'maior')} />
-        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" {...extra('mrr', f.mrr, fAnt.mrr, 'maior')} />
-        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" {...extra('caixa_recolhido', f.caixaRecolhido, fAnt.caixaRecolhido, 'maior')} />
-        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="total dos contratos" {...extra('contrato_fechado', f.contratoFechado, fAnt.contratoFechado, 'maior')} />
-        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" {...extra(null, f.ticketMedio, fAnt.ticketMedio, 'maior')} />
+        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" {...pIn('fechamentos', f.fechamentos, fAnt.fechamentos, 'maior')} />
+        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" {...pCalc('txConversao', f.txConversao, fAnt.txConversao, 'maior', pct)} />
+        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" {...pIn('mrr', f.mrr, fAnt.mrr, 'maior')} />
+        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" {...pIn('caixa_recolhido', f.caixaRecolhido, fAnt.caixaRecolhido, 'maior')} />
+        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="total dos contratos" {...pIn('contrato_fechado', f.contratoFechado, fAnt.contratoFechado, 'maior')} />
+        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" {...pCalc('ticketMedio', f.ticketMedio, fAnt.ticketMedio, 'maior', fmtBRL)} />
       </Bloco>
       <SubLinhas>
         <SubItem label="Conversão reuniões do mês" valor={pct(f.txConversaoReunioesDoMes)} />
@@ -208,10 +225,10 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
       {/* BLOCO 4 — Retorno */}
       <Bloco titulo="Retorno" icon={<DollarSign size={13} />} cols4>
-        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" {...extra(null, f.roasMrr, fAnt.roasMrr, 'maior')} />
-        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" {...extra(null, f.roasCaixa, fAnt.roasCaixa, 'maior')} />
-        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} {...extra(null, f.roasContrato, fAnt.roasContrato, 'maior')} />
-        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} {...extra(null, f.cac, fAnt.cac, 'menor')} />
+        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" {...pCalc('roasMrr', f.roasMrr, fAnt.roasMrr, 'maior', roas)} />
+        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" {...pCalc('roasCaixa', f.roasCaixa, fAnt.roasCaixa, 'maior', roas)} />
+        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} {...pCalc('roasContrato', f.roasContrato, fAnt.roasContrato, 'maior', roas)} />
+        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} {...pCalc('cac', f.cac, fAnt.cac, 'menor', fmtBRL)} />
       </Bloco>
 
       {/* BLOCO 5 — Comparativo entre canais (Marketing, visão Geral) */}
