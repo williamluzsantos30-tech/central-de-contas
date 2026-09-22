@@ -5,10 +5,12 @@
  * Investimento é input manual; metas colorem os KPIs.
  */
 import { useMemo, useState } from 'react'
-import { DollarSign, Megaphone } from 'lucide-react'
+import { DollarSign, Megaphone, Plus } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, OutlineButton, Modal, Input, Select, type Tone } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { fmtBRL } from '@/components/comercial/LeadsTable'
+import { WeekNavigator } from '@/components/comercial/WeekNavigator'
+import { MetaFormModal } from '@/components/comercial/MetaFormModal'
 import { useComercial } from './store'
 import { metaDoCanal } from './mockComercialConfig'
 import {
@@ -17,115 +19,188 @@ import {
   canaisDoPeriodo,
   periodoMes,
   periodoRange,
+  periodoSemana,
+  weekRefOf,
   SEM_ORIGEM,
   type MarketingFunnel,
 } from './marketingCalculator'
+import {
+  formatMetaValor,
+  metricaInfo,
+  metricaLabel,
+  type MetaComercial,
+  type MetricaMeta,
+  type Periodicidade,
+} from './mockMetasComerciais'
+import { calculateGoalProgress, statusDeProgresso } from './metasComerciais'
+import { escopoLabel } from '@/components/comercial/GoalProgressCard'
 
 const CANAIS_BASE = ['Meta Ads', 'Google Ads', 'Indicação', 'Social Selling', 'Inbound', 'Orgânico']
 const pct = (v: number) => `${v.toFixed(0)}%`
 const roas = (v: number) => `${v.toFixed(2)}x`
 
-export default function MarketingFunnelPanel() {
-  const { leads, investimentos, metasMarketing, registrarInvestimentos } = useComercial()
-  const [tipoPeriodo, setTipoPeriodo] = useState<'mes' | 'custom'>('mes')
+export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'marketing' | 'metas' }) {
+  const ehMetas = modo === 'metas'
+  const {
+    leads,
+    investimentos,
+    metasMarketing,
+    registrarInvestimentos,
+    metasComerciais,
+    criarMetas,
+    atualizarMeta,
+  } = useComercial()
+  const [tipoPeriodo, setTipoPeriodo] = useState<'mes' | 'custom' | 'semana'>('mes')
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
+  const [semanaRef, setSemanaRef] = useState(weekRefOf())
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
   const [view, setView] = useState('Geral')
   const [invOpen, setInvOpen] = useState(false)
+  const [metaModalOpen, setMetaModalOpen] = useState(false)
+  const [metaEdit, setMetaEdit] = useState<MetaComercial | null>(null)
 
-  const filtro = useMemo(
-    () => (tipoPeriodo === 'custom' && (de || ate) ? periodoRange(de, ate) : periodoMes(mes)),
-    [tipoPeriodo, mes, de, ate],
-  )
+  const filtro = useMemo(() => {
+    if (ehMetas) return tipoPeriodo === 'semana' ? periodoSemana(semanaRef) : periodoMes(mes)
+    return tipoPeriodo === 'custom' && (de || ate) ? periodoRange(de, ate) : periodoMes(mes)
+  }, [ehMetas, tipoPeriodo, mes, semanaRef, de, ate])
+
   const canais = useMemo(() => canaisDoPeriodo(leads, investimentos, filtro), [leads, investimentos, filtro])
   const canalSel = view === 'Geral' ? undefined : view
   const f = useMemo(() => calculateMarketingFunnel(leads, investimentos, filtro, canalSel), [leads, investimentos, filtro, canalSel])
-  // Período anterior equivalente (mês/intervalo anterior) — comparação nos cards.
   const fAnt = useMemo(
     () => calculateMarketingFunnel(leads, investimentos, filtro.anterior(), canalSel),
     [leads, investimentos, filtro, canalSel],
   )
   const comparativo = useMemo(
-    () => (view === 'Geral' ? calculateChannelComparison(leads, investimentos, filtro) : []),
-    [view, leads, investimentos, filtro],
+    () => (!ehMetas && view === 'Geral' ? calculateChannelComparison(leads, investimentos, filtro) : []),
+    [ehMetas, view, leads, investimentos, filtro],
   )
+
+  // ── Metas (modo "metas") ──────────────────────────────────────────────
+  const periodicidade: Periodicidade = tipoPeriodo === 'semana' ? 'semanal' : 'mensal'
+  const refMeta = tipoPeriodo === 'semana' ? semanaRef : mes
+  const metaGeralDe = (metrica: MetricaMeta) =>
+    metasComerciais.find(
+      (m) => m.periodicidade === periodicidade && m.periodoReferencia === refMeta && m.metrica === metrica && !m.canal && !m.responsavelId,
+    )
+  const metasEscopo = metasComerciais.filter(
+    (m) => m.periodicidade === periodicidade && m.periodoReferencia === refMeta && (m.canal || m.responsavelId),
+  )
+  function salvarMetaInline(metrica: MetricaMeta, valor: number) {
+    const existente = metaGeralDe(metrica)
+    if (existente) atualizarMeta(existente.id, { valorMeta: valor })
+    else criarMetas([{ periodicidade, metrica, valorMeta: valor, periodoReferencia: refMeta }])
+  }
+  /** Props do KPICard por card: comparação (marketing) OU meta editável (metas). */
+  function extra(metrica: MetricaMeta | null, atual: number, anterior: number, dir: 'maior' | 'menor') {
+    if (!ehMetas) return { valorAtual: atual, valorAnterior: anterior, direcaoFavoravel: dir }
+    if (!metrica) return {}
+    const m = metaGeralDe(metrica)
+    const info = metricaInfo(metrica)
+    return {
+      comMeta: true,
+      valorAtual: atual,
+      meta: m?.valorMeta ?? null,
+      metaLabel: m ? formatMetaValor(metrica, m.valorMeta) : undefined,
+      metaInvertida: !!info.invertida,
+      onSalvarMeta: (v: number) => salvarMetaInline(metrica, v),
+    }
+  }
 
   const metaAgend = metaDoCanal(metasMarketing, view, 'taxaAgendamento')
   const metaRoas = metaDoCanal(metasMarketing, view, 'roasContrato')
   const metaCac = metaDoCanal(metasMarketing, view, 'cacAlvo')
-
   const toneAgend: Tone = f.taxaAgendamento >= metaAgend ? 'success' : 'danger'
   const toneRoas: Tone = f.roasContrato >= metaRoas ? 'success' : f.roasContrato < 1 ? 'danger' : 'warning'
   const toneCac: Tone = f.fechamentos === 0 ? 'neutral' : f.cac <= metaCac ? 'success' : 'danger'
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Marketing']} />
+      <Breadcrumb trilha={['Comercial', ehMetas ? 'Metas' : 'Marketing']} />
       <PageHeader
-        title="Marketing"
-        description="Funil de aquisição — investimento, custo por etapa e retorno"
+        title={ehMetas ? 'Metas' : 'Marketing'}
+        description={ehMetas ? 'Metas do funil — realizado vs. meta, edite direto no card' : 'Funil de aquisição — investimento, custo por etapa e retorno'}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={tipoPeriodo} onChange={(e) => setTipoPeriodo(e.target.value as 'mes' | 'custom')} className="w-32">
-              <option value="mes">Por mês</option>
-              <option value="custom">Intervalo</option>
+            <Select value={tipoPeriodo} onChange={(e) => setTipoPeriodo(e.target.value as 'mes' | 'custom' | 'semana')} className="w-32">
+              {ehMetas ? (
+                <>
+                  <option value="mes">Mensal</option>
+                  <option value="semana">Semanal</option>
+                </>
+              ) : (
+                <>
+                  <option value="mes">Por mês</option>
+                  <option value="custom">Intervalo</option>
+                </>
+              )}
             </Select>
-            {tipoPeriodo === 'mes' ? (
-              <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="rounded-md border border-border bg-bg-card px-2 py-1.5 text-xs text-zinc-100" />
-            ) : (
+            {tipoPeriodo === 'semana' ? (
+              <WeekNavigator semanaRef={semanaRef} onChange={setSemanaRef} />
+            ) : tipoPeriodo === 'custom' ? (
               <>
                 <input type="date" value={de} onChange={(e) => setDe(e.target.value)} className="rounded-md border border-border bg-bg-card px-2 py-1.5 text-xs text-zinc-100" />
                 <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="rounded-md border border-border bg-bg-card px-2 py-1.5 text-xs text-zinc-100" />
               </>
+            ) : (
+              <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="rounded-md border border-border bg-bg-card px-2 py-1.5 text-xs text-zinc-100" />
             )}
-            <PrimaryButton size="sm" onClick={() => setInvOpen(true)}>
-              <DollarSign size={14} /> Registrar Investimento do Mês
-            </PrimaryButton>
+            {ehMetas ? (
+              <PrimaryButton size="sm" onClick={() => { setMetaEdit(null); setMetaModalOpen(true) }}>
+                <Plus size={14} /> Nova Meta
+              </PrimaryButton>
+            ) : (
+              <PrimaryButton size="sm" onClick={() => setInvOpen(true)}>
+                <DollarSign size={14} /> Registrar Investimento do Mês
+              </PrimaryButton>
+            )}
           </div>
         }
       />
 
-      {/* Seletor de visão: Geral + um por canal presente no período */}
-      <div className="mb-5 flex flex-wrap gap-1.5">
-        <ViewTab label="🌐 Geral" ativo={view === 'Geral'} onClick={() => setView('Geral')} />
-        {canais.map((c) => (
-          <ViewTab key={c} label={c} ativo={view === c} onClick={() => setView(c)} />
-        ))}
-      </div>
+      {/* Seletor de visão por canal — só no Marketing */}
+      {!ehMetas && (
+        <div className="mb-5 flex flex-wrap gap-1.5">
+          <ViewTab label="🌐 Geral" ativo={view === 'Geral'} onClick={() => setView('Geral')} />
+          {canais.map((c) => (
+            <ViewTab key={c} label={c} ativo={view === c} onClick={() => setView(c)} />
+          ))}
+        </div>
+      )}
 
       {/* BLOCO 1 — Topo de funil */}
       <Bloco titulo="Topo de funil" icon={<Megaphone size={13} />}>
-        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" valorAtual={f.investimento} valorAnterior={fAnt.investimento} direcaoFavoravel="maior" />
-        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" valorAtual={f.leads} valorAnterior={fAnt.leads} direcaoFavoravel="maior" />
-        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" valorAtual={f.cpl} valorAnterior={fAnt.cpl} direcaoFavoravel="menor" />
-        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" valorAtual={f.qualificados} valorAnterior={fAnt.qualificados} direcaoFavoravel="maior" />
-        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" valorAtual={f.mqlPct} valorAnterior={fAnt.mqlPct} direcaoFavoravel="maior" />
-        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" valorAtual={f.cpmql} valorAnterior={fAnt.cpmql} direcaoFavoravel="menor" />
+        <KPICard label="Investimento" value={fmtBRL(f.investimento)} tone="neutral" sub="mídia no período" {...extra(null, f.investimento, fAnt.investimento, 'maior')} />
+        <KPICard label="Leads" value={String(f.leads)} tone="accent" sub="entraram na Caixa" {...extra('leads', f.leads, fAnt.leads, 'maior')} />
+        <KPICard label="CPL" value={fmtBRL(f.cpl)} tone="neutral" sub="custo por lead" {...extra(null, f.cpl, fAnt.cpl, 'menor')} />
+        <KPICard label="Leads qualificados" value={String(f.qualificados)} tone="info" sub="viraram SQL" {...extra('leads_qualificados', f.qualificados, fAnt.qualificados, 'maior')} />
+        <KPICard label="MQL" value={pct(f.mqlPct)} tone="info" sub="qualificados / leads" {...extra(null, f.mqlPct, fAnt.mqlPct, 'maior')} />
+        <KPICard label="CPMQL" value={fmtBRL(f.cpmql)} tone="neutral" sub="custo por qualificado" {...extra(null, f.cpmql, fAnt.cpmql, 'menor')} />
       </Bloco>
 
       {/* BLOCO 2 — Reuniões */}
       <Bloco titulo="Reuniões" icon={<Megaphone size={13} />}>
-        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" valorAtual={f.reunioesAgendadas} valorAnterior={fAnt.reunioesAgendadas} direcaoFavoravel="maior" />
-        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" valorAtual={f.custoPorAgendada} valorAnterior={fAnt.custoPorAgendada} direcaoFavoravel="menor" />
-        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" valorAtual={f.reunioesRealizadas} valorAnterior={fAnt.reunioesRealizadas} direcaoFavoravel="maior" />
-        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" valorAtual={f.custoPorRealizada} valorAnterior={fAnt.custoPorRealizada} direcaoFavoravel="menor" />
-        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" valorAtual={f.reunioesASerem} valorAnterior={fAnt.reunioesASerem} direcaoFavoravel="maior" />
-        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" valorAtual={f.noShowPct} valorAnterior={fAnt.noShowPct} direcaoFavoravel="menor" />
+        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" {...extra('reunioes_agendadas', f.reunioesAgendadas, fAnt.reunioesAgendadas, 'maior')} />
+        <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" {...extra(null, f.custoPorAgendada, fAnt.custoPorAgendada, 'menor')} />
+        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" {...extra('reunioes_realizadas', f.reunioesRealizadas, fAnt.reunioesRealizadas, 'maior')} />
+        <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" {...extra(null, f.custoPorRealizada, fAnt.custoPorRealizada, 'menor')} />
+        <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" {...extra(null, f.reunioesASerem, fAnt.reunioesASerem, 'maior')} />
+        <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" {...extra('no_show_max', f.noShowPct, fAnt.noShowPct, 'menor')} />
       </Bloco>
       <SubLinhas>
-        <SubItem label="Taxa de agendamento" valor={pct(f.taxaAgendamento)} tone={toneAgend} meta={`Meta ${pct(metaAgend)}`} />
+        <SubItem label="Taxa de agendamento" valor={pct(f.taxaAgendamento)} tone={ehMetas ? 'neutral' : toneAgend} meta={ehMetas ? undefined : `Meta ${pct(metaAgend)}`} />
         <SubItem label="Cancelamentos" valor={`${f.cancelamentos} · ${pct(f.taxaCancelamentos)}`} />
       </SubLinhas>
 
       {/* BLOCO 3 — Fechamentos e receita */}
       <Bloco titulo="Fechamentos e receita" icon={<DollarSign size={13} />}>
-        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" valorAtual={f.fechamentos} valorAnterior={fAnt.fechamentos} direcaoFavoravel="maior" />
-        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" valorAtual={f.txConversao} valorAnterior={fAnt.txConversao} direcaoFavoravel="maior" />
-        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" valorAtual={f.mrr} valorAnterior={fAnt.mrr} direcaoFavoravel="maior" />
-        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" valorAtual={f.caixaRecolhido} valorAnterior={fAnt.caixaRecolhido} direcaoFavoravel="maior" />
-        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="total dos contratos" valorAtual={f.contratoFechado} valorAnterior={fAnt.contratoFechado} direcaoFavoravel="maior" />
-        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" valorAtual={f.ticketMedio} valorAnterior={fAnt.ticketMedio} direcaoFavoravel="maior" />
+        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" {...extra('fechamentos', f.fechamentos, fAnt.fechamentos, 'maior')} />
+        <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" {...extra('taxa_conversao', f.txConversao, fAnt.txConversao, 'maior')} />
+        <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" {...extra('mrr', f.mrr, fAnt.mrr, 'maior')} />
+        <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" {...extra('caixa_recolhido', f.caixaRecolhido, fAnt.caixaRecolhido, 'maior')} />
+        <KPICard label="Contrato fechado" value={fmtBRL(f.contratoFechado)} tone="neutral" sub="total dos contratos" {...extra('contrato_fechado', f.contratoFechado, fAnt.contratoFechado, 'maior')} />
+        <KPICard label="Ticket médio" value={fmtBRL(f.ticketMedio)} tone="neutral" sub="caixa ÷ fechamentos" {...extra(null, f.ticketMedio, fAnt.ticketMedio, 'maior')} />
       </Bloco>
       <SubLinhas>
         <SubItem label="Conversão reuniões do mês" valor={pct(f.txConversaoReunioesDoMes)} />
@@ -133,31 +208,117 @@ export default function MarketingFunnelPanel() {
 
       {/* BLOCO 4 — Retorno */}
       <Bloco titulo="Retorno" icon={<DollarSign size={13} />} cols4>
-        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" valorAtual={f.roasMrr} valorAnterior={fAnt.roasMrr} direcaoFavoravel="maior" />
-        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" valorAtual={f.roasCaixa} valorAnterior={fAnt.roasCaixa} direcaoFavoravel="maior" />
-        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} valorAtual={f.roasContrato} valorAnterior={fAnt.roasContrato} direcaoFavoravel="maior" />
-        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} valorAtual={f.cac} valorAnterior={fAnt.cac} direcaoFavoravel="menor" />
+        <KPICard label="ROAS MRR" value={roas(f.roasMrr)} tone={f.roasMrr >= 1 ? 'success' : 'warning'} sub="MRR ÷ investimento" {...extra(null, f.roasMrr, fAnt.roasMrr, 'maior')} />
+        <KPICard label="ROAS caixa recolhido" value={roas(f.roasCaixa)} tone={f.roasCaixa >= 1 ? 'success' : 'warning'} sub="caixa ÷ investimento" {...extra(null, f.roasCaixa, fAnt.roasCaixa, 'maior')} />
+        <KPICard label="ROAS contrato" value={roas(f.roasContrato)} tone={toneRoas} sub={`meta ${roas(metaRoas)}`} {...extra(null, f.roasContrato, fAnt.roasContrato, 'maior')} />
+        <KPICard label="CAC" value={fmtBRL(f.cac)} tone={toneCac} sub={`alvo ≤ ${fmtBRL(metaCac)}`} {...extra(null, f.cac, fAnt.cac, 'menor')} />
       </Bloco>
 
-      {/* BLOCO 5 — Comparativo entre canais (só na visão Geral) */}
-      {view === 'Geral' && (
+      {/* BLOCO 5 — Comparativo entre canais (Marketing, visão Geral) */}
+      {!ehMetas && view === 'Geral' && (
         <div className="mt-6">
           <h3 className="mb-3 text-sm font-semibold text-zinc-100">Comparativo entre canais</h3>
           <ComparativoCanais rows={comparativo} total={f} metasFn={(canal, campo) => metaDoCanal(metasMarketing, canal, campo)} />
         </div>
       )}
 
-      <InvestimentoModal
-        open={invOpen}
-        onClose={() => setInvOpen(false)}
-        periodo={filtro.mesRef}
-        canais={Array.from(new Set([...canais, ...CANAIS_BASE]))}
-        investimentosAtuais={investimentos}
-        onSalvar={(lancamentos) => {
-          registrarInvestimentos(filtro.mesRef, lancamentos)
-          setInvOpen(false)
-        }}
-      />
+      {/* Metas por canal/responsável (modo Metas) */}
+      {ehMetas && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100">Metas por canal / responsável</h3>
+            <OutlineButton size="sm" onClick={() => { setMetaEdit(null); setMetaModalOpen(true) }}>
+              <Plus size={13} /> Nova Meta Segmentada
+            </OutlineButton>
+          </div>
+          {metasEscopo.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border bg-bg-soft/30 p-4 text-center text-xs text-muted">
+              Nenhuma meta segmentada neste período.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {metasEscopo.map((m) => (
+                <MetaEscopoCard key={m.id} meta={m} leads={leads} investimentos={investimentos} onSalvar={(v) => atualizarMeta(m.id, { valorMeta: v })} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!ehMetas && (
+        <InvestimentoModal
+          open={invOpen}
+          onClose={() => setInvOpen(false)}
+          periodo={filtro.mesRef}
+          canais={Array.from(new Set([...canais, ...CANAIS_BASE]))}
+          investimentosAtuais={investimentos}
+          onSalvar={(lancamentos) => {
+            registrarInvestimentos(filtro.mesRef, lancamentos)
+            setInvOpen(false)
+          }}
+        />
+      )}
+
+      {ehMetas && (
+        <MetaFormModal
+          open={metaModalOpen}
+          onClose={() => { setMetaModalOpen(false); setMetaEdit(null) }}
+          meta={metaEdit}
+          periodicidadePadrao={periodicidade}
+          mesPadrao={mes}
+          semanaPadrao={semanaRef}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Card de meta segmentada (canal/responsável) com edição inline do valor. */
+function MetaEscopoCard({
+  meta,
+  leads,
+  investimentos,
+  onSalvar,
+}: {
+  meta: MetaComercial
+  leads: Parameters<typeof calculateGoalProgress>[1]
+  investimentos: Parameters<typeof calculateGoalProgress>[2]
+  onSalvar: (valor: number) => void
+}) {
+  const prog = calculateGoalProgress(meta, leads, investimentos)
+  const info = metricaInfo(meta.metrica)
+  const st = statusDeProgresso(prog.valorAtual, meta.valorMeta, !!info.invertida)
+  const [editando, setEditando] = useState(false)
+  const [rascunho, setRascunho] = useState(String(meta.valorMeta))
+  const barra = st.status === 'success' ? 'bg-green-500' : st.status === 'atencao' ? 'bg-orange-500' : 'bg-red-500'
+  return (
+    <div className="rounded-lg border border-border bg-bg-card p-3">
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-zinc-100">{metricaLabel(meta.metrica)}</p>
+          <p className="text-[11px] text-muted">{escopoLabel(meta)}</p>
+        </div>
+        {!editando && (
+          <button onClick={() => { setRascunho(String(meta.valorMeta)); setEditando(true) }} className="text-muted hover:text-brand-300" title="Editar meta">✏️</button>
+        )}
+      </div>
+      {editando ? (
+        <div className="flex items-center gap-1">
+          <Input type="number" min={0} value={rascunho} onChange={(e) => setRascunho(e.target.value)} className="text-xs" />
+          <button onClick={() => { const v = Number(rascunho); if (v > 0) onSalvar(v); setEditando(false) }} className="rounded border border-green-500/40 bg-green-500/10 px-2 py-1 text-[11px] text-green-300">ok</button>
+        </div>
+      ) : (
+        <>
+          <div className="mb-1.5 flex items-baseline gap-1 text-xs">
+            <span className="font-semibold text-zinc-100">{formatMetaValor(meta.metrica, prog.valorAtual)}</span>
+            <span className="text-muted">/ {formatMetaValor(meta.metrica, meta.valorMeta)}</span>
+            <span className="ml-auto text-[11px] tabular-nums text-muted">{Math.round(st.percentual)}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-bg-soft/60">
+            <div className={`h-full rounded-full ${barra}`} style={{ width: `${Math.min(100, Math.max(0, st.percentual))}%` }} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

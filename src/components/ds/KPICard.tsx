@@ -3,8 +3,8 @@
  * Label (com ícone) + valor grande (cor semântica) + linha de contexto.
  * Variantes: badge de variação (seta + %) e mini sparkline inline.
  */
-import type { ReactNode } from 'react'
-import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ArrowUpRight, ArrowDownRight, Minus, Pencil, Plus, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { textTone, hexTone, type Tone } from './tones'
 
@@ -28,6 +28,28 @@ interface Props {
   valorAnterior?: number
   /** Define se aumentar é bom ('maior', default) ou ruim ('menor': CAC, no-show…). */
   direcaoFavoravel?: 'maior' | 'menor'
+  /** Modo "meta": mostra meta/progresso e permite editar o alvo inline no card. */
+  comMeta?: boolean
+  /** Valor da meta (null = ainda não definida → botão "+ Definir meta"). */
+  meta?: number | null
+  /** Meta formatada pra exibição (ex.: "R$ 30.000"). */
+  metaLabel?: string
+  /** true = "menos é melhor" (no-show): inverte a cor da barra de progresso. */
+  metaInvertida?: boolean
+  /** Salva o valor da meta editado inline. */
+  onSalvarMeta?: (valor: number) => void
+}
+
+const BARRA: Record<string, string> = { ok: 'bg-green-500', med: 'bg-orange-500', ruim: 'bg-red-500' }
+const TXT: Record<string, string> = { ok: 'text-green-300', med: 'text-orange-300', ruim: 'text-red-300' }
+
+function metaCalc(atual: number, meta: number, invert: boolean): { pct: number; nivel: 'ok' | 'med' | 'ruim' } {
+  if (invert) {
+    const r = meta > 0 ? atual / meta : atual > 0 ? Infinity : 0
+    return { pct: r * 100, nivel: r <= 0.7 ? 'ok' : r <= 1 ? 'med' : 'ruim' }
+  }
+  const pct = meta > 0 ? (atual / meta) * 100 : 0
+  return { pct, nivel: pct >= 100 ? 'ok' : pct >= 50 ? 'med' : 'ruim' }
 }
 
 export interface PeriodComparison {
@@ -62,12 +84,32 @@ export function KPICard({
   valorAtual,
   valorAnterior,
   direcaoFavoravel = 'maior',
+  comMeta,
+  meta,
+  metaLabel,
+  metaInvertida,
+  onSalvarMeta,
 }: Props) {
   const temSpark = sparkline && sparkline.some((v) => v !== 0)
   const comparacao =
-    valorAtual != null && valorAnterior != null
+    !comMeta && valorAtual != null && valorAnterior != null
       ? calculatePeriodComparison(valorAtual, valorAnterior, direcaoFavoravel)
       : null
+
+  const [editando, setEditando] = useState(false)
+  const [rascunho, setRascunho] = useState('')
+  function abrirEdicao() {
+    setRascunho(meta != null ? String(meta) : '')
+    setEditando(true)
+  }
+  function salvar() {
+    const v = Number(rascunho)
+    if (onSalvarMeta && v > 0) onSalvarMeta(v)
+    setEditando(false)
+  }
+
+  const prog = comMeta && meta != null && meta > 0 && valorAtual != null ? metaCalc(valorAtual, meta, !!metaInvertida) : null
+
   return (
     <div className="rounded-lg border border-border bg-bg-card px-4 py-3.5">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -79,13 +121,51 @@ export function KPICard({
       </div>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <p className={cn('text-2xl font-bold leading-none tabular-nums', textTone[tone])}>{value}</p>
-        {comparacao ? (
+        {comMeta ? (
+          meta != null && !editando ? (
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted">
+              / <span className="text-zinc-300">{metaLabel}</span>
+              {prog && <span className={cn('font-semibold tabular-nums', TXT[prog.nivel])}>{Math.round(prog.pct)}%</span>}
+              <button onClick={abrirEdicao} className="text-muted hover:text-brand-300" title="Editar meta">
+                <Pencil size={11} />
+              </button>
+            </span>
+          ) : null
+        ) : comparacao ? (
           <ComparacaoBadge c={comparacao} />
         ) : (
           delta !== undefined && delta !== null && <Delta pct={delta} invert={deltaInvert} />
         )}
       </div>
-      <p className="mt-1.5 text-[10px] text-muted">{sub ?? 'vs. mês anterior'}</p>
+
+      {comMeta ? (
+        editando ? (
+          <div className="mt-2 flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              autoFocus
+              value={rascunho}
+              onChange={(e) => setRascunho(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') salvar(); if (e.key === 'Escape') setEditando(false) }}
+              className="w-full rounded border border-border bg-bg-elev px-2 py-1 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
+              placeholder="valor da meta"
+            />
+            <button onClick={salvar} className="rounded border border-green-500/40 bg-green-500/10 p-1 text-green-300 hover:bg-green-500/20" title="Salvar"><Check size={13} /></button>
+            <button onClick={() => setEditando(false)} className="rounded border border-border p-1 text-muted hover:text-zinc-200" title="Cancelar"><X size={13} /></button>
+          </div>
+        ) : meta != null && prog ? (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg-soft/60">
+            <div className={cn('h-full rounded-full transition-all', BARRA[prog.nivel])} style={{ width: `${Math.min(100, Math.max(0, prog.pct))}%` }} />
+          </div>
+        ) : (
+          <button onClick={abrirEdicao} className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-brand-300 hover:underline">
+            <Plus size={11} /> Definir meta
+          </button>
+        )
+      ) : (
+        <p className="mt-1.5 text-[10px] text-muted">{sub ?? 'vs. mês anterior'}</p>
+      )}
     </div>
   )
 }
