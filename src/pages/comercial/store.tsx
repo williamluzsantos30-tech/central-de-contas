@@ -1,17 +1,20 @@
 /**
  * Store do setor COMERCIAL.
  *
- * Mantém os Leads em memória (mock) e centraliza as transições do funil
- * (handoffs) — assim um lead enviado no Social Selling aparece na fila do
- * SDR, e o qualificado aparece pro Closer, sem cada tela ter estado próprio.
+ * Centraliza os Leads e as transições do funil (handoffs) — um lead enviado
+ * no Social Selling aparece na fila do SDR, o qualificado aparece pro Closer.
  *
- * Quando o Closer fecha, `registrarResultado` cria um Cliente REAL na fonte
- * central (tabela `clientes`, status Onboarding) e grava `clienteId` no lead
- * — reaproveitando a mesma criação usada no modal "Novo Cliente", sem
- * formulário paralelo. Clientes segue sendo a fonte única de clientes ativos;
- * o Comercial é a origem que a alimenta.
+ * PERSISTÊNCIA (migration 088): leads (JSONB), investimentos_marketing,
+ * metas_comerciais e comercial_config (SLA/Metas Marketing/Integração).
+ * FALLBACK: se as tabelas ainda não existirem, roda no mock em memória (não
+ * quebra). Na 1ª carga com banco vazio, faz BOOTSTRAP do mock (grava e passa
+ * a persistir). O estado local continua sendo a fonte pro render; cada
+ * mutação atualiza o estado E grava no banco (quando disponível).
+ *
+ * Ao fechar, `registrarResultado` cria um Cliente REAL (tabela `clientes`,
+ * Onboarding) e grava `clienteId` no lead — Clientes segue a fonte única.
  */
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   MOCK_LEADS,
@@ -33,6 +36,31 @@ import { MOCK_INVESTIMENTOS, type InvestimentoMarketing } from './mockInvestimen
 import { MOCK_METAS_COMERCIAIS, type MetaComercial } from './mockMetasComerciais'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+
+// ── Mappers banco ↔ app (investimentos e metas usam colunas reais) ──────────
+type InvestRow = { id: string; periodo: string; canal: string; valor: number }
+const rowToInvest = (r: InvestRow): InvestimentoMarketing => ({ id: r.id, periodo: r.periodo, canal: r.canal, valor: Number(r.valor) })
+const investToRow = (i: InvestimentoMarketing): InvestRow => ({ id: i.id, periodo: i.periodo, canal: i.canal, valor: i.valor })
+
+type MetaRow = { id: string; periodicidade: string; metrica: string; canal: string | null; responsavel_id: string | null; valor_meta: number; periodo_referencia: string }
+const rowToMeta = (r: MetaRow): MetaComercial => ({
+  id: r.id,
+  periodicidade: r.periodicidade as MetaComercial['periodicidade'],
+  metrica: r.metrica as MetaComercial['metrica'],
+  canal: r.canal ?? undefined,
+  responsavelId: r.responsavel_id ?? undefined,
+  valorMeta: Number(r.valor_meta),
+  periodoReferencia: r.periodo_referencia,
+})
+const metaToRow = (m: MetaComercial) => ({
+  id: m.id,
+  periodicidade: m.periodicidade,
+  metrica: m.metrica,
+  canal: m.canal ?? null,
+  responsavel_id: m.responsavelId ?? null,
+  valor_meta: m.valorMeta,
+  periodo_referencia: m.periodoReferencia,
+})
 
 /** Dados vindos da tela "Cadastrar lead qualificado" (SDR). */
 export interface DadosQualificacao {
@@ -79,46 +107,33 @@ export interface LancamentoInvestimento {
 
 interface ComercialCtx {
   leads: Lead[]
-  /** Config de SLA por etapa (editável em Configurações › Geral). */
+  /** true enquanto carrega do banco na 1ª vez. */
+  carregando: boolean
   slaConfig: SlaConfigComercial
   setSlaConfig: (cfg: SlaConfigComercial) => void
-  /** Investimento de mídia por período/canal (input manual do Marketing). */
   investimentos: InvestimentoMarketing[]
-  /** Substitui os lançamentos de um período pelos informados. */
   registrarInvestimentos: (periodo: string, lancamentos: LancamentoInvestimento[]) => void
-  /** Metas de Marketing (editáveis em Configurações › Geral). */
   metasMarketing: MetasMarketing
   setMetasMarketing: (m: MetasMarketing) => void
-  /** Metas Comerciais (mensais/semanais por métrica do funil). */
   metasComerciais: MetaComercial[]
   criarMetas: (metas: Omit<MetaComercial, 'id'>[]) => void
   atualizarMeta: (id: string, patch: Partial<Omit<MetaComercial, 'id'>>) => void
   excluirMeta: (id: string) => void
-  /** Social Selling: cadastra manualmente um lead captado (etapa "prospectado"). */
   criarLead: (dados: NovoLeadInput) => void
-  /** Social Selling: registra uma tentativa de abordagem (mantém "prospectado"). */
   registrarAbordagemSocial: (
     leadId: string,
     dados: { tipo: TipoAbordagemSocial; observacao?: string; proximaAbordagem?: string },
   ) => void
-  /** Social Selling: arquiva a prospecção que não engajou. */
   arquivarLead: (leadId: string) => void
-  /** Social Selling → Caixa de Entrada unificada (sem SDR pré-atribuído). */
   enviarParaCaixa: (leadId: string) => void
-  /** CRM externo (webhook): injeta um lead já montado direto na Caixa. */
   receberLeadExterno: (lead: Lead) => void
-  /** Caixa de Entrada: um SDR "puxa" o lead e assume o atendimento. */
   iniciarAtendimento: (leadId: string, sdrId: string) => void
-  /** SDR: salva a qualificação estruturada e envia pro Closer. */
   qualificarLead: (leadId: string, dados: DadosQualificacao) => void
-  /** SDR: registra uma tentativa de contato (mantém em "em_qualificacao"). */
   registrarTentativa: (
     leadId: string,
     dados: { resultado: ResultadoTentativa; observacao?: string; proximoContato?: string },
   ) => void
-  /** SDR: desqualifica o lead (vira "perdido"). */
   desqualificarLead: (leadId: string, motivo: string) => void
-  /** Closer: registra o resultado da call. Se fechar, cria o Cliente real. */
   registrarResultado: (leadId: string, resultado: ResultadoCall) => Promise<void>
 }
 
@@ -126,37 +141,139 @@ const Ctx = createContext<ComercialCtx | null>(null)
 
 export function ComercialProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS)
-  const [slaConfig, setSlaConfig] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
+  const [slaConfig, setSlaConfigState] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
   const [investimentos, setInvestimentos] = useState<InvestimentoMarketing[]>(MOCK_INVESTIMENTOS)
-  const [metasMarketing, setMetasMarketing] = useState<MetasMarketing>(METAS_MARKETING_INICIAL)
+  const [metasMarketing, setMetasMarketingState] = useState<MetasMarketing>(METAS_MARKETING_INICIAL)
   const [metasComerciais, setMetasComerciais] = useState<MetaComercial[]>(MOCK_METAS_COMERCIAIS)
+  const [carregando, setCarregando] = useState(true)
+  // true quando as tabelas existem (persiste); false = fallback mock em memória.
+  const modoBanco = useRef(false)
 
+  // ── Carga inicial: banco → estado, ou bootstrap do mock, ou fallback ──────
+  useEffect(() => {
+    let cancel = false
+    async function load() {
+      try {
+        const { data: cfg, error } = await supabase.from('comercial_config').select('*').eq('id', 'default').maybeSingle()
+        if (error) throw error // tabela não existe → cai no catch (mock)
+        modoBanco.current = true
+        if (!cfg) {
+          // Banco fresco → bootstrap do mock (upsert = idempotente contra StrictMode).
+          await Promise.all([
+            supabase.from('leads').upsert(MOCK_LEADS.map((l) => ({ id: l.id, data: l }))),
+            supabase.from('investimentos_marketing').upsert(MOCK_INVESTIMENTOS.map(investToRow)),
+            supabase.from('metas_comerciais').upsert(MOCK_METAS_COMERCIAIS.map(metaToRow)),
+            supabase.from('comercial_config').upsert({ id: 'default', sla: SLA_CONFIG_INICIAL, metas_marketing: METAS_MARKETING_INICIAL, integracao_crm: null }),
+          ])
+          // estado já está com os mocks (init) — nada a trocar
+        } else {
+          const [lRes, iRes, mRes] = await Promise.all([
+            supabase.from('leads').select('data'),
+            supabase.from('investimentos_marketing').select('*'),
+            supabase.from('metas_comerciais').select('*'),
+          ])
+          if (cancel) return
+          setLeads(((lRes.data as { data: Lead }[]) ?? []).map((r) => r.data))
+          setInvestimentos(((iRes.data as InvestRow[]) ?? []).map(rowToInvest))
+          setMetasComerciais(((mRes.data as MetaRow[]) ?? []).map(rowToMeta))
+          setSlaConfigState({ ...SLA_CONFIG_INICIAL, ...((cfg.sla as Partial<SlaConfigComercial>) ?? {}) })
+          setMetasMarketingState({ ...METAS_MARKETING_INICIAL, ...((cfg.metas_marketing as Partial<MetasMarketing>) ?? {}) })
+        }
+      } catch {
+        // Tabelas ainda não existem (migration 088 não rodada) → mock em memória.
+        modoBanco.current = false
+      } finally {
+        if (!cancel) setCarregando(false)
+      }
+    }
+    load()
+    return () => {
+      cancel = true
+    }
+  }, [])
+
+  // ── Persistência (só quando o banco está disponível) ──────────────────────
+  const persistLead = useCallback((lead: Lead) => {
+    if (!modoBanco.current) return
+    void supabase.from('leads').upsert({ id: lead.id, data: lead }).then(({ error }) => {
+      if (error) console.warn('[comercial] persistLead', error.message)
+    })
+  }, [])
+  const persistConfig = useCallback((patch: Record<string, unknown>) => {
+    if (!modoBanco.current) return
+    void supabase.from('comercial_config').upsert({ id: 'default', ...patch }).then(({ error }) => {
+      if (error) console.warn('[comercial] persistConfig', error.message)
+    })
+  }, [])
+
+  const setSlaConfig = useCallback((cfg: SlaConfigComercial) => {
+    setSlaConfigState(cfg)
+    persistConfig({ sla: cfg })
+  }, [persistConfig])
+  const setMetasMarketing = useCallback((m: MetasMarketing) => {
+    setMetasMarketingState(m)
+    persistConfig({ metas_marketing: m })
+  }, [persistConfig])
+
+  // ── Metas comerciais ──────────────────────────────────────────────────────
   const criarMetas = useCallback((metas: Omit<MetaComercial, 'id'>[]) => {
-    const novas = metas.map((m, i) => ({ ...m, id: `meta-${Date.now()}-${i}` }))
+    const novas: MetaComercial[] = metas.map((m, i) => ({ ...m, id: `meta-${Date.now()}-${i}` }))
     setMetasComerciais((prev) => [...prev, ...novas])
+    if (modoBanco.current) {
+      void supabase.from('metas_comerciais').insert(novas.map(metaToRow)).then(({ error }) => {
+        if (error) console.warn('[comercial] criarMetas', error.message)
+      })
+    }
   }, [])
   const atualizarMeta = useCallback((id: string, patch: Partial<Omit<MetaComercial, 'id'>>) => {
     setMetasComerciais((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
+    if (modoBanco.current) {
+      const row: Record<string, unknown> = {}
+      if ('periodicidade' in patch) row.periodicidade = patch.periodicidade
+      if ('metrica' in patch) row.metrica = patch.metrica
+      if ('canal' in patch) row.canal = patch.canal ?? null
+      if ('responsavelId' in patch) row.responsavel_id = patch.responsavelId ?? null
+      if ('valorMeta' in patch) row.valor_meta = patch.valorMeta
+      if ('periodoReferencia' in patch) row.periodo_referencia = patch.periodoReferencia
+      void supabase.from('metas_comerciais').update(row).eq('id', id).then(({ error }) => {
+        if (error) console.warn('[comercial] atualizarMeta', error.message)
+      })
+    }
   }, [])
   const excluirMeta = useCallback((id: string) => {
     setMetasComerciais((prev) => prev.filter((m) => m.id !== id))
+    if (modoBanco.current) {
+      void supabase.from('metas_comerciais').delete().eq('id', id).then(({ error }) => {
+        if (error) console.warn('[comercial] excluirMeta', error.message)
+      })
+    }
   }, [])
 
   const registrarInvestimentos = useCallback((periodo: string, lancamentos: LancamentoInvestimento[]) => {
-    setInvestimentos((prev) => [
-      ...prev.filter((i) => i.periodo !== periodo),
-      ...lancamentos.map((l) => ({
-        id: `inv-${periodo}-${l.canal}`,
-        periodo,
-        canal: l.canal,
-        valor: l.valor,
-      })),
-    ])
+    const rows: InvestimentoMarketing[] = lancamentos.map((l) => ({ id: `inv-${periodo}-${l.canal}`, periodo, canal: l.canal, valor: l.valor }))
+    setInvestimentos((prev) => [...prev.filter((i) => i.periodo !== periodo), ...rows])
+    if (modoBanco.current) {
+      void (async () => {
+        await supabase.from('investimentos_marketing').delete().eq('periodo', periodo)
+        const { error } = await supabase.from('investimentos_marketing').insert(rows.map(investToRow))
+        if (error) console.warn('[comercial] registrarInvestimentos', error.message)
+      })()
+    }
   }, [])
 
+  // ── Leads ─────────────────────────────────────────────────────────────────
   const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
-    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, ...patch } : l)))
-  }, [])
+    setLeads((prev) => {
+      let alvo: Lead | undefined
+      const next = prev.map((l) => {
+        if (l.id !== leadId) return l
+        alvo = { ...l, ...patch }
+        return alvo
+      })
+      if (alvo) persistLead(alvo)
+      return next
+    })
+  }, [persistLead])
 
   const criarLead = useCallback((dados: NovoLeadInput) => {
     const novo: Lead = {
@@ -175,12 +292,14 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       qualificado: false,
     }
     setLeads((prev) => [novo, ...prev])
-  }, [])
+    persistLead(novo)
+  }, [persistLead])
 
   const registrarAbordagemSocial = useCallback(
     (leadId: string, dados: { tipo: TipoAbordagemSocial; observacao?: string; proximaAbordagem?: string }) => {
-      setLeads((prev) =>
-        prev.map((l) => {
+      setLeads((prev) => {
+        let alvo: Lead | undefined
+        const next = prev.map((l) => {
           if (l.id !== leadId) return l
           const nova: TentativaAbordagemSocial = {
             id: `abord-${Date.now()}`,
@@ -189,45 +308,38 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
             observacao: dados.observacao?.trim() || undefined,
             socialSellerId: l.socialSellerId,
           }
-          return {
+          alvo = {
             ...l,
             tentativasAbordagemSocial: [...(l.tentativasAbordagemSocial ?? []), nova],
             contadorTentativasSocial: (l.contadorTentativasSocial ?? 0) + 1,
             proximaAbordagem: dados.proximaAbordagem || undefined,
           }
-        }),
-      )
+          return alvo
+        })
+        if (alvo) persistLead(alvo)
+        return next
+      })
     },
-    [],
+    [persistLead],
   )
 
-  const arquivarLead = useCallback(
-    (leadId: string) => patchLead(leadId, { arquivado: true }),
-    [patchLead],
-  )
+  const arquivarLead = useCallback((leadId: string) => patchLead(leadId, { arquivado: true }), [patchLead])
 
   const enviarParaCaixa = useCallback(
     (leadId: string) => {
-      patchLead(leadId, {
-        etapaFunil: 'caixa_entrada',
-        origemEntrada: 'social_selling',
-        dataEntrada: todayISO(),
-      })
+      patchLead(leadId, { etapaFunil: 'caixa_entrada', origemEntrada: 'social_selling', dataEntrada: todayISO() })
     },
     [patchLead],
   )
 
   const receberLeadExterno = useCallback((lead: Lead) => {
     setLeads((prev) => [lead, ...prev])
-  }, [])
+    persistLead(lead)
+  }, [persistLead])
 
   const iniciarAtendimento = useCallback(
     (leadId: string, sdrId: string) => {
-      patchLead(leadId, {
-        etapaFunil: 'em_qualificacao',
-        sdrId,
-        dataEnvioSDR: todayISO(),
-      })
+      patchLead(leadId, { etapaFunil: 'em_qualificacao', sdrId, dataEnvioSDR: todayISO() })
     },
     [patchLead],
   )
@@ -247,7 +359,6 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         reuniao: d.reuniao,
         resumoConversa: d.resumoConversa,
         bant: d.bant,
-        // Briefing que o Closer vê = resumo da conversa (BANT vai junto no lead).
         briefingQualificacao: d.resumoConversa,
         closerId: d.reuniao.closerId,
         dataReuniaoAgendada: d.reuniao.data,
@@ -259,12 +370,10 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   )
 
   const registrarTentativa = useCallback(
-    (
-      leadId: string,
-      dados: { resultado: ResultadoTentativa; observacao?: string; proximoContato?: string },
-    ) => {
-      setLeads((prev) =>
-        prev.map((l) => {
+    (leadId: string, dados: { resultado: ResultadoTentativa; observacao?: string; proximoContato?: string }) => {
+      setLeads((prev) => {
+        let alvo: Lead | undefined
+        const next = prev.map((l) => {
           if (l.id !== leadId) return l
           const nova: TentativaContato = {
             id: `tent-${Date.now()}`,
@@ -273,26 +382,25 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
             observacao: dados.observacao?.trim() || undefined,
             sdrId: l.sdrId ?? '',
           }
-          return {
+          alvo = {
             ...l,
             etapaFunil: 'em_qualificacao',
             tentativasContato: [...(l.tentativasContato ?? []), nova],
             contadorTentativas: (l.contadorTentativas ?? 0) + 1,
             proximoContato: dados.proximoContato || undefined,
           }
-        }),
-      )
+          return alvo
+        })
+        if (alvo) persistLead(alvo)
+        return next
+      })
     },
-    [],
+    [persistLead],
   )
 
   const desqualificarLead = useCallback(
     (leadId: string, motivo: string) => {
-      patchLead(leadId, {
-        etapaFunil: 'perdido',
-        qualificado: false,
-        motivoDesqualificacao: motivo,
-      })
+      patchLead(leadId, { etapaFunil: 'perdido', qualificado: false, motivoDesqualificacao: motivo })
     },
     [patchLead],
   )
@@ -304,18 +412,10 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       const hoje = todayISO()
 
       if (r.tipo === 'perdido') {
-        patchLead(leadId, {
-          etapaFunil: 'perdido',
-          motivoPerda: r.motivoPerda,
-          dataFechamento: hoje,
-          subStatusNegociacao: undefined,
-        })
+        patchLead(leadId, { etapaFunil: 'perdido', motivoPerda: r.motivoPerda, dataFechamento: hoje, subStatusNegociacao: undefined })
         return
       }
-
       if (r.tipo === 'no_show') {
-        // No-show: incrementa o contador e reagenda, mantendo o lead com o
-        // mesmo Closer e briefing (não volta ao SDR).
         patchLead(leadId, {
           etapaFunil: 'em_negociacao',
           subStatusNegociacao: 'no_show',
@@ -330,22 +430,17 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         })
         return
       }
-
       if (r.tipo === 'followup') {
         patchLead(leadId, {
           etapaFunil: 'em_negociacao',
           subStatusNegociacao: 'em_followup',
           dataProximoContato: r.dataProximoContato,
-          historicoFollowups: [
-            ...(lead.historicoFollowups ?? []),
-            { data: hoje, observacao: r.observacao },
-          ],
+          historicoFollowups: [...(lead.historicoFollowups ?? []), { data: hoje, observacao: r.observacao }],
         })
         return
       }
 
-      // Fechou → cria o Cliente real (mesma tabela/lógica do "Novo Cliente"),
-      // já em Onboarding, com os dados coletados no funil.
+      // Fechou → cria o Cliente real (mesma tabela/lógica do "Novo Cliente").
       const payload = {
         nome: lead.empresa.trim() || lead.nomeContato.trim(),
         squad: r.squad || null,
@@ -377,6 +472,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ComercialCtx>(
     () => ({
       leads,
+      carregando,
       slaConfig,
       setSlaConfig,
       investimentos,
@@ -400,10 +496,13 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     }),
     [
       leads,
+      carregando,
       slaConfig,
+      setSlaConfig,
       investimentos,
       registrarInvestimentos,
       metasMarketing,
+      setMetasMarketing,
       metasComerciais,
       criarMetas,
       atualizarMeta,
