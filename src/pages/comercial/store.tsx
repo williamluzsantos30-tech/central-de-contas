@@ -18,6 +18,8 @@ import {
   type BantQualificacao,
   type Lead,
   type ReuniaoAgendada,
+  type ResultadoTentativa,
+  type TentativaContato,
 } from './mockLeads'
 import {
   SLA_CONFIG_INICIAL,
@@ -100,6 +102,11 @@ interface ComercialCtx {
   iniciarAtendimento: (leadId: string, sdrId: string) => void
   /** SDR: salva a qualificação estruturada e envia pro Closer. */
   qualificarLead: (leadId: string, dados: DadosQualificacao) => void
+  /** SDR: registra uma tentativa de contato (mantém em "em_qualificacao"). */
+  registrarTentativa: (
+    leadId: string,
+    dados: { resultado: ResultadoTentativa; observacao?: string; proximoContato?: string },
+  ) => void
   /** SDR: desqualifica o lead (vira "perdido"). */
   desqualificarLead: (leadId: string, motivo: string) => void
   /** Closer: registra o resultado da call. Se fechar, cria o Cliente real. */
@@ -213,6 +220,34 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     [patchLead],
   )
 
+  const registrarTentativa = useCallback(
+    (
+      leadId: string,
+      dados: { resultado: ResultadoTentativa; observacao?: string; proximoContato?: string },
+    ) => {
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (l.id !== leadId) return l
+          const nova: TentativaContato = {
+            id: `tent-${Date.now()}`,
+            data: new Date().toISOString(),
+            resultado: dados.resultado,
+            observacao: dados.observacao?.trim() || undefined,
+            sdrId: l.sdrId ?? '',
+          }
+          return {
+            ...l,
+            etapaFunil: 'em_qualificacao',
+            tentativasContato: [...(l.tentativasContato ?? []), nova],
+            contadorTentativas: (l.contadorTentativas ?? 0) + 1,
+            proximoContato: dados.proximoContato || undefined,
+          }
+        }),
+      )
+    },
+    [],
+  )
+
   const desqualificarLead = useCallback(
     (leadId: string, motivo: string) => {
       patchLead(leadId, {
@@ -319,6 +354,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       receberLeadExterno,
       iniciarAtendimento,
       qualificarLead,
+      registrarTentativa,
       desqualificarLead,
       registrarResultado,
     }),
@@ -337,6 +373,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       receberLeadExterno,
       iniciarAtendimento,
       qualificarLead,
+      registrarTentativa,
       desqualificarLead,
       registrarResultado,
     ],

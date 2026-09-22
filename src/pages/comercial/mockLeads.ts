@@ -24,6 +24,36 @@ export type EtapaFunil =
 /** Como o lead entrou na Caixa de Entrada unificada. */
 export type OrigemEntrada = 'crm_externo' | 'social_selling'
 
+/** Resultado de uma tentativa de contato do SDR (follow-up pré-qualificação). */
+export type ResultadoTentativa =
+  | 'nao_atendeu'
+  | 'caixa_postal'
+  | 'pediu_retorno'
+  | 'em_analise'
+  | 'numero_invalido'
+  | 'outro'
+
+export interface TentativaContato {
+  id: string
+  data: string // ISO datetime da tentativa
+  resultado: ResultadoTentativa
+  observacao?: string
+  sdrId: string
+}
+
+export const RESULTADO_TENTATIVA_OPCOES: { key: ResultadoTentativa; label: string }[] = [
+  { key: 'nao_atendeu', label: 'Não atendeu' },
+  { key: 'caixa_postal', label: 'Caixa postal' },
+  { key: 'pediu_retorno', label: 'Pediu para ligar depois' },
+  { key: 'em_analise', label: 'Em análise/decidindo' },
+  { key: 'numero_invalido', label: 'Número errado/inválido' },
+  { key: 'outro', label: 'Outro' },
+]
+
+export function resultadoTentativaLabel(r: ResultadoTentativa): string {
+  return RESULTADO_TENTATIVA_OPCOES.find((o) => o.key === r)?.label ?? r
+}
+
 export interface CriterioQualificacao {
   pergunta: string
   resposta: string
@@ -77,6 +107,11 @@ export interface Lead {
   criteriosQualificacao?: CriterioQualificacao[]
   dataReuniaoAgendada?: string
   motivoDesqualificacao?: string
+  // Follow-up do SDR (tentativas de contato antes de qualificar/desqualificar)
+  tentativasContato?: TentativaContato[]
+  /** Próxima tentativa agendada (ISO datetime). */
+  proximoContato?: string
+  contadorTentativas?: number
 
   // Closer
   closerId?: string
@@ -302,6 +337,13 @@ export const MOCK_LEADS: Lead[] = [
     sdrId: 'sdr-1',
     dataEnvioSDR: '2026-09-14',
     qualificado: false,
+    // Em follow-up: 2 tentativas, próximo contato agendado (vencido)
+    contadorTentativas: 2,
+    proximoContato: '2026-09-19T10:00',
+    tentativasContato: [
+      { id: 't1', data: '2026-09-15T09:30', resultado: 'nao_atendeu', sdrId: 'sdr-1' },
+      { id: 't2', data: '2026-09-17T14:00', resultado: 'pediu_retorno', observacao: 'Pediu pra ligar segunda de manhã.', sdrId: 'sdr-1' },
+    ],
   },
   // Qualificado (SQL) — reunião agendada com o Closer
   {
@@ -534,6 +576,32 @@ export const MOCK_LEADS: Lead[] = [
     contratoFechado: 36000,
     dataFechamento: '2026-09-12',
     clienteId: 'cliente-demo-moreirakids',
+  },
+  // Em qualificação, PERTO DO LIMITE de tentativas (4 de 5) — dispara o aviso
+  {
+    id: 'lead-16',
+    nomeContato: 'Dr. Ricardo Mota',
+    empresa: 'Clínica Mota',
+    telefone: '(11) 90000-4455',
+    origem: 'Anúncio Google',
+    etapaFunil: 'em_qualificacao',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'HubSpot',
+    canalOriginal: 'Anúncio Google',
+    dataEntrada: '2026-09-10',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-10',
+    sdrId: 'sdr-2',
+    dataEnvioSDR: '2026-09-11',
+    qualificado: false,
+    contadorTentativas: 4,
+    proximoContato: '2026-09-20T16:00',
+    tentativasContato: [
+      { id: 'r1', data: '2026-09-12T10:00', resultado: 'nao_atendeu', sdrId: 'sdr-2' },
+      { id: 'r2', data: '2026-09-14T11:00', resultado: 'caixa_postal', sdrId: 'sdr-2' },
+      { id: 'r3', data: '2026-09-16T15:30', resultado: 'nao_atendeu', sdrId: 'sdr-2' },
+      { id: 'r4', data: '2026-09-18T09:00', resultado: 'em_analise', observacao: 'Atendeu, disse que está avaliando com o sócio.', sdrId: 'sdr-2' },
+    ],
   },
   // Lead via CRM SEM origem identificada (gap de rastreamento na integração)
   {

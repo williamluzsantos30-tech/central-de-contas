@@ -10,12 +10,18 @@ export interface SlaConfigComercial {
   qualificacaoEnvioCloserHoras: number
   /** Recebimento pelo Closer → realização da call. */
   closerCallHoras: number
+  /** Tempo esperado entre uma tentativa de contato e a próxima (follow-up SDR). */
+  slaEntreTentativasHoras: number
+  /** Nº de tentativas de contato antes de sugerir desqualificar o lead. */
+  limiteTentativasContato: number
 }
 
 export const SLA_CONFIG_INICIAL: SlaConfigComercial = {
   caixaPrimeiroContatoHoras: 1,
   qualificacaoEnvioCloserHoras: 24,
   closerCallHoras: 48,
+  slaEntreTentativasHoras: 24,
+  limiteTentativasContato: 5,
 }
 
 /**

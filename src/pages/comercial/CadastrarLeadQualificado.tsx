@@ -5,9 +5,9 @@
  * avança pra "reunião agendada" e é liberado pro Closer com o briefing.
  * A qualificação BANT é obrigatória pra entregar um SQL válido.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { CalendarClock, AlertTriangle, ArrowLeft, Ban } from 'lucide-react'
+import { CalendarClock, AlertTriangle, ArrowLeft, Ban, Phone } from 'lucide-react'
 import {
   PageHeader,
   PrimaryButton,
@@ -19,6 +19,8 @@ import {
   Badge,
 } from '@/components/ds'
 import { Breadcrumb } from '@/components/comercial/Breadcrumb'
+import { ContactAttemptForm } from '@/components/comercial/ContactAttemptForm'
+import { AttemptHistoryCard } from '@/components/comercial/AttemptHistoryCard'
 import { useComercial } from './store'
 import {
   AUTORIDADE_OPCOES,
@@ -32,7 +34,7 @@ import {
 export default function CadastrarLeadQualificado() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { leads, qualificarLead, desqualificarLead } = useComercial()
+  const { leads, slaConfig, qualificarLead, desqualificarLead } = useComercial()
   const lead = useMemo(() => leads.find((l) => l.id === id), [leads, id])
 
   // Dados do lead
@@ -59,6 +61,8 @@ export default function CadastrarLeadQualificado() {
 
   const [erro, setErro] = useState<string | null>(null)
   const [desqOpen, setDesqOpen] = useState(false)
+  const [desqMotivoInicial, setDesqMotivoInicial] = useState('')
+  const [tentativaOpen, setTentativaOpen] = useState(false)
 
   if (!lead) {
     return (
@@ -127,6 +131,24 @@ export default function CadastrarLeadQualificado() {
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 p-3 text-xs text-orange-200">
           <AlertTriangle size={14} /> Este lead já saiu da fila de qualificação (etapa atual:{' '}
           <Badge tone="neutral">{lead.etapaFunil}</Badge>). As alterações vão sobrescrever o cadastro.
+        </div>
+      )}
+
+      {(lead.contadorTentativas ?? 0) >= slaConfig.limiteTentativasContato && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 p-3 text-xs text-orange-200">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={14} /> {lead.contadorTentativas}ª tentativa sem sucesso — considere desqualificar este lead.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setDesqMotivoInicial(`Sem retorno após ${lead.contadorTentativas} tentativas`)
+              setDesqOpen(true)
+            }}
+            className="shrink-0 rounded border border-orange-500/50 bg-orange-500/15 px-2 py-1 font-medium hover:bg-orange-500/25"
+          >
+            Desqualificar
+          </button>
         </div>
       )}
 
@@ -244,6 +266,12 @@ export default function CadastrarLeadQualificado() {
         </div>
       </div>
 
+      {(lead.tentativasContato?.length ?? 0) > 0 && (
+        <div className="mt-4">
+          <AttemptHistoryCard tentativas={lead.tentativasContato ?? []} />
+        </div>
+      )}
+
       {erro && (
         <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{erro}</span>
@@ -251,21 +279,29 @@ export default function CadastrarLeadQualificado() {
       )}
 
       {/* Rodapé de ações */}
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
-        <OutlineButton size="sm" onClick={() => setDesqOpen(true)}>
-          <Ban size={13} /> Desqualificar
-        </OutlineButton>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <OutlineButton size="sm" onClick={() => { setDesqMotivoInicial(''); setDesqOpen(true) }}>
+            <Ban size={13} /> Desqualificar
+          </OutlineButton>
+          <OutlineButton size="sm" onClick={() => setTentativaOpen(true)}>
+            <Phone size={13} /> Registrar Tentativa
+          </OutlineButton>
+        </div>
         <PrimaryButton onClick={salvarEEnviar}>Salvar e Enviar para Closer</PrimaryButton>
       </div>
 
       <DesqualificarModal
         open={desqOpen}
         onClose={() => setDesqOpen(false)}
+        motivoInicial={desqMotivoInicial}
         onConfirm={(motivo) => {
           desqualificarLead(lead!.id, motivo)
           navigate('/comercial/sdr')
         }}
       />
+
+      <ContactAttemptForm open={tentativaOpen} onClose={() => setTentativaOpen(false)} leadId={lead!.id} />
     </div>
   )
 }
@@ -274,12 +310,17 @@ function DesqualificarModal({
   open,
   onClose,
   onConfirm,
+  motivoInicial = '',
 }: {
   open: boolean
   onClose: () => void
   onConfirm: (motivo: string) => void
+  motivoInicial?: string
 }) {
-  const [motivo, setMotivo] = useState('')
+  const [motivo, setMotivo] = useState(motivoInicial)
+  useEffect(() => {
+    if (open) setMotivo(motivoInicial)
+  }, [open, motivoInicial])
   return (
     <Modal
       open={open}

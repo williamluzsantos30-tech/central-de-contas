@@ -358,6 +358,16 @@ export default function Configuracoes() {
                 value={slaConfig.closerCallHoras}
                 onChange={(v) => setSlaConfig({ ...slaConfig, closerCallHoras: v })}
               />
+              <SlaInput
+                label="SLA entre tentativas de follow-up (horas)"
+                value={slaConfig.slaEntreTentativasHoras}
+                onChange={(v) => setSlaConfig({ ...slaConfig, slaEntreTentativasHoras: v })}
+              />
+              <SlaInput
+                label="Limite de tentativas antes de sugerir desqualificar"
+                value={slaConfig.limiteTentativasContato}
+                onChange={(v) => setSlaConfig({ ...slaConfig, limiteTentativasContato: v })}
+              />
             </div>
           </section>
 

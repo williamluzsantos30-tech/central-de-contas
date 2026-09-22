@@ -33,6 +33,11 @@ function baseDaEtapa(lead: Lead, cfg: SlaConfigComercial): { entrada?: string; h
     case 'caixa_entrada':
       return { entrada: lead.dataEntrada ?? lead.dataCaptacao, horas: cfg.caixaPrimeiroContatoHoras }
     case 'em_qualificacao':
+      // Se já houve tentativa de contato, o SLA passa a medir o cumprimento
+      // do próximo contato agendado (follow-up), não mais o 1º contato.
+      if ((lead.contadorTentativas ?? 0) > 0 && lead.proximoContato) {
+        return { entrada: lead.proximoContato, horas: cfg.slaEntreTentativasHoras }
+      }
       return { entrada: lead.dataEnvioSDR, horas: cfg.qualificacaoEnvioCloserHoras }
     case 'reuniao_agendada':
     case 'em_negociacao':
@@ -40,6 +45,12 @@ function baseDaEtapa(lead: Lead, cfg: SlaConfigComercial): { entrada?: string; h
     default:
       return {}
   }
+}
+
+/** Próximo contato (follow-up do SDR) já venceu? */
+export function proximoContatoVencido(lead: Lead): boolean {
+  if (!lead.proximoContato) return false
+  return Date.parse(lead.proximoContato) <= Date.now()
 }
 
 export function calculateLeadSLA(lead: Lead, cfg: SlaConfigComercial): SlaResultado {
