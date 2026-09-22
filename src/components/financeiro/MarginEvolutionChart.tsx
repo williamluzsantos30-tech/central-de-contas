@@ -8,6 +8,20 @@ import { useRef, useState } from 'react'
 const COR_BRUTA = '#8b5cf6' // violet-500 (brand)
 const COR_LIQUIDA = '#10b981' // emerald-500
 
+/** Eixo com passo "nice" (~5 marcas), tolerante a ranges enormes/negativos. */
+function niceAxis(minV: number, maxV: number): { min: number; max: number; ticks: number[] } {
+  if (!(maxV > minV)) maxV = minV + 1
+  const rawStep = (maxV - minV) / 4
+  const mag = 10 ** Math.floor(Math.log10(Math.abs(rawStep) || 1))
+  const norm = rawStep / mag
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag
+  const min = Math.floor(minV / step) * step
+  const max = Math.ceil(maxV / step) * step
+  const ticks: number[] = []
+  for (let t = min; t <= max + step * 1e-6; t += step) ticks.push(Math.round(t * 10) / 10)
+  return { min, max, ticks }
+}
+
 export interface MargemPonto {
   mes: string // label curto (ex.: "set/26")
   bruta: number // %
@@ -41,18 +55,15 @@ export function MarginEvolutionChart({ dados, metaBruta, metaLiquida }: { dados:
   const chartH = H - padT - padB
 
   const vals = dados.flatMap((d) => [d.bruta, d.liquida])
-  const rawMin = Math.min(0, ...vals)
-  const rawMax = Math.max(10, ...vals, metaBruta ?? 0)
-  const yMin = Math.floor(rawMin / 20) * 20
-  const yMax = Math.ceil(rawMax / 20) * 20
+  // Escala "nice" com ~5 marcas — margens podem estourar (ex.: custos >>
+  // receita), então o passo se adapta em vez de ser fixo em 20% (senão o
+  // eixo vira centenas de labels sobrepostos).
+  const { min: yMin, max: yMax, ticks } = niceAxis(Math.min(0, ...vals), Math.max(10, ...vals, metaBruta ?? 0))
   const span = Math.max(1, yMax - yMin)
   const n = Math.max(1, dados.length)
   const colW = chartW / n
   const xCentro = (i: number) => padL + colW * i + colW / 2
   const y = (v: number) => padT + chartH - ((v - yMin) / span) * chartH
-
-  const ticks: number[] = []
-  for (let t = yMin; t <= yMax + 1e-9; t += 20) ticks.push(t)
 
   const linha = (key: 'bruta' | 'liquida') => dados.map((d, i) => `${xCentro(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(' ')
 
