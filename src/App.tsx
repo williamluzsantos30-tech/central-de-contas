@@ -43,7 +43,6 @@ import Closer from '@/pages/comercial/Closer'
 import { ComercialProvider } from '@/pages/comercial/store'
 import Despesas from '@/pages/financeiro/Despesas'
 import DRE from '@/pages/financeiro/DRE'
-import LtvCac from '@/pages/financeiro/LtvCac'
 import FluxoCaixa from '@/pages/financeiro/FluxoCaixa'
 import { FinanceiroProvider } from '@/pages/financeiro/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
@@ -136,10 +135,9 @@ export default function App() {
             <Route path="/comercial/closer" element={<Closer />} />
             <Route path="/comercial/marketing" element={<MarketingFunnelPanel />} />
             <Route path="/comercial/metas" element={<MetasPanel />} />
-            {/* Financeiro — Despesas (base) + DRE + LTV:CAC (derivados) */}
+            {/* Financeiro — Despesas (base) + DRE + Fluxo de Caixa (derivados) */}
             <Route path="/financeiro/despesas" element={<Despesas />} />
             <Route path="/financeiro/dre" element={<DRE />} />
-            <Route path="/financeiro/ltv-cac" element={<LtvCac />} />
             <Route path="/financeiro/fluxo-caixa" element={<FluxoCaixa />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
