@@ -450,6 +450,24 @@ export default function VisaoExecutiva() {
     await loadArquivados()
   }
 
+  // Exportar = imprimir só as métricas. Aplica o tema light e usa @media print
+  // (esconde sidebar/topbar/controles) — o PDF sai limpo com os mesmos números
+  // da tela. Restaura o tema depois de imprimir.
+  function exportarPDF() {
+    const html = document.documentElement
+    const prev = html.classList.contains('light') ? 'light' : html.classList.contains('dark') ? 'dark' : ''
+    html.classList.remove('dark', 'light')
+    html.classList.add('light')
+    const restaurar = () => {
+      html.classList.remove('light', 'dark')
+      if (prev) html.classList.add(prev)
+      window.removeEventListener('afterprint', restaurar)
+    }
+    window.addEventListener('afterprint', restaurar)
+    window.print()
+    setTimeout(restaurar, 1500)
+  }
+
   // Farol do banner de alerta — dispara quando qualquer meta comercial
   // e' quebrada. Metas fixadas pelo user:
   //   NRR   >= 95%   (abaixo = nao esta crescendo)
@@ -463,7 +481,7 @@ export default function VisaoExecutiva() {
         title="Resumo Geral"
         description="Visão executiva da saúde da operação"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
             {arquivado && (
               <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-300">
                 <CheckCircle2 size={13} /> Período Arquivado
@@ -477,15 +495,20 @@ export default function VisaoExecutiva() {
             <Button variant="outline" onClick={() => alert('Código de Cultura — em breve')}>
               <BookOpen size={14} /> Código de Cultura
             </Button>
-            <Button variant="outline" onClick={() => window.print()}>
+            <Button variant="outline" onClick={exportarPDF}>
               <Download size={14} /> Exportar
             </Button>
           </div>
         }
       />
 
+      {/* Cabeçalho só na impressão (contexto do relatório) */}
+      <p className="mb-3 hidden text-[11px] text-zinc-500 print:block">
+        Resumo Geral · {labelMes(mesISO).replace(/^./, (c) => c.toUpperCase())} · gerado em {fmtDataHora(new Date().toISOString())}
+      </p>
+
       {/* Filtros */}
-      <FilterBar className="mb-4">
+      <FilterBar className="mb-4 print:hidden">
         <FilterPill
           value={mesISO}
           onChange={(v) => setMesISO(v)}
@@ -549,7 +572,7 @@ export default function VisaoExecutiva() {
                   </p>
                 </div>
               </div>
-              <Button variant="outline" onClick={arquivarMes} disabled={arquivando} className="shrink-0">
+              <Button variant="outline" onClick={arquivarMes} disabled={arquivando} className="shrink-0 print:hidden">
                 <Archive size={14} /> {arquivando ? 'Arquivando…' : 'Arquivar Período'}
               </Button>
             </div>

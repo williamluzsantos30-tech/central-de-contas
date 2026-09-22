@@ -397,3 +397,17 @@ html.light {
   --brand-300: 109 40 217;
   --brand-400: 124 58 237;
 }
+
+/* ============================================================
+   Impressão / Exportar PDF — a Exportar aplica o tema light e
+   chama window.print(). Aqui a gente limpa a página: margens,
+   fundo branco, cards inteiros (sem quebrar no meio) e esconde
+   o que não é conteúdo (via .print\:hidden do Tailwind).
+   ============================================================ */
+@media print {
+  @page { margin: 12mm; }
+  html, body { background: #ffffff !important; }
+  .rounded-xl, .rounded-lg { break-inside: avoid; page-break-inside: avoid; }
+  /* remove sombras pesadas na impressão */
+  * { box-shadow: none !important; }
+}
