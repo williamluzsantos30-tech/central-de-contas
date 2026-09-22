@@ -4,7 +4,7 @@
  * Centraliza os Leads e as transições do funil (handoffs) — um lead enviado
  * no Social Selling aparece na fila do SDR, o qualificado aparece pro Closer.
  *
- * PERSISTÊNCIA (migration 088): leads (JSONB), investimentos_marketing,
+ * PERSISTÊNCIA (migration 088): comercial_leads (JSONB), investimentos_marketing,
  * metas_comerciais e comercial_config (SLA/Metas Marketing/Integração).
  * FALLBACK: se as tabelas ainda não existirem, roda no mock em memória (não
  * quebra). Na 1ª carga com banco vazio, faz BOOTSTRAP do mock (grava e passa
@@ -160,7 +160,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         if (!cfg) {
           // Banco fresco → bootstrap do mock (upsert = idempotente contra StrictMode).
           await Promise.all([
-            supabase.from('leads').upsert(MOCK_LEADS.map((l) => ({ id: l.id, data: l }))),
+            supabase.from('comercial_leads').upsert(MOCK_LEADS.map((l) => ({ id: l.id, data: l }))),
             supabase.from('investimentos_marketing').upsert(MOCK_INVESTIMENTOS.map(investToRow)),
             supabase.from('metas_comerciais').upsert(MOCK_METAS_COMERCIAIS.map(metaToRow)),
             supabase.from('comercial_config').upsert({ id: 'default', sla: SLA_CONFIG_INICIAL, metas_marketing: METAS_MARKETING_INICIAL, integracao_crm: null }),
@@ -168,7 +168,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
           // estado já está com os mocks (init) — nada a trocar
         } else {
           const [lRes, iRes, mRes] = await Promise.all([
-            supabase.from('leads').select('data'),
+            supabase.from('comercial_leads').select('data'),
             supabase.from('investimentos_marketing').select('*'),
             supabase.from('metas_comerciais').select('*'),
           ])
@@ -195,7 +195,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   // ── Persistência (só quando o banco está disponível) ──────────────────────
   const persistLead = useCallback((lead: Lead) => {
     if (!modoBanco.current) return
-    void supabase.from('leads').upsert({ id: lead.id, data: lead }).then(({ error }) => {
+    void supabase.from('comercial_leads').upsert({ id: lead.id, data: lead }).then(({ error }) => {
       if (error) console.warn('[comercial] persistLead', error.message)
     })
   }, [])

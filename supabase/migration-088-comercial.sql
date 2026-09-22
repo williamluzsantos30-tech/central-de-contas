@@ -22,25 +22,28 @@
 -- COMO RODAR: Painel do Supabase → SQL Editor → New query → cole tudo → Run.
 -- =========================================================
 
--- 1. Leads (Lead inteiro em JSONB)
-create table if not exists leads (
+-- 1. Leads do Comercial (Lead inteiro em JSONB)
+-- OBS: NÃO reusar a tabela `leads` já existente (CRM Kommo/Sheets — schema
+-- relacional totalmente diferente, migrations 025–041). Por isso o nome
+-- dedicado `comercial_leads`.
+create table if not exists comercial_leads (
   id text primary key,
   data jsonb not null,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 -- Índices úteis pra relatórios futuros (etapa e datas ficam dentro do JSONB).
-create index if not exists idx_leads_etapa on leads ((data->>'etapaFunil'));
-create index if not exists idx_leads_data_entrada on leads ((data->>'dataEntrada'));
+create index if not exists idx_comercial_leads_etapa on comercial_leads ((data->>'etapaFunil'));
+create index if not exists idx_comercial_leads_data_entrada on comercial_leads ((data->>'dataEntrada'));
 
-alter table leads enable row level security;
-drop policy if exists "auth read leads" on leads;
-drop policy if exists "auth write leads" on leads;
-create policy "auth read leads" on leads for select using (auth.role() = 'authenticated');
-create policy "auth write leads" on leads for all using (auth.role() = 'authenticated');
+alter table comercial_leads enable row level security;
+drop policy if exists "auth read comercial_leads" on comercial_leads;
+drop policy if exists "auth write comercial_leads" on comercial_leads;
+create policy "auth read comercial_leads" on comercial_leads for select using (auth.role() = 'authenticated');
+create policy "auth write comercial_leads" on comercial_leads for all using (auth.role() = 'authenticated');
 
-drop trigger if exists trg_leads_updated on leads;
-create trigger trg_leads_updated before update on leads
+drop trigger if exists trg_comercial_leads_updated on comercial_leads;
+create trigger trg_comercial_leads_updated before update on comercial_leads
   for each row execute function set_updated_at();
 
 -- 2. Investimento de mídia por período/canal
