@@ -56,6 +56,7 @@ import {
 } from './components'
 import { IntegracoesTab } from './IntegracoesTab'
 import { useComercial } from '@/pages/comercial/store'
+import { useFinanceiro } from '@/pages/financeiro/store'
 import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
 import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
 
@@ -105,6 +106,7 @@ function noMesCorrente(iso: string | null): boolean {
 export default function Configuracoes() {
   const [tab, setTab] = useState('geral')
   const { slaConfig, setSlaConfig, metasMarketing, setMetasMarketing } = useComercial()
+  const { metasFinanceiras, setMetasFinanceiras } = useFinanceiro()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
   // Squads (+ metas, migration 087), papéis e membros vêm do banco — fonte
   // única. Guardamos as linhas cruas e mapeamos pros shapes dos componentes.
@@ -381,6 +383,22 @@ export default function Configuracoes() {
 
           {/* Metas Comerciais (mensais/semanais por métrica do funil) */}
           <MetasComerciaisSection />
+
+          {/* Metas Financeiras (margens do DRE) */}
+          <section className="rounded-lg border border-border bg-bg-card p-5">
+            <div className="mb-1 flex items-center gap-2">
+              <Target size={14} className="text-brand-300" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Metas Financeiras</p>
+            </div>
+            <p className="mb-4 text-[11px] text-muted">
+              Alvos de rentabilidade usados pra colorir os KPIs de margem no DRE
+              (<span className="text-green-300">verde</span> = atingiu; <span className="text-red-300">vermelho</span> = abaixo).
+            </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <SlaInput label="Meta de Margem Bruta (%)" value={metasFinanceiras.margemBrutaAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, margemBrutaAlvo: v })} />
+              <SlaInput label="Meta de Margem Líquida (%)" value={metasFinanceiras.margemLiquidaAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, margemLiquidaAlvo: v })} />
+            </div>
+          </section>
 
           {/* Metas Mensais */}
           <section className="rounded-lg border border-border bg-bg-card p-5">

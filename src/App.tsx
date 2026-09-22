@@ -42,6 +42,7 @@ import CadastrarLeadQualificado from '@/pages/comercial/CadastrarLeadQualificado
 import Closer from '@/pages/comercial/Closer'
 import { ComercialProvider } from '@/pages/comercial/store'
 import Despesas from '@/pages/financeiro/Despesas'
+import DRE from '@/pages/financeiro/DRE'
 import { FinanceiroProvider } from '@/pages/financeiro/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
 import { RequirePermissao } from '@/components/auth/RequirePermissao'
@@ -133,8 +134,9 @@ export default function App() {
             <Route path="/comercial/closer" element={<Closer />} />
             <Route path="/comercial/marketing" element={<MarketingFunnelPanel />} />
             <Route path="/comercial/metas" element={<MetasPanel />} />
-            {/* Financeiro — Despesas (base dos módulos financeiros futuros) */}
+            {/* Financeiro — Despesas (base) + DRE (derivada) */}
             <Route path="/financeiro/despesas" element={<Despesas />} />
+            <Route path="/financeiro/dre" element={<DRE />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
               path="/clientes"

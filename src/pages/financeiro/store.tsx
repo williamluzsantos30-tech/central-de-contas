@@ -13,6 +13,13 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { MOCK_DESPESAS, type Despesa } from './mockDespesas'
 
+/** Metas de margem (%) usadas pra colorir os KPIs de margem no DRE. */
+export interface MetasFinanceiras {
+  margemBrutaAlvo: number
+  margemLiquidaAlvo: number
+}
+export const METAS_FINANCEIRAS_INICIAL: MetasFinanceiras = { margemBrutaAlvo: 60, margemLiquidaAlvo: 20 }
+
 export interface NovaDespesaInput {
   descricao: string
   categoria: Despesa['categoria']
@@ -36,12 +43,15 @@ interface FinanceiroCtx {
   excluirDespesa: (id: string) => void
   /** Recebe uma despesa de integração externa (webhook simulado). */
   receberDespesaExterna: (d: Despesa) => void
+  metasFinanceiras: MetasFinanceiras
+  setMetasFinanceiras: (m: MetasFinanceiras) => void
 }
 
 const Ctx = createContext<FinanceiroCtx | null>(null)
 
 export function FinanceiroProvider({ children }: { children: ReactNode }) {
   const [despesas, setDespesas] = useState<Despesa[]>(MOCK_DESPESAS)
+  const [metasFinanceiras, setMetasFinanceiras] = useState<MetasFinanceiras>(METAS_FINANCEIRAS_INICIAL)
 
   const salvarDespesa = useCallback((d: Despesa) => {
     setDespesas((prev) => {
@@ -69,8 +79,8 @@ export function FinanceiroProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<FinanceiroCtx>(
-    () => ({ despesas, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna }),
-    [despesas, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna],
+    () => ({ despesas, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras, setMetasFinanceiras }),
+    [despesas, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
