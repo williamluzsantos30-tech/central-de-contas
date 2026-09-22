@@ -63,6 +63,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { FilterBar, FilterPill } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
+import { CodigoCulturaModal } from '@/components/operacional/CodigoCulturaModal'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
@@ -219,6 +220,7 @@ export default function VisaoExecutiva() {
   const [arquivDisponivel, setArquivDisponivel] = useState(true) // false = migration 090 não rodada
   const [arquivando, setArquivando] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
+  const [culturaOpen, setCulturaOpen] = useState(false)
   const [movTipo, setMovTipo] = useState<TipoMov | null>(null)
   const [mesISO, setMesISO] = useState<string>(() => {
     const d = new Date()
@@ -522,7 +524,7 @@ export default function VisaoExecutiva() {
                 <Archive size={14} /> {arquivando ? 'Arquivando…' : 'Arquivar Período'}
               </Button>
             )}
-            <Button variant="outline" onClick={() => alert('Código de Cultura — em breve')}>
+            <Button variant="outline" onClick={() => setCulturaOpen(true)}>
               <BookOpen size={14} /> Código de Cultura
             </Button>
             <Button variant="outline" onClick={exportarPDF}>
@@ -882,6 +884,8 @@ export default function VisaoExecutiva() {
           <SocialMediaVisao clientes={clientesFiltrados} profiles={profiles} />
         </>
       )}
+
+      <CodigoCulturaModal open={culturaOpen} onClose={() => setCulturaOpen(false)} />
 
       {movTipo && (
         <MovimentacoesModal
