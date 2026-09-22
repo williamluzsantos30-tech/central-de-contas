@@ -13,12 +13,19 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { MOCK_DESPESAS, type Despesa } from './mockDespesas'
 
-/** Metas de margem (%) usadas pra colorir os KPIs de margem no DRE. */
+/** Metas financeiras usadas pra colorir os KPIs do DRE e do LTV:CAC. */
 export interface MetasFinanceiras {
   margemBrutaAlvo: number
   margemLiquidaAlvo: number
+  ltvCacAlvo: number // ex.: 3 (LTV deve ser ≥ 3× o CAC)
+  paybackAlvoMeses: number // ex.: 12
 }
-export const METAS_FINANCEIRAS_INICIAL: MetasFinanceiras = { margemBrutaAlvo: 60, margemLiquidaAlvo: 20 }
+export const METAS_FINANCEIRAS_INICIAL: MetasFinanceiras = {
+  margemBrutaAlvo: 60,
+  margemLiquidaAlvo: 20,
+  ltvCacAlvo: 3,
+  paybackAlvoMeses: 12,
+}
 
 export interface NovaDespesaInput {
   descricao: string

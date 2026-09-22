@@ -53,8 +53,10 @@ export interface DreInput {
 
 const mesDe = (iso?: string | null) => (iso ? iso.slice(0, 7) : '')
 
+export type ChurnMap = Map<string, { mes: string; valor: number }>
+
 /** Mapa clienteId → { mes do churn, valor perdido } (último evento; fallback arquivado_em). */
-function churnMap(clientes: ClienteDRE[], eventos: EventoChurnDRE[]) {
+export function buildChurnMap(clientes: ClienteDRE[], eventos: EventoChurnDRE[]): ChurnMap {
   const ultimo = new Map<string, EventoChurnDRE>()
   for (const ev of eventos) {
     const cur = ultimo.get(ev.cliente_id)
@@ -75,7 +77,7 @@ function churnMap(clientes: ClienteDRE[], eventos: EventoChurnDRE[]) {
 }
 
 /** MRR ativo em um mês (clientes que já começaram e ainda não haviam dado churn). */
-function mrrAtivoNoMes(clientes: ClienteDRE[], churns: Map<string, { mes: string; valor: number }>, mes: string): number {
+export function mrrAtivoNoMes(clientes: ClienteDRE[], churns: ChurnMap, mes: string): number {
   let total = 0
   for (const c of clientes) {
     const start = mesDe(c.data_inicio)
@@ -87,11 +89,31 @@ function mrrAtivoNoMes(clientes: ClienteDRE[], churns: Map<string, { mes: string
   return total
 }
 
+/** Nº de clientes ativos em um mês (mesmo critério do mrrAtivoNoMes). */
+export function contagemAtivosNoMes(clientes: ClienteDRE[], churns: ChurnMap, mes: string): number {
+  let n = 0
+  for (const c of clientes) {
+    const start = mesDe(c.data_inicio)
+    if (!start || start > mes) continue
+    const churn = churns.get(c.id)
+    if (churn && churn.mes <= mes) continue
+    n++
+  }
+  return n
+}
+
 /** MRR perdido (churn) no mês. */
-function mrrPerdidoNoMes(churns: Map<string, { mes: string; valor: number }>, mes: string): number {
+export function mrrPerdidoNoMes(churns: ChurnMap, mes: string): number {
   let total = 0
   for (const { mes: m, valor } of churns.values()) if (m === mes) total += valor
   return total
+}
+
+/** Nº de churns (logo churn) no mês. */
+export function churnsCountNoMes(churns: ChurnMap, mes: string): number {
+  let n = 0
+  for (const { mes: m } of churns.values()) if (m === mes) n++
+  return n
 }
 
 export interface DreResult {
@@ -113,7 +135,7 @@ export interface DreResult {
 
 /** DRE consolidada sobre `meses` (1 mês, trimestre ou ano), no regime dado. */
 export function calculateDRE(input: DreInput, meses: string[], regime: RegimeDRE): DreResult {
-  const churns = churnMap(input.clientes, input.eventosChurn)
+  const churns = buildChurnMap(input.clientes, input.eventosChurn)
 
   let receitaBruta = 0
   let deducoes = 0

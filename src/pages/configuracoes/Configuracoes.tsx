@@ -394,9 +394,11 @@ export default function Configuracoes() {
               Alvos de rentabilidade usados pra colorir os KPIs de margem no DRE
               (<span className="text-green-300">verde</span> = atingiu; <span className="text-red-300">vermelho</span> = abaixo).
             </p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
               <SlaInput label="Meta de Margem Bruta (%)" value={metasFinanceiras.margemBrutaAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, margemBrutaAlvo: v })} />
               <SlaInput label="Meta de Margem Líquida (%)" value={metasFinanceiras.margemLiquidaAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, margemLiquidaAlvo: v })} />
+              <SlaInput label="Meta de LTV:CAC (x)" value={metasFinanceiras.ltvCacAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, ltvCacAlvo: v })} />
+              <SlaInput label="Payback alvo (meses)" value={metasFinanceiras.paybackAlvoMeses} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, paybackAlvoMeses: v })} />
             </div>
           </section>
 

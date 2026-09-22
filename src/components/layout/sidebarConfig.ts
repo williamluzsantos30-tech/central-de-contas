@@ -40,6 +40,7 @@ import {
   Wallet,
   Receipt,
   FileBarChart,
+  Scale,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -141,9 +142,8 @@ export const SIDEBAR_NAV: NavNode[] = [
     children: [
       { kind: 'item', to: '/financeiro/despesas', label: 'Despesas', icon: Receipt },
       { kind: 'item', to: '/financeiro/dre', label: 'DRE', icon: FileBarChart },
-      // Próximas etapas do módulo Financeiro (consomem os dados de Despesas):
-      // { kind: 'item', to: '/financeiro/margens', label: 'Margens', icon: Percent },
-      // { kind: 'item', to: '/financeiro/ltv-cac', label: 'LTV:CAC', icon: Scale },
+      { kind: 'item', to: '/financeiro/ltv-cac', label: 'LTV:CAC', icon: Scale },
+      // Próximas etapas do módulo Financeiro (consomem os dados de Despesas/DRE):
       // { kind: 'item', to: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa', icon: Waves },
     ],
   },
