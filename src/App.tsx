@@ -41,6 +41,8 @@ import SDR from '@/pages/comercial/SDR'
 import CadastrarLeadQualificado from '@/pages/comercial/CadastrarLeadQualificado'
 import Closer from '@/pages/comercial/Closer'
 import { ComercialProvider } from '@/pages/comercial/store'
+import Despesas from '@/pages/financeiro/Despesas'
+import { FinanceiroProvider } from '@/pages/financeiro/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
 import { RequirePermissao } from '@/components/auth/RequirePermissao'
 import { PERM } from '@/hooks/usePermissoes'
@@ -79,11 +81,14 @@ export default function App() {
           <Route
             element={
               <Protected>
-                {/* ComercialProvider acima do Layout: o Lead (mock, fonte única)
-                    é compartilhado entre as telas /comercial E a aba
-                    Integrações em Configurações (que injeta leads via webhook). */}
+                {/* Providers acima do Layout: o Lead (Comercial) e as Despesas
+                    (Financeiro) são compartilhados entre suas telas E a aba
+                    Integrações em Configurações (que injeta leads/despesas via
+                    webhook simulado). */}
                 <ComercialProvider>
-                  <Layout />
+                  <FinanceiroProvider>
+                    <Layout />
+                  </FinanceiroProvider>
                 </ComercialProvider>
               </Protected>
             }
@@ -128,6 +133,8 @@ export default function App() {
             <Route path="/comercial/closer" element={<Closer />} />
             <Route path="/comercial/marketing" element={<MarketingFunnelPanel />} />
             <Route path="/comercial/metas" element={<MetasPanel />} />
+            {/* Financeiro — Despesas (base dos módulos financeiros futuros) */}
+            <Route path="/financeiro/despesas" element={<Despesas />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
               path="/clientes"
