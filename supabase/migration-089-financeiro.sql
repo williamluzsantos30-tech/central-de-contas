@@ -59,9 +59,12 @@ create trigger trg_despesas_updated before update on despesas_financeiras
 -- 2. Config do Financeiro (linha única) — metas financeiras
 create table if not exists financeiro_config (
   id text primary key default 'default',
-  metas jsonb,                             -- { margemBrutaAlvo, margemLiquidaAlvo }
+  metas jsonb,                             -- { margemBrutaAlvo, margemLiquidaAlvo, ltvCacAlvo, paybackAlvoMeses }
+  comissao jsonb,                          -- { base, pctCloser, pctSdr, pctSocial }
   updated_at timestamptz default now()
 );
+-- (idempotente, caso a tabela já exista de uma execução anterior)
+alter table financeiro_config add column if not exists comissao jsonb;
 
 alter table financeiro_config enable row level security;
 drop policy if exists "auth read fin cfg" on financeiro_config;

@@ -43,6 +43,7 @@ import {
   Waves,
   Layers,
   Scale,
+  HandCoins,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -146,6 +147,7 @@ export const SIDEBAR_NAV: NavNode[] = [
       { kind: 'item', to: '/financeiro/dre', label: 'DRE', icon: FileBarChart },
       { kind: 'item', to: '/financeiro/dre-setor', label: 'DRE por Setor', icon: Layers },
       { kind: 'item', to: '/financeiro/ltv-cac', label: 'LTV:CAC', icon: Scale },
+      { kind: 'item', to: '/financeiro/comissionamento', label: 'Comissionamento', icon: HandCoins },
       { kind: 'item', to: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa', icon: Waves },
     ],
   },
