@@ -44,6 +44,7 @@ import { ComercialProvider } from '@/pages/comercial/store'
 import Despesas from '@/pages/financeiro/Despesas'
 import DRE from '@/pages/financeiro/DRE'
 import LtvCac from '@/pages/financeiro/LtvCac'
+import FluxoCaixa from '@/pages/financeiro/FluxoCaixa'
 import { FinanceiroProvider } from '@/pages/financeiro/store'
 import Configuracoes from '@/pages/configuracoes/Configuracoes'
 import { RequirePermissao } from '@/components/auth/RequirePermissao'
@@ -139,6 +140,7 @@ export default function App() {
             <Route path="/financeiro/despesas" element={<Despesas />} />
             <Route path="/financeiro/dre" element={<DRE />} />
             <Route path="/financeiro/ltv-cac" element={<LtvCac />} />
+            <Route path="/financeiro/fluxo-caixa" element={<FluxoCaixa />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route
               path="/clientes"

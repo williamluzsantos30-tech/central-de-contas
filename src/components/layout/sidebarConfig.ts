@@ -41,6 +41,7 @@ import {
   Receipt,
   FileBarChart,
   Scale,
+  Waves,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -143,8 +144,7 @@ export const SIDEBAR_NAV: NavNode[] = [
       { kind: 'item', to: '/financeiro/despesas', label: 'Despesas', icon: Receipt },
       { kind: 'item', to: '/financeiro/dre', label: 'DRE', icon: FileBarChart },
       { kind: 'item', to: '/financeiro/ltv-cac', label: 'LTV:CAC', icon: Scale },
-      // Próximas etapas do módulo Financeiro (consomem os dados de Despesas/DRE):
-      // { kind: 'item', to: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa', icon: Waves },
+      { kind: 'item', to: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa', icon: Waves },
     ],
   },
 ]
