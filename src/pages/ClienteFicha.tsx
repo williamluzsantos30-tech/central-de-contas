@@ -1932,10 +1932,6 @@ function ContratoModal({
   const [fim, setFim] = useState(cliente.contrato_fim ?? '')
   const [status, setStatus] = useState(cliente.contrato_status ?? 'ativo')
   const [responsavelId, setResponsavelId] = useState(cliente.contrato_responsavel_id ?? '')
-  const [diaVencimento, setDiaVencimento] = useState<string>(
-    cliente.dia_vencimento ? String(cliente.dia_vencimento) : '',
-  )
-  const [formaPagamento, setFormaPagamento] = useState(cliente.forma_pagamento ?? '')
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1978,8 +1974,6 @@ function ContratoModal({
         contrato_fim: fim || null,
         contrato_status: status || null,
         contrato_responsavel_id: responsavelId || null,
-        dia_vencimento: diaVencimento ? Number(diaVencimento) : null,
-        forma_pagamento: formaPagamento || null,
       })
       .eq('id', cliente.id)
     if (upErr) {
@@ -2113,48 +2107,6 @@ function ContratoModal({
             </select>
           </div>
 
-          {/* Cobranca — o que o Portal do Cliente mostra pra ele pagar */}
-          <div className="rounded-md border border-border bg-bg-soft/40 p-3">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Cobrança
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Dia do vencimento
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={diaVencimento}
-                  onChange={(e) => setDiaVencimento(e.target.value)}
-                  placeholder="ex: 10"
-                  className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Forma de pagamento
-                </label>
-                <select
-                  value={formaPagamento}
-                  onChange={(e) => setFormaPagamento(e.target.value)}
-                  className="w-full rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-100 focus:border-brand-500/60 focus:outline-none"
-                >
-                  <option value="">—</option>
-                  <option value="pix">PIX</option>
-                  <option value="boleto">Boleto</option>
-                  <option value="cartao">Cartão</option>
-                  <option value="transferencia">Transferência</option>
-                  <option value="outro">Outro</option>
-                </select>
-              </div>
-            </div>
-            <p className="mt-2 text-[10px] text-muted">
-              A chave PIX e os dados da agência ficam em Admin → Cobrança.
-            </p>
-          </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
