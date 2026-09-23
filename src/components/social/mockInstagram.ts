@@ -26,6 +26,19 @@ export interface ClienteInstagram {
   ultimaSincronizacao?: string
   tokenStatus?: TokenStatus
 }
+export type TipoPost = 'reels' | 'carrossel' | 'feed' | 'stories'
+export interface PostInstagram {
+  id: string
+  tipo: TipoPost
+  dataPublicacao: string // "YYYY-MM-DD"
+  thumbnailUrl?: string
+  alcance: number
+  curtidas: number
+  comentarios: number
+  salvamentos: number
+  taxaEngajamento: number // % = (curtidas+comentarios+salvamentos)/alcance
+}
+
 export interface MetricasInstagram {
   clienteId: string
   periodo: string
@@ -34,6 +47,7 @@ export interface MetricasInstagram {
   seguidores: number
   seguidoresVariacao: number
   engajamentoMedio: number
+  posts: PostInstagram[]
   fonteDado: 'api_instagram' | 'manual'
   sincronizadoEm?: string
 }
@@ -228,6 +242,32 @@ const periodoCorrente = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+const TIPOS_POST: TipoPost[] = ['reels', 'carrossel', 'feed', 'stories']
+
+function gerarPosts(clienteId: string, p: string, base: number): PostInstagram[] {
+  const [y, mo] = p.split('-').map(Number)
+  const n = 5 + (base % 4) // 5–8 posts
+  return Array.from({ length: n }, (_, i) => {
+    const ps = hash(`${base}post${i}`)
+    const alcance = ranged(hash(`${ps}a`), 800, 14000)
+    const curtidas = ranged(hash(`${ps}l`), 40, Math.max(80, Math.round(alcance * 0.12)))
+    const comentarios = ranged(hash(`${ps}c`), 2, 130)
+    const salvamentos = ranged(hash(`${ps}s`), 1, 240)
+    const taxa = alcance > 0 ? ((curtidas + comentarios + salvamentos) / alcance) * 100 : 0
+    const dia = 1 + (ps % 27)
+    return {
+      id: `${clienteId}-${p}-${i}`,
+      tipo: TIPOS_POST[ps % 4],
+      dataPublicacao: `${y}-${String(mo).padStart(2, '0')}-${String(dia).padStart(2, '0')}`,
+      alcance,
+      curtidas,
+      comentarios,
+      salvamentos,
+      taxaEngajamento: Math.round(taxa * 100) / 100,
+    }
+  })
+}
+
 export function getInstagramMetricsForPeriod(clienteId: string, periodo: string): MetricasInstagram | null {
   const state = getInstagramState(clienteId)
   if (state.modoConexao === 'nao_conectado') return null
@@ -241,6 +281,7 @@ export function getInstagramMetricsForPeriod(clienteId: string, periodo: string)
     seguidores: ranged(base, 4200, 52000),
     seguidoresVariacao: ranged(hash(`${base}v`), -180, 1600),
     engajamentoMedio: Math.round(ranged(hash(`${base}eng`), 180, 820)) / 100,
+    posts: gerarPosts(clienteId, p, base),
     fonteDado: 'api_instagram',
     sincronizadoEm: state.ultimaSincronizacao,
   }

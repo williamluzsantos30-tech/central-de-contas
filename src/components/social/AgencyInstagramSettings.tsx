@@ -17,6 +17,7 @@ import {
   modoConexaoLabel,
   setAgencyConfig,
   simularSincronizacao,
+  simularTokenExpirado,
   tokenStatusLabel,
   fmtDataHora,
   type AgencyInstagramConfig,
@@ -140,6 +141,7 @@ export function AgencyInstagramSettings() {
                 <th className="px-3 py-2 font-semibold">Modo</th>
                 <th className="px-3 py-2 font-semibold">Token</th>
                 <th className="px-3 py-2 font-semibold">Última sync</th>
+                <th className="px-3 py-2 font-semibold">Dev</th>
               </tr>
             </thead>
             <tbody>
@@ -158,11 +160,27 @@ export function AgencyInstagramSettings() {
                     )}
                   </td>
                   <td className="px-3 py-2 tabular-nums text-muted">{fmtDataHora(state.ultimaSincronizacao)}</td>
+                  <td className="px-3 py-2">
+                    {state.modoConexao === 'direta' && state.tokenStatus !== 'expirado' ? (
+                      <button
+                        onClick={() => {
+                          simularTokenExpirado(clienteId)
+                          setNonce((n) => n + 1)
+                        }}
+                        className="text-[10px] text-muted underline decoration-dotted hover:text-amber-300"
+                        title="Ferramenta de teste: força o token deste cliente como expirado"
+                      >
+                        simular expiração
+                      </button>
+                    ) : (
+                      <span className="text-muted/50">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {conexoes.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-[11px] text-muted">
+                  <td colSpan={6} className="px-3 py-6 text-center text-[11px] text-muted">
                     Nenhum cliente conectado. Conecte na Ficha do Cliente › Operacional Social › Métricas.
                   </td>
                 </tr>

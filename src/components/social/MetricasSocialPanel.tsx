@@ -4,13 +4,14 @@ import {
   ChevronRight,
   TrendingUp,
   CheckCircle2,
-  Star,
-  Megaphone,
   Sparkles,
   Users,
   Save,
   Edit3,
   RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -25,7 +26,9 @@ import type {
   ItemSocialMedia,
   MetricasSocialMensal,
 } from '@/types/database'
+import { calculatePeriodComparison, type PeriodComparison } from '@/components/ds/KPICard'
 import { InstagramConnectionCard } from './InstagramConnectionCard'
+import { TopPostsRanking } from './TopPostsRanking'
 import { fmtHora, diasAtras, getInstagramMetricsForPeriod, getInstagramState, loadInstagramCache } from './mockInstagram'
 
 interface Props {
@@ -87,6 +90,11 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
   }, [])
   const igState = useMemo(() => getInstagramState(cliente.id), [cliente.id, igNonce])
   const igMetricas = useMemo(() => getInstagramMetricsForPeriod(cliente.id, mesISO), [cliente.id, mesISO, igNonce])
+  const igMetricasAnterior = useMemo(() => {
+    const [y, m] = mesISO.split('-').map(Number)
+    const ant = new Date(y, m - 2, 1)
+    return getInstagramMetricsForPeriod(cliente.id, `${ant.getFullYear()}-${String(ant.getMonth() + 1).padStart(2, '0')}`)
+  }, [cliente.id, mesISO, igNonce])
   const igConectado = igState.modoConexao !== 'nao_conectado'
   const igExpirado = igState.tokenStatus === 'expirado'
   const igSync = igConectado
@@ -126,9 +134,9 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
       {/* Integração Instagram — conexão (2 modos) */}
       <InstagramConnectionCard clienteId={cliente.id} nomeCliente={cliente.nome} version={igNonce} onChanged={refreshIg} />
 
-      {/* AUTOMÁTICAS — via Instagram Graph API (quando conectado) */}
+      {/* AUTOMÁTICAS — via Instagram Graph API (fundo neutro, cor só no badge) */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
+        <AutoKpiCard
           icon={<CheckCircle2 size={14} />}
           label="Posts publicados"
           valor={
@@ -136,13 +144,13 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
               ? String(igMetricas.postsPublicados)
               : `${kpiCalculado.totalPublicados}/${kpiCalculado.totalProgramados}`
           }
-          sub={igConectado ? 'no período' : kpiCalculado.atrasados > 0 ? `${kpiCalculado.atrasados} atrasado(s) (interno)` : 'contagem interna'}
-          tone={igConectado ? 'brand' : kpiCalculado.totalPublicados > 0 ? 'success' : 'neutral'}
-          auto
+          sub={igConectado ? 'no período' : 'contagem interna (calendário)'}
+          atual={igConectado && igMetricas ? igMetricas.postsPublicados : undefined}
+          anterior={igMetricasAnterior?.postsPublicados}
           sync={igConectado ? igSync : undefined}
           hint={hintConectar}
         />
-        <KpiCard
+        <AutoKpiCard
           icon={<TrendingUp size={14} />}
           label="Alcance médio"
           valor={
@@ -153,12 +161,12 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
                 : '—'
           }
           sub="por post"
-          tone="brand"
-          auto
+          atual={igConectado && igMetricas ? igMetricas.alcanceMedio : undefined}
+          anterior={igMetricasAnterior?.alcanceMedio}
           sync={igConectado ? igSync : undefined}
           hint={hintConectar}
         />
-        <KpiCard
+        <AutoKpiCard
           icon={<Users size={14} />}
           label="Seguidores"
           valor={
@@ -170,17 +178,17 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
           }
           sub={
             igConectado && igMetricas
-              ? `${igMetricas.seguidoresVariacao >= 0 ? '↑ +' : '↓ '}${igMetricas.seguidoresVariacao.toLocaleString('pt-BR')} no mês`
+              ? `${igMetricas.seguidoresVariacao >= 0 ? '+' : ''}${igMetricas.seguidoresVariacao.toLocaleString('pt-BR')} no mês`
               : mesAnterior?.seguidores != null && metricaDoMes?.seguidores != null
                 ? compararSeguidores(metricaDoMes.seguidores, mesAnterior.seguidores)
                 : 'fim do mês'
           }
-          tone="brand"
-          auto
+          atual={igConectado && igMetricas ? igMetricas.seguidores : undefined}
+          anterior={igMetricasAnterior?.seguidores}
           sync={igConectado ? igSync : undefined}
           hint={hintConectar}
         />
-        <KpiCard
+        <AutoKpiCard
           icon={<Sparkles size={14} />}
           label="Engajamento médio"
           valor={
@@ -191,14 +199,14 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
                 : '—'
           }
           sub="curtidas + comentários + salvos ÷ alcance"
-          tone="success"
-          auto
+          atual={igConectado && igMetricas ? igMetricas.engajamentoMedio : undefined}
+          anterior={igMetricasAnterior?.engajamentoMedio}
           sync={igConectado ? igSync : undefined}
           hint={hintConectar}
         />
       </div>
 
-      {/* INTERNAS / MANUAIS — a API não fornece (julgamento + calendário interno) */}
+      {/* INTERNA — % posts no prazo (do Calendário de Postagens) */}
       <div className="grid gap-3 md:grid-cols-3">
         <KpiCard
           icon={<TrendingUp size={14} />}
@@ -215,41 +223,20 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
               : 'danger'
           }
         />
-        <KpiCard
-          icon={<Megaphone size={14} />}
-          label="Reaproveitados pra ads"
-          valor={String(kpiCalculado.reaproveitados)}
-          sub={
-            kpiCalculado.totalProgramados > 0
-              ? `${Math.round((kpiCalculado.reaproveitados / kpiCalculado.totalProgramados) * 100)}% do mês`
-              : '—'
-          }
-          tone="brand"
-        />
-        <KpiCard
-          icon={<Star size={14} />}
-          label="Evolução qualitativa"
-          valor={metricaDoMes?.nota_qualitativa != null ? `${metricaDoMes.nota_qualitativa}/10` : '—'}
-          sub="avaliação subjetiva mensal"
-          tone={
-            metricaDoMes?.nota_qualitativa == null
-              ? 'neutral'
-              : metricaDoMes.nota_qualitativa >= 8
-              ? 'success'
-              : metricaDoMes.nota_qualitativa >= 5
-              ? 'warning'
-              : 'danger'
-          }
-        />
       </div>
 
-      {/* Painel de input das métricas manuais */}
-      <MetricasInputForm
-        clienteId={cliente.id}
-        mesISO={mesISO}
-        metricaAtual={metricaDoMes}
-        onSaved={load}
-      />
+      {/* Melhores posts do mês (quando conectado) */}
+      {igConectado && igMetricas && <TopPostsRanking posts={igMetricas.posts} />}
+
+      {/* Registro manual — só como FALLBACK quando NÃO conectado */}
+      {!igConectado && (
+        <MetricasInputForm
+          clienteId={cliente.id}
+          mesISO={mesISO}
+          metricaAtual={metricaDoMes}
+          onSaved={load}
+        />
+      )}
 
       {/* Comparativo histórico */}
       {metricas.length > 1 && (
@@ -428,6 +415,79 @@ function KpiCard({
   )
 }
 
+/** Card automático (via API): fundo neutro, badge de variação ▲/▼ vs. mês anterior. */
+function AutoKpiCard({
+  icon,
+  label,
+  valor,
+  sub,
+  atual,
+  anterior,
+  sync,
+  hint,
+}: {
+  icon: React.ReactNode
+  label: string
+  valor: string
+  sub: string
+  atual?: number
+  anterior?: number
+  sync?: string
+  hint?: string
+}) {
+  const comp = atual != null ? calculatePeriodComparison(atual, anterior ?? 0, 'maior') : null
+  const semAnterior = atual != null && (anterior == null || anterior === 0)
+  const syncExpirado = !!sync?.includes('expirado')
+  return (
+    <Card className="border border-border bg-bg-card">
+      <CardBody className="space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted">
+            {icon}
+            {label}
+          </span>
+          <span className="rounded border border-border bg-bg-soft px-1 py-0.5 text-[8px] uppercase tracking-wider text-muted" title="Automático via Instagram API">
+            auto
+          </span>
+        </div>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <p className="text-2xl font-semibold tabular-nums text-zinc-100">{valor}</p>
+          {comp && <CompBadge c={comp} semAnterior={semAnterior} />}
+        </div>
+        <p className="text-[10px] text-muted">{sub}</p>
+        {sync ? (
+          <p className={cn('flex items-center gap-1 text-[9px]', syncExpirado ? 'text-amber-300/80' : 'text-muted')}>
+            <RefreshCw size={9} /> {sync}
+          </p>
+        ) : hint ? (
+          <p className="text-[9px] text-muted/60">{hint}</p>
+        ) : null}
+      </CardBody>
+    </Card>
+  )
+}
+
+function CompBadge({ c, semAnterior }: { c: PeriodComparison; semAnterior: boolean }) {
+  if (!c.temDadoAnterior || semAnterior) {
+    return <span className="inline-flex items-center rounded border border-border px-1 py-0.5 text-[9px] text-muted" title="Sem mês anterior para comparar">—</span>
+  }
+  const zero = Math.abs(c.percentual) < 0.05
+  const Icon = zero ? Minus : c.percentual > 0 ? ArrowUpRight : ArrowDownRight
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[9px] font-semibold tabular-nums',
+        zero ? 'border-border text-muted' : c.favoravel ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-red-500/40 bg-red-500/10 text-red-300',
+      )}
+      title="vs. mês anterior"
+    >
+      <Icon size={9} />
+      {c.percentual > 0 ? '+' : ''}
+      {c.percentual.toFixed(1)}%
+    </span>
+  )
+}
+
 function MetricasInputForm({
   clienteId,
   mesISO,
@@ -443,7 +503,6 @@ function MetricasInputForm({
   const [eng, setEng] = useState(metricaAtual?.engajamento_medio?.toString() ?? '')
   const [alc, setAlc] = useState(metricaAtual?.alcance_medio?.toString() ?? '')
   const [seg, setSeg] = useState(metricaAtual?.seguidores?.toString() ?? '')
-  const [nota, setNota] = useState(metricaAtual?.nota_qualitativa?.toString() ?? '')
   const [obs, setObs] = useState(metricaAtual?.observacoes ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -451,7 +510,6 @@ function MetricasInputForm({
     setEng(metricaAtual?.engajamento_medio?.toString() ?? '')
     setAlc(metricaAtual?.alcance_medio?.toString() ?? '')
     setSeg(metricaAtual?.seguidores?.toString() ?? '')
-    setNota(metricaAtual?.nota_qualitativa?.toString() ?? '')
     setObs(metricaAtual?.observacoes ?? '')
   }, [metricaAtual])
 
@@ -463,7 +521,7 @@ function MetricasInputForm({
       engajamento_medio: eng ? Number(eng) : null,
       alcance_medio: alc ? Number(alc) : null,
       seguidores: seg ? Number(seg) : null,
-      nota_qualitativa: nota ? Number(nota) : null,
+      nota_qualitativa: metricaAtual?.nota_qualitativa ?? null, // Evolução Qualitativa removida — preserva histórico
       observacoes: obs.trim() || null,
     }
     if (metricaAtual) {
@@ -486,14 +544,11 @@ function MetricasInputForm({
         <CardBody className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <p className="text-sm text-zinc-100">
-              {metricaAtual
-                ? 'Métricas mensais preenchidas. Clique em editar pra atualizar.'
-                : 'Sem métricas registradas pra esse mês ainda.'}
+              {metricaAtual ? 'Métricas manuais deste mês preenchidas.' : 'Este cliente não está conectado ao Instagram.'}
             </p>
             <p className="mt-1 text-[11px] text-muted">
-              Alcance, seguidores e engajamento são preenchidos automaticamente quando o Instagram
-              está conectado (bloco acima). Aqui você registra a <strong className="text-zinc-300">nota qualitativa</strong> e
-              observações do mês — e serve de fallback manual quando não há conexão.
+              Registre as métricas manualmente (alcance, seguidores, engajamento) até que a conexão
+              seja feita — quando o Instagram for conectado, esses dados passam a vir da API automaticamente.
             </p>
           </div>
           <Button onClick={() => setEditing(true)}>
@@ -540,16 +595,6 @@ function MetricasInputForm({
               value={seg}
               onChange={(e) => setSeg(e.target.value)}
               placeholder="ex: 14200"
-            />
-          </Field>
-          <Field label="Nota qualitativa (1-10)">
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={nota}
-              onChange={(e) => setNota(e.target.value)}
-              placeholder="ex: 8"
             />
           </Field>
         </div>

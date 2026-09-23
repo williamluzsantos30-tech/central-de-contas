@@ -18,7 +18,6 @@ import {
   diasAtras,
   getAgencyConfig,
   getInstagramState,
-  simularTokenExpirado,
   vincularAgencia,
   type ClienteInstagram,
 } from './mockInstagram'
@@ -99,13 +98,6 @@ export function InstagramConnectionCard({
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               A conexão com o Instagram deste cliente expirou. Peça para reconectar — os cards mantêm o último dado sincronizado.
             </div>
-          )}
-
-          {/* Dev/simulação: força a expiração do token (só Modo A). */}
-          {!viaAgencia && !expirado && (
-            <button onClick={() => aplicar(simularTokenExpirado(clienteId))} className="text-[10px] text-muted underline decoration-dotted hover:text-amber-300">
-              simular expiração de token
-            </button>
           )}
         </CardBody>
       </Card>
