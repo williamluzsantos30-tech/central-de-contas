@@ -39,8 +39,10 @@ export function SocialClienteHeader({ cliente, perfilSetup, itemsDoMes, onChange
   const atrasados = itemsDoMes.filter(
     (i) => i.status !== 'conclusao' && i.prazo && i.prazo.slice(0, 10) < today,
   ).length
+  // Próximo post = o mais próximo que ainda NÃO foi publicado (publicado_em
+  // vazio). "conclusao" é só arte pronta — não conta como publicado.
   const proximoPost = itemsDoMes
-    .filter((i) => i.status !== 'conclusao' && i.prazo && i.prazo.slice(0, 10) >= today)
+    .filter((i) => !i.publicado_em && i.prazo && i.prazo.slice(0, 10) >= today)
     .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))[0]
 
   // Cálculo de progresso do setup do perfil (4 itens × 33% por etapa)

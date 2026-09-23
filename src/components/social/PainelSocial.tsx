@@ -46,14 +46,16 @@ export function PainelSocial({ cliente, setup, items, planejamentos }: Props) {
     (i) => i.prazo && i.prazo.slice(0, 10) >= monthStart && i.prazo.slice(0, 10) <= monthEnd,
   )
 
-  // Próximos 7 dias
+  // Próximos 7 dias — posts que ainda NÃO foram ao ar (publicado_em vazio).
+  // Atenção: "conclusao" = arte pronta, NÃO publicado; o marcador de
+  // publicação é publicado_em (setado no "Marcar como publicado").
   const proximos = items
     .filter(
       (i) =>
         i.prazo &&
         i.prazo.slice(0, 10) >= hojeStr &&
         i.prazo.slice(0, 10) <= seteDiasFrenteStr &&
-        i.status !== 'conclusao',
+        !i.publicado_em,
     )
     .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
     .slice(0, 8)
