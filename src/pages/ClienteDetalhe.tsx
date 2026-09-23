@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, Pencil, Plus, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -85,10 +85,14 @@ const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLe
 export default function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
+  // ?aba=operacional-social | operacional-trafego — vindo das listas de
+  // Execução (Social Media / Tráfego): abre direto no operacional certo.
+  const abaParam = searchParams.get('aba')
   // Qual operacional abrir primeiro quando a página carrega. Só afeta o
-  // estado inicial — depois o usuário troca de aba livremente. Links antigos
-  // de /social/clientes/:id abrem direto no operacional social.
-  const prefereSocial = location.pathname.startsWith('/social/')
+  // estado inicial — depois o usuário troca de aba livremente. Links de
+  // /social/clientes/:id (ou ?aba=operacional-social) abrem no social.
+  const prefereSocial = location.pathname.startsWith('/social/') || abaParam === 'operacional-social'
   // Permissões do usuário logado — decidem quais operacionais ele vê na ficha.
   const { permissoes: minhasPermissoes, bypass: adminBypass } = usePermissoes()
   const [cliente, setCliente] = useState<Cliente | null>(null)
@@ -98,7 +102,11 @@ export default function ClienteDetalhe() {
   const [comentariosCount, setComentariosCount] = useState<Map<string, number>>(new Map())
   const [tab, setTab] = useState<Tab>('visao')
   const [socialTab, setSocialTab] = useState<SocialTab>('painel')
-  const [topView, setTopView] = useState<TopView>('ficha')
+  // Vindo de um contexto operacional (?aba=…), abre já na aba Operacional;
+  // senão mantém o padrão "Ficha".
+  const [topView, setTopView] = useState<TopView>(
+    abaParam === 'operacional-social' || abaParam === 'operacional-trafego' ? 'operacional' : 'ficha',
+  )
   const [editOpen, setEditOpen] = useState(false)
   const [novaFreq, setNovaFreq] = useState<FrequenciaTarefa | null>(null)
   const [drawerTarefa, setDrawerTarefa] = useState<Tarefa | null>(null)

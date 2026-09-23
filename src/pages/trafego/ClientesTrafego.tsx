@@ -251,7 +251,7 @@ export default function ClientesTrafego() {
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <Link
-                            to={`/clientes/${c.id}`}
+                            to={`/clientes/${c.id}?aba=operacional-trafego`}
                             className="text-sm font-medium text-zinc-100 hover:text-brand-300"
                           >
                             {c.nome}
@@ -316,7 +316,7 @@ export default function ClientesTrafego() {
                             <Pencil size={14} />
                           </button>
                           <Link
-                            to={`/clientes/${c.id}`}
+                            to={`/clientes/${c.id}?aba=operacional-trafego`}
                             className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
                             title="Abrir detalhes"
                           >

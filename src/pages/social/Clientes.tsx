@@ -433,7 +433,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <Link
-                              to={`/social/clientes/${c.id}`}
+                              to={`/social/clientes/${c.id}?aba=operacional-social`}
                               className="text-sm font-medium text-zinc-100 hover:text-pink-300"
                             >
                               {c.nome}
@@ -517,7 +517,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
                               <Pencil size={14} />
                             </button>
                             <Link
-                              to={`/social/clientes/${c.id}`}
+                              to={`/social/clientes/${c.id}?aba=operacional-social`}
                               className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-pink-300"
                               title="Abrir detalhes"
                             >
