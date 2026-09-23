@@ -25,7 +25,7 @@ import { CalendarioPostagensCompacto } from '@/components/clientes/CalendarioPos
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
-import { temCargo, temAlgumCargo } from '@/lib/cargos'
+import { temCargo } from '@/lib/cargos'
 import {
   cn,
   formatDate,
@@ -90,12 +90,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
-  // Toggle pra mostrar SOMENTE arquivados (churn). Só admin/diretoria/head veem.
-  const [mostrarArquivados, setMostrarArquivados] = useState(false)
   const [gerandoPdf, setGerandoPdf] = useState(false)
-  const isAdmin = profile?.role === 'admin'
-  const podeVerArquivados =
-    isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const { nomes: squadsAtivos } = useSquads()
@@ -263,10 +258,8 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
-      // Arquivados (churn): toggle decide se mostra só ativos (default) ou só arquivados
-      const eArquivado = !!c.arquivado_em
-      if (mostrarArquivados && !eArquivado) return false
-      if (!mostrarArquivados && eArquivado) return false
+      // Arquivados (churn) não aparecem aqui — têm aba própria (Churns).
+      if (c.arquivado_em) return false
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fSocial && c.social_media_id !== fSocial) return false
@@ -276,7 +269,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
       if (escopo === 'meus' && profile && c.social_media_id !== profile.id) return false
       return true
     })
-  }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile, mostrarArquivados])
+  }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile])
 
   const acoes = (
     <div className="flex items-center gap-1.5">
@@ -308,14 +301,8 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         <div className="mb-4 flex items-center justify-end">{acoes}</div>
       ) : (
         <PageHeader
-          title={
-            mostrarArquivados ? 'Clientes arquivados · Social Media' : 'Clientes · Social Media'
-          }
-          description={
-            mostrarArquivados
-              ? `${filtered.length} ${filtered.length === 1 ? 'cliente arquivado' : 'clientes arquivados'} (churn)`
-              : `${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`
-          }
+          title="Clientes · Social Media"
+          description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} sob acompanhamento`}
           actions={acoes}
         />
       )}
@@ -393,21 +380,6 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
               </option>
             ))}
           </Select>
-          {podeVerArquivados && (
-            <button
-              type="button"
-              onClick={() => setMostrarArquivados((v) => !v)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors',
-                mostrarArquivados
-                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
-                  : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
-              )}
-              title="Mostrar apenas clientes arquivados (churn)"
-            >
-              {mostrarArquivados ? '↻ Voltar pra ativos' : '📁 Ver arquivados'}
-            </button>
-          )}
         </CardBody>
       </Card>
 
