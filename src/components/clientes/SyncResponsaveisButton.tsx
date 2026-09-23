@@ -42,7 +42,7 @@ export function SyncResponsaveisButton({ onApplied }: { onApplied?: () => void }
     const [cRes, sRes, pRes] = await Promise.all([
       supabase.from('clientes').select('id, nome, squad, gestor_id, social_media_id').is('arquivado_em', null),
       supabase.from('squads').select('id, nome'),
-      supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      supabase.from('profiles').select('*, papel:papeis_operacionais!profiles_papel_fk(*)').eq('ativo', true).eq('aprovado', true),
     ])
     const clientes = (cRes.data as Pick<Cliente, 'id' | 'nome' | 'squad' | 'gestor_id' | 'social_media_id'>[]) ?? []
     const squadIdPorNome = new Map(((sRes.data as { id: string; nome: string }[]) ?? []).map((s) => [s.nome, s.id]))

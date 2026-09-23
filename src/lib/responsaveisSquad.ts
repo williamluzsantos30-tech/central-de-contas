@@ -7,15 +7,16 @@
  * dado o squad de um cliente, sugere o membro daquela função vinculado ao
  * squad — mas só quando há EXATAMENTE UM (evita atribuição ambígua).
  */
-import { temCargo, type Cargo } from '@/lib/cargos'
+import { temFuncao } from '@/lib/cargos'
 import type { Profile } from '@/types/database'
 
-/** Cargo do responsável ↔ label do papel (só pra exibição/spec). */
-export type CargoResponsavel = Extract<Cargo, 'gestor_trafego' | 'social_media'>
+export type CargoResponsavel = 'gestor_trafego' | 'social_media'
 
 /**
- * Retorna o id do único membro ativo com o `cargo` informado cujo Squad
- * Principal (`squad_id`) é o squad dado. `null` se não houver exatamente 1.
+ * Retorna o id do único membro ativo que exerce a função (por cargo OU Papel —
+ * ver temFuncao) cujo Squad Principal (`squad_id`) é o squad dado. `null` se
+ * não houver exatamente 1. Requer `papel` embarcado nos profiles pra pegar
+ * quem foi vinculado só pelo Papel.
  */
 export function suggestResponsavelBySquad(
   profiles: Profile[],
@@ -23,6 +24,6 @@ export function suggestResponsavelBySquad(
   cargo: CargoResponsavel,
 ): string | null {
   if (!squadId) return null
-  const cands = profiles.filter((p) => p.squad_id === squadId && temCargo(p, cargo))
+  const cands = profiles.filter((p) => p.squad_id === squadId && temFuncao(p, cargo))
   return cands.length === 1 ? cands[0].id : null
 }

@@ -20,6 +20,31 @@ export function temCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | nul
   return Array.isArray(profile.cargos_extras) && profile.cargos_extras.includes(cargo)
 }
 
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+/**
+ * True se o membro exerce a FUNÇÃO, considerando o `cargo`/`cargos_extras`
+ * E TAMBÉM o Papel operacional (papeis_operacionais, campo `papel.nome`) —
+ * porque em Membros da Equipe o vínculo é feito pelo PAPEL (papel_id), não
+ * pelo cargo. Sem isso, um membro com Papel "Gestor de Tráfego" mas sem o
+ * cargo enum fica invisível pros dropdowns/atribuições.
+ *
+ * Requer que o profile venha com `papel` embarcado (join papeis_operacionais)
+ * pra o match por papel funcionar; senão cai só no cargo.
+ */
+export function temFuncao(
+  profile: Pick<Profile, 'cargo' | 'cargos_extras' | 'papel'> | null | undefined,
+  funcao: 'gestor_trafego' | 'social_media' | 'account_manager',
+): boolean {
+  if (!profile) return false
+  if (temCargo(profile, funcao)) return true
+  const nome = profile.papel?.nome ? semAcento(profile.papel.nome) : ''
+  if (!nome) return false
+  if (funcao === 'gestor_trafego') return nome.includes('trafego')
+  if (funcao === 'social_media') return nome.includes('social')
+  return nome.includes('account') || nome.includes('conta')
+}
+
 /** True se tem QUALQUER um dos cargos passados (designer OU social_media etc). */
 export function temAlgumCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined, cargos: Cargo[]): boolean {
   return cargos.some((c) => temCargo(profile, c))

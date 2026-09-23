@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
-import { temCargo } from '@/lib/cargos'
+import { temFuncao } from '@/lib/cargos'
 import { suggestResponsavelBySquad } from '@/lib/responsaveisSquad'
 import { TIPOS_CLIENTE, tipoClienteLabel } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
@@ -79,15 +79,15 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
   // Profiles agrupados por cargo — cada dropdown só lista quem é
   // diretamente vinculado àquela função.
   const accountManagers = useMemo(
-    () => profilesAll.filter((p) => temCargo(p, 'account_manager')),
+    () => profilesAll.filter((p) => temFuncao(p, 'account_manager')),
     [profilesAll],
   )
   const gestoresTrafego = useMemo(
-    () => profilesAll.filter((p) => temCargo(p, 'gestor_trafego')),
+    () => profilesAll.filter((p) => temFuncao(p, 'gestor_trafego')),
     [profilesAll],
   )
   const socialMedias = useMemo(
-    () => profilesAll.filter((p) => temCargo(p, 'social_media')),
+    () => profilesAll.filter((p) => temFuncao(p, 'social_media')),
     [profilesAll],
   )
 
@@ -114,7 +114,9 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     if (!open) return
     supabase
       .from('profiles')
-      .select('*')
+      // Embarca o Papel (papeis_operacionais) — os dropdowns reconhecem tanto
+      // o cargo quanto o Papel "Gestor de Tráfego"/"Social Media".
+      .select('*, papel:papeis_operacionais!profiles_papel_fk(*)')
       .eq('ativo', true)
       .eq('aprovado', true)
       .order('nome')
