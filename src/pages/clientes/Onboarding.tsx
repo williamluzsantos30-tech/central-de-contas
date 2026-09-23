@@ -13,7 +13,6 @@
  * alimenta o Tempo Medio de Onboarding na Visao Executiva).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   UserPlus,
   Calendar,
@@ -25,6 +24,9 @@ import {
   Send,
   CircleCheck,
   AlertTriangle,
+  Loader2,
+  RotateCw,
+  X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FilterBar, FilterPill } from '@/components/ds'
@@ -81,9 +83,23 @@ function responsavelDaEtapa(
 
 type PeriodoFiltro = '' | 'mes' | '30' | '90'
 
+/** Survey de NPS de Onboarding (fonte central: tabela nps_surveys, tipo='onboarding'). */
+interface NpsOnbSurvey {
+  cliente_id: string
+  token: string
+  criado_em: string
+  respondido_em: string | null
+  nps_score: number | null
+}
+
 export default function Onboarding() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  // NPS D30 por cliente — a survey mais recente (tipo onboarding).
+  const [npsPorCliente, setNpsPorCliente] = useState<Map<string, NpsOnbSurvey>>(new Map())
+  const [enviandoNps, setEnviandoNps] = useState<string | null>(null)
+  const [reenviar, setReenviar] = useState<{ cliente: Cliente; survey: NpsOnbSurvey } | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [fPeriodo, setFPeriodo] = useState<PeriodoFiltro>('')
@@ -95,18 +111,58 @@ export default function Onboarding() {
 
   async function load() {
     setLoading(true)
-    const [cRes, pRes] = await Promise.all([
+    const [cRes, pRes, nRes] = await Promise.all([
       supabase.from('clientes').select('*').order('data_inicio', { ascending: true }),
       supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      supabase
+        .from('nps_surveys')
+        .select('cliente_id, token, criado_em, respondido_em, nps_score')
+        .eq('tipo', 'onboarding')
+        .order('criado_em', { ascending: false }),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setProfiles((pRes.data as Profile[]) ?? [])
+    // Mapa cliente → survey mais recente (já vem ordenado desc por criado_em).
+    const m = new Map<string, NpsOnbSurvey>()
+    for (const s of (nRes.data as NpsOnbSurvey[]) ?? []) if (!m.has(s.cliente_id)) m.set(s.cliente_id, s)
+    setNpsPorCliente(m)
     setLoading(false)
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  function avisar(msg: string) {
+    setToast(msg)
+    window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000)
+  }
+
+  // Dispara o NPS de Onboarding: cria a survey (nps_surveys, tipo onboarding),
+  // gera o link público e copia pra área de transferência.
+  async function enviarNpsOnboarding(cliente: Cliente) {
+    setEnviandoNps(cliente.id)
+    const { data, error } = await supabase
+      .from('nps_surveys')
+      .insert({ cliente_id: cliente.id, tipo: 'onboarding' })
+      .select('cliente_id, token, criado_em, respondido_em, nps_score')
+      .single()
+    setEnviandoNps(null)
+    setReenviar(null)
+    if (error || !data) {
+      avisar(`Erro ao enviar NPS: ${error?.message ?? 'tente novamente'}`)
+      return
+    }
+    const survey = data as NpsOnbSurvey
+    setNpsPorCliente((prev) => new Map(prev).set(cliente.id, survey))
+    const url = `${window.location.origin}/publico/nps/${survey.token}`
+    try {
+      await navigator.clipboard?.writeText(url)
+      avisar(`NPS de Onboarding enviado para ${cliente.nome} — link copiado`)
+    } catch {
+      avisar(`NPS de Onboarding enviado para ${cliente.nome}`)
+    }
+  }
 
   // Base: todo cliente em onboarding, nao-arquivado (qualquer status)
   const emOnboarding = useMemo(
@@ -296,6 +352,10 @@ export default function Onboarding() {
               key={c.id}
               cliente={c}
               profiles={profiles}
+              survey={npsPorCliente.get(c.id) ?? null}
+              enviandoNps={enviandoNps === c.id}
+              onEnviarNps={() => enviarNpsOnboarding(c)}
+              onReenviarNps={(s) => setReenviar({ cliente: c, survey: s })}
               expandido={expandido === c.id}
               onToggleExpandir={() => setExpandido((e) => (e === c.id ? null : c.id))}
               onToggleEtapa={(key) => toggleEtapa(c, key)}
@@ -311,6 +371,25 @@ export default function Onboarding() {
           onClose={() => setFinalizar(null)}
           onConfirm={confirmarFinalizar}
         />
+      )}
+
+      {reenviar && (
+        <ReenviarNpsModal
+          nome={reenviar.cliente.nome}
+          enviadoEm={reenviar.survey.criado_em}
+          onClose={() => setReenviar(null)}
+          onConfirm={() => enviarNpsOnboarding(reenviar.cliente)}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-[60] flex max-w-sm items-start gap-2 rounded-lg border border-emerald-500/40 bg-bg-card px-4 py-3 text-xs text-zinc-100 shadow-xl">
+          <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-300" />
+          <span className="flex-1">{toast}</span>
+          <button onClick={() => setToast(null)} className="text-muted hover:text-zinc-200">
+            <X size={13} />
+          </button>
+        </div>
       )}
     </div>
   )
@@ -347,9 +426,109 @@ const semaforoDot: Record<'verde' | 'amarelo' | 'vermelho', string> = {
   vermelho: 'bg-red-400',
 }
 
+function npsScoreCls(n: number): string {
+  return n >= 9 ? 'text-emerald-300' : n >= 7 ? 'text-amber-300' : 'text-red-300'
+}
+
+/** Célula NPS D30 — 3 estados: nunca enviado / enviado (aguardando) / respondido. */
+function NpsD30Cell({
+  survey,
+  enviando,
+  onEnviar,
+  onReenviar,
+}: {
+  survey: NpsOnbSurvey | null
+  enviando: boolean
+  onEnviar: () => void
+  onReenviar: () => void
+}) {
+  if (enviando) return <Loader2 size={13} className="animate-spin text-brand-300" />
+
+  // Respondido → mostra a nota (preenche a coluna).
+  if (survey?.nps_score != null) {
+    return (
+      <span
+        className={cn('text-sm font-bold tabular-nums', npsScoreCls(survey.nps_score))}
+        title={`NPS Onboarding respondido${survey.respondido_em ? ` em ${ddmm(new Date(survey.respondido_em))}` : ''}`}
+      >
+        {survey.nps_score}
+      </span>
+    )
+  }
+
+  // Enviado, aguardando resposta → badge "Enviado {data}" + reenviar.
+  if (survey) {
+    return (
+      <button
+        type="button"
+        onClick={onReenviar}
+        title={`Enviado em ${ddmm(new Date(survey.criado_em))} — clique para reenviar`}
+        className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+      >
+        <CheckCircle2 size={10} /> {ddmm(new Date(survey.criado_em))}
+        <RotateCw size={9} className="ml-0.5 opacity-70" />
+      </button>
+    )
+  }
+
+  // Nunca enviado → enviar.
+  return (
+    <button
+      type="button"
+      onClick={onEnviar}
+      title="Enviar NPS de Onboarding (D30)"
+      className="inline-flex items-center gap-1 text-[11px] text-brand-300 transition-colors hover:text-brand-200"
+    >
+      <Send size={11} /> Enviar
+    </button>
+  )
+}
+
+function ReenviarNpsModal({
+  nome,
+  enviadoEm,
+  onClose,
+  onConfirm,
+}: {
+  nome: string
+  enviadoEm: string
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center gap-2">
+          <Send size={16} className="text-brand-300" />
+          <h3 className="text-sm font-semibold text-zinc-100">Reenviar NPS de Onboarding</h3>
+        </div>
+        <p className="mb-4 text-[11px] text-muted">
+          O NPS de Onboarding de <strong className="text-zinc-200">{nome}</strong> já foi enviado em{' '}
+          <strong className="text-zinc-200">{ddmm(new Date(enviadoEm))}</strong>. Enviar novamente? Um novo link público será gerado.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-bg-elev">
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/40 bg-brand-500/15 px-3 py-1.5 text-xs font-medium text-brand-200 hover:bg-brand-500/25"
+          >
+            <Send size={13} /> Enviar novamente
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LinhaCliente({
   cliente,
   profiles,
+  survey,
+  enviandoNps,
+  onEnviarNps,
+  onReenviarNps,
   expandido,
   onToggleExpandir,
   onToggleEtapa,
@@ -357,6 +536,10 @@ function LinhaCliente({
 }: {
   cliente: Cliente
   profiles: Profile[]
+  survey: NpsOnbSurvey | null
+  enviandoNps: boolean
+  onEnviarNps: () => void
+  onReenviarNps: (s: NpsOnbSurvey) => void
   expandido: boolean
   onToggleExpandir: () => void
   onToggleEtapa: (key: string) => void
@@ -440,14 +623,13 @@ function LinhaCliente({
         </span>
 
         {/* NPS D30 */}
-        <div className="text-center" onClick={(e) => e.stopPropagation()}>
-          <Link
-            to={`/clientes/${cliente.id}`}
-            className="inline-flex items-center gap-1 text-[11px] text-brand-300 hover:text-brand-200"
-            title="Abrir ficha para enviar NPS"
-          >
-            <Send size={11} /> Enviar
-          </Link>
+        <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+          <NpsD30Cell
+            survey={survey}
+            enviando={enviandoNps}
+            onEnviar={onEnviarNps}
+            onReenviar={() => survey && onReenviarNps(survey)}
+          />
         </div>
 
         {/* Semaforo */}
