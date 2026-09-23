@@ -22,6 +22,8 @@ import {
   fmtDataHora,
   type AgencyInstagramConfig,
 } from './mockInstagram'
+import { PublicationStatusBadge } from './PublicationStatusBadge'
+import { simularPublicacao, simularFalha, type PostPublicacao } from './mockPosts'
 
 export function AgencyInstagramSettings() {
   const [cfg, setCfg] = useState<AgencyInstagramConfig>(() => getAgencyConfig())
@@ -29,8 +31,23 @@ export function AgencyInstagramSettings() {
   const [nomes, setNomes] = useState<Map<string, string>>(new Map())
   const [nonce, setNonce] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  // Demo dev do fluxo de publicação automática (post sintético em memória).
+  const [demoPub, setDemoPub] = useState<PostPublicacao | null>(null)
+  const [demoRodando, setDemoRodando] = useState(false)
 
   const conexoes = getAllInstagramConnections()
+
+  async function simularPublicacaoDemo() {
+    const id = `test-${Date.now()}`
+    setDemoRodando(true)
+    // tipo 'video' → mostra a progressão completa: agendado_api → processando → publicado_api
+    await simularPublicacao(id, 'video', (s) => setDemoPub(s))
+    setDemoRodando(false)
+  }
+  function simularFalhaDemo() {
+    const id = `test-${Date.now()}`
+    setDemoPub(simularFalha(id, 'Token expirado — reconecte o Instagram do cliente'))
+  }
 
   useEffect(() => {
     // Carrega o cache de conexão (banco → memória) e os nomes dos clientes.
@@ -125,6 +142,39 @@ export function AgencyInstagramSettings() {
         {aviso && (
           <div className="flex items-start gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
             <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> <span>{aviso}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Publicação de posts (simulação) */}
+      <div className="rounded-xl border border-border bg-bg-card p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-100">Publicação de posts (simulação)</h3>
+          <p className="mt-0.5 max-w-xl text-[12px] text-muted">
+            Testa o fluxo de publicação automática ponta a ponta com um post fictício, sem tocar em
+            nenhum cliente real. A publicação de verdade entra quando a Graph API for ativada.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <OutlineButton size="sm" onClick={simularPublicacaoDemo} disabled={demoRodando}>
+            <FlaskConical size={13} /> Simular Publicação de Post
+          </OutlineButton>
+          <OutlineButton size="sm" onClick={simularFalhaDemo} disabled={demoRodando}>
+            <FlaskConical size={13} /> Simular Falha de Publicação
+          </OutlineButton>
+        </div>
+        {demoPub && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-soft/40 p-3">
+            <PublicationStatusBadge status={demoPub.statusPublicacao} />
+            <span className="text-[11px] text-muted">
+              {demoPub.statusPublicacao === 'publicado_api'
+                ? `Publicado com sucesso · ${demoPub.idPostInstagram}`
+                : demoPub.statusPublicacao === 'falha_publicacao'
+                ? demoPub.erroPublicacao
+                : demoPub.statusPublicacao === 'processando'
+                ? 'Processando o container de mídia…'
+                : 'Agendado via API — aguardando publicação…'}
+            </span>
           </div>
         )}
       </div>

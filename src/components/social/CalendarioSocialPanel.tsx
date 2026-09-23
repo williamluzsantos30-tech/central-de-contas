@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,6 +21,10 @@ import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
 import { PublicarItemBotao, ProgramarItemBotao, PublicacaoInfo } from './PublicarItemDialog'
+import { PostPublishActions } from './PostPublishActions'
+import { PublicationStatusBadge } from './PublicationStatusBadge'
+import { loadInstagramCache, getInstagramState } from './mockInstagram'
+import { getPostPub } from './mockPosts'
 import type {
   Cliente,
   FormatoSocialMedia,
@@ -66,6 +70,13 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
   )
   const [gerandoToken, setGerandoToken] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  // Cache de conexão do Instagram (async): força re-render quando carrega, senão
+  // o gating de publicação automática lê vazio no primeiro paint.
+  const [, setIgNonce] = useState(0)
+
+  useEffect(() => {
+    loadInstagramCache().then(() => setIgNonce((n) => n + 1))
+  }, [])
 
   const linkPublico = tokenAtual
     ? `${window.location.origin}/publico/calendario/${tokenAtual}`
@@ -484,7 +495,7 @@ function PostPill({ item }: { item: ItemSocialMedia }) {
 
 function ItemDoDia({
   item,
-  cliente: _cliente,
+  cliente,
   planejamentos,
   onChanged,
   onDataAlterada,
@@ -498,6 +509,10 @@ function ItemDoDia({
   const meta = formatoMeta[item.formato]
   const plano = planejamentos.find((p) => p.id === item.producao_id)
   const atrasada = isAtrasada(item)
+  // Cliente conectado ao Instagram → publicação automática (via API);
+  // caso contrário mantém o fluxo manual (programar/publicar).
+  const conectado = getInstagramState(cliente.id).modoConexao !== 'nao_conectado'
+  const statusPub = getPostPub(item.id).statusPublicacao
   const [editandoData, setEditandoData] = useState(false)
   const [novaData, setNovaData] = useState(item.prazo?.slice(0, 10) ?? '')
   const [salvandoData, setSalvandoData] = useState(false)
@@ -543,8 +558,14 @@ function ItemDoDia({
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium text-zinc-100 text-sm leading-snug">{item.titulo}</p>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              <ProgramarItemBotao item={item} onChanged={onChanged} compact />
-              <PublicarItemBotao item={item} onChanged={onChanged} compact />
+              {conectado ? (
+                <PostPublishActions item={item} clienteId={cliente.id} onChanged={onChanged} />
+              ) : (
+                <>
+                  <ProgramarItemBotao item={item} onChanged={onChanged} compact />
+                  <PublicarItemBotao item={item} onChanged={onChanged} compact />
+                </>
+              )}
             </div>
           </div>
           {item.ideia_conteudo && (
@@ -561,6 +582,9 @@ function ItemDoDia({
               <Badge tone="danger" className="!text-[9px]">
                 atrasado
               </Badge>
+            )}
+            {conectado && statusPub !== 'pendente' && (
+              <PublicationStatusBadge status={statusPub} className="!text-[9px]" />
             )}
             {plano?.titulo && (
               <span className="text-[10px] text-muted">· {plano.titulo}</span>
