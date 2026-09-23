@@ -26,7 +26,7 @@ import type {
   MetricasSocialMensal,
 } from '@/types/database'
 import { InstagramConnectionCard } from './InstagramConnectionCard'
-import { fmtHora, diasAtras, getInstagramMetricsForPeriod, getInstagramState } from './mockInstagram'
+import { fmtHora, diasAtras, getInstagramMetricsForPeriod, getInstagramState, loadInstagramCache } from './mockInstagram'
 
 interface Props {
   cliente: Cliente
@@ -77,9 +77,14 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
   // KPIs calculados: % no prazo, # publicados, # reaproveitados
   const kpiCalculado = useMemo(() => calcularKPIs(items, mesISO), [items, mesISO])
 
-  // Integração Instagram (simulada) — recarrega ao conectar/sincronizar.
+  // Integração Instagram — recarrega ao conectar/sincronizar.
   const [igNonce, setIgNonce] = useState(0)
   const refreshIg = () => setIgNonce((n) => n + 1)
+  // Carrega o cache de conexão (banco → memória) na 1ª montagem.
+  useEffect(() => {
+    loadInstagramCache().then(refreshIg)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const igState = useMemo(() => getInstagramState(cliente.id), [cliente.id, igNonce])
   const igMetricas = useMemo(() => getInstagramMetricsForPeriod(cliente.id, mesISO), [cliente.id, mesISO, igNonce])
   const igConectado = igState.modoConexao !== 'nao_conectado'
@@ -119,7 +124,7 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
       </div>
 
       {/* Integração Instagram — conexão (2 modos) */}
-      <InstagramConnectionCard clienteId={cliente.id} nomeCliente={cliente.nome} onChanged={refreshIg} />
+      <InstagramConnectionCard clienteId={cliente.id} nomeCliente={cliente.nome} version={igNonce} onChanged={refreshIg} />
 
       {/* AUTOMÁTICAS — via Instagram Graph API (quando conectado) */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">

@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 import {
   getAgencyConfig,
   getAllInstagramConnections,
+  loadInstagramCache,
   modoConexaoLabel,
   setAgencyConfig,
   simularSincronizacao,
@@ -31,6 +32,11 @@ export function AgencyInstagramSettings() {
   const conexoes = getAllInstagramConnections()
 
   useEffect(() => {
+    // Carrega o cache de conexão (banco → memória) e os nomes dos clientes.
+    loadInstagramCache().then(() => {
+      setCfg(getAgencyConfig())
+      setNonce((n) => n + 1)
+    })
     supabase
       .from('clientes')
       .select('id, nome')

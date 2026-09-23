@@ -5,7 +5,7 @@
  *
  * Tudo simulado (ver mockInstagram): nenhuma chamada real à Meta API.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Instagram, Building2, CheckCircle2, AlertTriangle, RefreshCw, Unlink, Link2 } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -26,16 +26,24 @@ import {
 export function InstagramConnectionCard({
   clienteId,
   nomeCliente,
+  version = 0,
   onChanged,
 }: {
   clienteId: string
   nomeCliente: string
+  /** Muda quando o cache do Instagram recarrega — força re-sincronizar o estado. */
+  version?: number
   onChanged: () => void
 }) {
   const [estado, setEstado] = useState<ClienteInstagram>(() => getInstagramState(clienteId))
   const [modo, setModo] = useState<'direta' | 'agencia' | null>(null) // form de handle aberto
   const [handle, setHandle] = useState('')
   const agency = getAgencyConfig()
+
+  // Re-sincroniza do cache quando ele carrega (banco) ou o cliente muda.
+  useEffect(() => {
+    setEstado(getInstagramState(clienteId))
+  }, [clienteId, version])
 
   function aplicar(s: ClienteInstagram) {
     setEstado(s)
