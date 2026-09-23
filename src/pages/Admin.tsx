@@ -12,12 +12,6 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Megaphone,
-  Palette,
-  Share2,
-  Briefcase,
-  RotateCcw,
-  Lock,
   Plus,
   Pencil,
   Trash2,
@@ -51,17 +45,8 @@ import { supabase } from '@/lib/supabase'
 import { cn, formatDateTime, userRoleLabel } from '@/lib/utils'
 import {
   CARGOS,
-  MODULOS,
-  cargoDescricao,
   cargoLabel,
-  cargoPermissoesDefault,
-  loadCargoPermissoes,
-  moduloDescricao,
-  moduloLabel,
-  resetCargoPermissoes,
-  saveCargoPermissoes,
   type Cargo,
-  type Modulo,
 } from '@/lib/cargos'
 import { Textarea } from '@/components/ui/Textarea'
 import { TemplatesTab } from '@/pages/Templates'
@@ -301,7 +286,7 @@ export default function Admin() {
 
       {tab === 'geral' && <GeralTab stats={stats} usuarios={aprovados} loading={loading} onChange={load} />}
       {tab === 'equipe' && (
-        <EquipeOperacionalTab usuarios={aprovados} onChange={load} />
+        <EquipeOperacionalTab onChange={load} />
       )}
       {tab === 'performance' && <PerformanceTab usuarios={aprovados} />}
       {tab === 'metricas' && <MetricasSocialMedia embedded />}
@@ -473,40 +458,6 @@ function GeralTab({
    Tab: Equipe Operacional
    ========================================================= */
 
-const moduloIcon: Record<Modulo, React.ComponentType<{ size?: number; className?: string }>> = {
-  trafego: Megaphone,
-  webdesign: Palette,
-  social_media: Share2,
-  admin: ShieldCheck,
-}
-
-const moduloAccent: Record<Modulo, { bg: string; border: string; text: string; ring: string }> = {
-  trafego: {
-    bg: 'bg-brand-500/10',
-    border: 'border-brand-500/40',
-    text: 'text-brand-300',
-    ring: 'ring-brand-500/30',
-  },
-  webdesign: {
-    bg: 'bg-violet-500/10',
-    border: 'border-violet-500/40',
-    text: 'text-violet-300',
-    ring: 'ring-violet-500/30',
-  },
-  social_media: {
-    bg: 'bg-pink-500/10',
-    border: 'border-pink-500/40',
-    text: 'text-pink-300',
-    ring: 'ring-pink-500/30',
-  },
-  admin: {
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/40',
-    text: 'text-emerald-300',
-    ring: 'ring-emerald-500/30',
-  },
-}
-
 const cargoAccent: Record<Cargo, { dot: string; text: string }> = {
   gestor_trafego: { dot: 'bg-brand-400', text: 'text-brand-200' },
   account_manager: { dot: 'bg-sky-400', text: 'text-sky-200' },
@@ -517,14 +468,10 @@ const cargoAccent: Record<Cargo, { dot: string; text: string }> = {
 }
 
 function EquipeOperacionalTab({
-  usuarios,
   onChange,
 }: {
-  usuarios: Profile[]
   onChange: () => void
 }) {
-  const [perms, setPerms] = useState<Record<Cargo, Modulo[]>>(() => loadCargoPermissoes())
-  const [dirty, setDirty] = useState(false)
   const [squads, setSquads] = useState<Squad[]>([])
   const [todosUsuarios, setTodosUsuarios] = useState<Profile[]>([])
   const [squadModalOpen, setSquadModalOpen] = useState(false)
@@ -599,212 +546,8 @@ function EquipeOperacionalTab({
     onChange()
   }
 
-  function togglePerm(cargo: Cargo, modulo: Modulo) {
-    setPerms((cur) => {
-      const has = cur[cargo].includes(modulo)
-      const next: Record<Cargo, Modulo[]> = {
-        ...cur,
-        [cargo]: has ? cur[cargo].filter((m) => m !== modulo) : [...cur[cargo], modulo],
-      }
-      saveCargoPermissoes(next)
-      return next
-    })
-    setDirty(true)
-    setTimeout(() => setDirty(false), 1500)
-  }
-
-  function reset() {
-    if (!confirm('Restaurar permissões padrão para todos os cargos?')) return
-    setPerms(resetCargoPermissoes())
-    setDirty(true)
-    setTimeout(() => setDirty(false), 1500)
-  }
-
-  // Conta usuários por cargo
-  const countByCargo = useMemo(() => {
-    const map = new Map<Cargo, number>()
-    for (const u of usuarios) {
-      if (u.cargo) map.set(u.cargo, (map.get(u.cargo) ?? 0) + 1)
-    }
-    return map
-  }, [usuarios])
-
   return (
     <div className="space-y-5">
-      {/* Resumo dos módulos */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        {MODULOS.map((m) => {
-          const Icon = moduloIcon[m]
-          const accent = moduloAccent[m]
-          const cargosCom = CARGOS.filter((c) => perms[c].includes(m))
-          return (
-            <Card key={m} className="overflow-hidden">
-              <CardBody className="space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={cn(
-                      'grid h-9 w-9 place-items-center rounded-lg border',
-                      accent.bg,
-                      accent.border,
-                      accent.text,
-                    )}
-                  >
-                    <Icon size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={cn('text-sm font-semibold leading-tight', accent.text)}>
-                      {moduloLabel[m]}
-                    </h3>
-                    <p className="text-[11px] text-muted leading-tight mt-0.5">
-                      {moduloDescricao[m]}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {cargosCom.length === 0 ? (
-                    <span className="text-[11px] italic text-muted">Nenhum cargo com acesso.</span>
-                  ) : (
-                    cargosCom.map((c) => (
-                      <Badge key={c} tone="neutral" className="text-[10px]">
-                        <span className={cn('h-1.5 w-1.5 rounded-full', cargoAccent[c].dot)} />
-                        {cargoLabel[c]}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Matriz de permissões */}
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border bg-bg-soft/40 px-5 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-lg border border-brand-500/40 bg-brand-500/15 text-brand-300">
-              <Briefcase size={15} />
-            </div>
-            <div>
-              <h3 className="text-[13px] font-semibold text-zinc-100 leading-tight">
-                Cargos e permissões
-              </h3>
-              <p className="text-[11px] text-muted leading-tight mt-0.5">
-                Defina o que cada cargo pode acessar. Mudanças salvam automaticamente.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {dirty && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300 animate-fade-in">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                Salvo
-              </span>
-            )}
-            <button
-              onClick={reset}
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:border-border/60 hover:text-zinc-100"
-              title="Restaurar permissões padrão"
-            >
-              <RotateCcw size={12} /> Restaurar padrão
-            </button>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-bg-soft/30">
-              <tr className="text-left">
-                <th className="px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                  Cargo
-                </th>
-                {MODULOS.map((m) => {
-                  const Icon = moduloIcon[m]
-                  const accent = moduloAccent[m]
-                  return (
-                    <th
-                      key={m}
-                      className="px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-widest text-muted"
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <Icon size={14} className={accent.text} />
-                        <span>{moduloLabel[m]}</span>
-                      </div>
-                    </th>
-                  )
-                })}
-                <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-widest text-muted">
-                  Pessoas
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {CARGOS.map((c) => {
-                const accent = cargoAccent[c]
-                const count = countByCargo.get(c) ?? 0
-                return (
-                  <tr key={c} className="border-t border-border/60 hover:bg-bg-soft/30">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={cn(
-                            'h-2 w-2 rounded-full shrink-0',
-                            accent.dot,
-                          )}
-                          style={{
-                            boxShadow: '0 0 6px currentColor',
-                          }}
-                        />
-                        <div className="min-w-0">
-                          <p className={cn('text-sm font-semibold', accent.text)}>
-                            {cargoLabel[c]}
-                          </p>
-                          <p className="text-[11px] text-muted truncate">
-                            {cargoDescricao[c]}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    {MODULOS.map((m) => {
-                      const has = perms[c].includes(m)
-                      const accentM = moduloAccent[m]
-                      const isDefault = cargoPermissoesDefault[c].includes(m) === has
-                      return (
-                        <td key={m} className="px-3 py-3 text-center">
-                          <button
-                            onClick={() => togglePerm(c, m)}
-                            className={cn(
-                              'group inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-all',
-                              has
-                                ? cn(accentM.bg, accentM.border, accentM.text, 'shadow-[0_0_12px_-4px]')
-                                : 'border-border/60 bg-bg-soft text-muted hover:border-border',
-                              !isDefault && 'ring-1 ring-amber-500/40',
-                            )}
-                            title={has ? `Revogar acesso a ${moduloLabel[m]}` : `Conceder acesso a ${moduloLabel[m]}`}
-                          >
-                            {has ? <Check size={14} /> : <Lock size={11} className="opacity-50" />}
-                          </button>
-                        </td>
-                      )
-                    })}
-                    <td className="px-5 py-3 text-right">
-                      <span className="text-xs text-muted tabular-nums">
-                        {count} {count === 1 ? 'pessoa' : 'pessoas'}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <p className="text-[11px] text-muted">
-        💡 As permissões controlam quais menus do sistema cada cargo enxerga. Usuários com role{' '}
-        <span className="font-medium text-zinc-300">Admin</span> sempre têm acesso total
-        independentemente do cargo.
-      </p>
-
       {/* Squads */}
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border bg-bg-soft/40 px-5 py-3">
