@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { temCargo } from '@/lib/cargos'
+import { suggestResponsavelBySquad } from '@/lib/responsaveisSquad'
 import { TIPOS_CLIENTE, tipoClienteLabel } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import type { Cliente, ModuloCliente, Profile } from '@/types/database'
@@ -89,6 +90,25 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
     () => profilesAll.filter((p) => temCargo(p, 'social_media')),
     [profilesAll],
   )
+
+  // Ao trocar o squad, sugere o Gestor de Tráfego / Social Media vinculado
+  // àquele squad (só quando há EXATAMENTE 1 membro da função e o campo está
+  // vazio — nunca sobrescreve escolha manual).
+  function trocarSquad(novoSquad: string) {
+    const sid = squads.find((s) => s.nome === novoSquad)?.id ?? null
+    setForm((f) => {
+      const next = { ...f, squad: novoSquad }
+      if (!f.gestor_id) {
+        const sug = suggestResponsavelBySquad(profilesAll, sid, 'gestor_trafego')
+        if (sug) next.gestor_id = sug
+      }
+      if (!f.social_media_id) {
+        const sug = suggestResponsavelBySquad(profilesAll, sid, 'social_media')
+        if (sug) next.social_media_id = sug
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -248,7 +268,7 @@ export function ClienteForm({ open, onClose, cliente, onSaved, defaultModulo = '
         </Field>
 
         <Field label="Squad *">
-          <Select value={form.squad} onChange={(e) => setForm({ ...form, squad: e.target.value })}>
+          <Select value={form.squad} onChange={(e) => trocarSquad(e.target.value)}>
             <option value="">Selecione o squad</option>
             {/* Se o cliente já tem um squad que não está ativo no banco, ainda mostra ele aqui */}
             {form.squad && !squadsAtivos.includes(form.squad) && (

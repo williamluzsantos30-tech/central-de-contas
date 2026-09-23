@@ -60,6 +60,7 @@ import { useFinanceiro } from '@/pages/financeiro/store'
 import { BASES_COMISSAO } from '@/pages/financeiro/comissaoCalculator'
 import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
 import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
+import { SyncResponsaveisButton } from '@/components/clientes/SyncResponsaveisButton'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -606,9 +607,12 @@ export default function Configuracoes() {
 
           {/* Membros da equipe */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <Users2 size={14} className="text-brand-300" />
-              <h2 className="text-sm font-semibold text-zinc-100">Membros da Equipe</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users2 size={14} className="text-brand-300" />
+                <h2 className="text-sm font-semibold text-zinc-100">Membros da Equipe</h2>
+              </div>
+              <SyncResponsaveisButton onApplied={loadEquipe} />
             </div>
             <TeamMembersTable
               membros={members}
@@ -619,6 +623,7 @@ export default function Configuracoes() {
               Membros entram pela tela de acesso (cadastro + aprovação). Aqui você define o{' '}
               <strong className="text-zinc-300">papel</strong> (permissões) e o{' '}
               <strong className="text-zinc-300">squad</strong> de cada um, e ativa/inativa.
+              O botão <strong className="text-zinc-300">Sincronizar Responsáveis</strong> aplica em lote o Gestor de Tráfego / Social Media do squad aos clientes que ainda não têm.
             </p>
           </section>
         </div>
