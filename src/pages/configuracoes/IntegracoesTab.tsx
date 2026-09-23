@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { Plug, Copy, Check, RefreshCw, Zap, FlaskConical, Plus, Trash2, CheckCircle2 } from 'lucide-react'
 import { PrimaryButton, OutlineButton, Input, Select, Badge } from '@/components/ds'
 import { FinancialIntegrationBlock } from '@/components/financeiro/FinancialIntegrationBlock'
+import { AgencyInstagramSettings } from '@/components/social/AgencyInstagramSettings'
 import { useComercial } from '@/pages/comercial/store'
 import {
   CAMPOS_INTERNOS,
@@ -225,6 +226,14 @@ export function IntegracoesTab() {
         <div className="h-px flex-1 bg-border" />
       </div>
       <FinancialIntegrationBlock />
+
+      {/* Integração Instagram (Meta API) — conexão de agência */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Social / Instagram</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <AgencyInstagramSettings />
     </div>
   )
 }

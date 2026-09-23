@@ -4,13 +4,13 @@ import {
   ChevronRight,
   TrendingUp,
   CheckCircle2,
-  AlertCircle,
   Star,
   Megaphone,
   Sparkles,
   Users,
   Save,
   Edit3,
+  RefreshCw,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -25,6 +25,8 @@ import type {
   ItemSocialMedia,
   MetricasSocialMensal,
 } from '@/types/database'
+import { InstagramConnectionCard } from './InstagramConnectionCard'
+import { fmtHora, diasAtras, getInstagramMetricsForPeriod, getInstagramState } from './mockInstagram'
 
 interface Props {
   cliente: Cliente
@@ -75,6 +77,20 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
   // KPIs calculados: % no prazo, # publicados, # reaproveitados
   const kpiCalculado = useMemo(() => calcularKPIs(items, mesISO), [items, mesISO])
 
+  // Integração Instagram (simulada) — recarrega ao conectar/sincronizar.
+  const [igNonce, setIgNonce] = useState(0)
+  const refreshIg = () => setIgNonce((n) => n + 1)
+  const igState = useMemo(() => getInstagramState(cliente.id), [cliente.id, igNonce])
+  const igMetricas = useMemo(() => getInstagramMetricsForPeriod(cliente.id, mesISO), [cliente.id, mesISO, igNonce])
+  const igConectado = igState.modoConexao !== 'nao_conectado'
+  const igExpirado = igState.tokenStatus === 'expirado'
+  const igSync = igConectado
+    ? igExpirado
+      ? `há ${diasAtras(igState.ultimaSincronizacao)} dias — token expirado`
+      : `Sincronizado às ${fmtHora(igState.ultimaSincronizacao)}`
+    : undefined
+  const hintConectar = igConectado ? undefined : 'Conecte o Instagram para preencher automaticamente'
+
   function shiftMes(delta: number) {
     const [y, m] = mesISO.split('-').map(Number)
     const novaData = new Date(y, m - 1 + delta, 1)
@@ -102,8 +118,83 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
         </button>
       </div>
 
-      {/* Grid de KPIs */}
+      {/* Integração Instagram — conexão (2 modos) */}
+      <InstagramConnectionCard clienteId={cliente.id} nomeCliente={cliente.nome} onChanged={refreshIg} />
+
+      {/* AUTOMÁTICAS — via Instagram Graph API (quando conectado) */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          icon={<CheckCircle2 size={14} />}
+          label="Posts publicados"
+          valor={
+            igConectado && igMetricas
+              ? String(igMetricas.postsPublicados)
+              : `${kpiCalculado.totalPublicados}/${kpiCalculado.totalProgramados}`
+          }
+          sub={igConectado ? 'no período' : kpiCalculado.atrasados > 0 ? `${kpiCalculado.atrasados} atrasado(s) (interno)` : 'contagem interna'}
+          tone={igConectado ? 'brand' : kpiCalculado.totalPublicados > 0 ? 'success' : 'neutral'}
+          auto
+          sync={igConectado ? igSync : undefined}
+          hint={hintConectar}
+        />
+        <KpiCard
+          icon={<TrendingUp size={14} />}
+          label="Alcance médio"
+          valor={
+            igConectado && igMetricas
+              ? igMetricas.alcanceMedio.toLocaleString('pt-BR')
+              : metricaDoMes?.alcance_medio != null
+                ? metricaDoMes.alcance_medio.toLocaleString('pt-BR')
+                : '—'
+          }
+          sub="por post"
+          tone="brand"
+          auto
+          sync={igConectado ? igSync : undefined}
+          hint={hintConectar}
+        />
+        <KpiCard
+          icon={<Users size={14} />}
+          label="Seguidores"
+          valor={
+            igConectado && igMetricas
+              ? igMetricas.seguidores.toLocaleString('pt-BR')
+              : metricaDoMes?.seguidores != null
+                ? metricaDoMes.seguidores.toLocaleString('pt-BR')
+                : '—'
+          }
+          sub={
+            igConectado && igMetricas
+              ? `${igMetricas.seguidoresVariacao >= 0 ? '↑ +' : '↓ '}${igMetricas.seguidoresVariacao.toLocaleString('pt-BR')} no mês`
+              : mesAnterior?.seguidores != null && metricaDoMes?.seguidores != null
+                ? compararSeguidores(metricaDoMes.seguidores, mesAnterior.seguidores)
+                : 'fim do mês'
+          }
+          tone="brand"
+          auto
+          sync={igConectado ? igSync : undefined}
+          hint={hintConectar}
+        />
+        <KpiCard
+          icon={<Sparkles size={14} />}
+          label="Engajamento médio"
+          valor={
+            igConectado && igMetricas
+              ? `${igMetricas.engajamentoMedio.toFixed(2)}%`
+              : metricaDoMes?.engajamento_medio != null
+                ? `${metricaDoMes.engajamento_medio}%`
+                : '—'
+          }
+          sub="curtidas + comentários + salvos ÷ alcance"
+          tone="success"
+          auto
+          sync={igConectado ? igSync : undefined}
+          hint={hintConectar}
+        />
+      </div>
+
+      {/* INTERNAS / MANUAIS — a API não fornece (julgamento + calendário interno) */}
+      <div className="grid gap-3 md:grid-cols-3">
         <KpiCard
           icon={<TrendingUp size={14} />}
           label="% posts no prazo"
@@ -118,25 +209,6 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
               ? 'warning'
               : 'danger'
           }
-          calculado
-        />
-        <KpiCard
-          icon={<CheckCircle2 size={14} />}
-          label="Posts publicados"
-          valor={`${kpiCalculado.totalPublicados}/${kpiCalculado.totalProgramados}`}
-          sub={
-            kpiCalculado.atrasados > 0
-              ? `${kpiCalculado.atrasados} atrasado(s)`
-              : 'tudo no prazo'
-          }
-          tone={
-            kpiCalculado.atrasados > 0
-              ? 'danger'
-              : kpiCalculado.totalPublicados > 0
-              ? 'success'
-              : 'neutral'
-          }
-          calculado
         />
         <KpiCard
           icon={<Megaphone size={14} />}
@@ -146,48 +218,6 @@ export function MetricasSocialPanel({ cliente, items }: Props) {
             kpiCalculado.totalProgramados > 0
               ? `${Math.round((kpiCalculado.reaproveitados / kpiCalculado.totalProgramados) * 100)}% do mês`
               : '—'
-          }
-          tone="brand"
-          calculado
-        />
-        <KpiCard
-          icon={<Sparkles size={14} />}
-          label="Engajamento médio"
-          valor={metricaDoMes?.engajamento_medio != null ? `${metricaDoMes.engajamento_medio}%` : '—'}
-          sub={
-            mesAnterior?.engajamento_medio != null && metricaDoMes?.engajamento_medio != null
-              ? compararEngajamento(metricaDoMes.engajamento_medio, mesAnterior.engajamento_medio)
-              : 'a preencher'
-          }
-          tone="success"
-        />
-      </div>
-
-      {/* Linha 2: alcance + seguidores + nota qualitativa */}
-      <div className="grid gap-3 md:grid-cols-3">
-        <KpiCard
-          icon={<TrendingUp size={14} />}
-          label="Alcance médio"
-          valor={
-            metricaDoMes?.alcance_medio != null
-              ? metricaDoMes.alcance_medio.toLocaleString('pt-BR')
-              : '—'
-          }
-          sub="por post"
-          tone="brand"
-        />
-        <KpiCard
-          icon={<Users size={14} />}
-          label="Seguidores"
-          valor={
-            metricaDoMes?.seguidores != null
-              ? metricaDoMes.seguidores.toLocaleString('pt-BR')
-              : '—'
-          }
-          sub={
-            mesAnterior?.seguidores != null && metricaDoMes?.seguidores != null
-              ? compararSeguidores(metricaDoMes.seguidores, mesAnterior.seguidores)
-              : 'fim do mês'
           }
           tone="brand"
         />
@@ -324,13 +354,6 @@ function calcularKPIs(items: ItemSocialMedia[], mesISO: string): KPICalculado {
   }
 }
 
-function compararEngajamento(atual: number, anterior: number): string {
-  const diff = atual - anterior
-  const pct = anterior === 0 ? 0 : (diff / anterior) * 100
-  const seta = diff > 0.05 ? '↑' : diff < -0.05 ? '↓' : '→'
-  return `${seta} ${diff > 0 ? '+' : ''}${diff.toFixed(2)}pp vs mês passado`
-}
-
 function compararSeguidores(atual: number, anterior: number): string {
   const diff = atual - anterior
   const seta = diff > 0 ? '↑' : diff < 0 ? '↓' : '→'
@@ -347,14 +370,21 @@ function KpiCard({
   valor,
   sub,
   tone,
-  calculado,
+  auto,
+  sync,
+  hint,
 }: {
   icon: React.ReactNode
   label: string
   valor: string
   sub: string
   tone: 'success' | 'warning' | 'danger' | 'brand' | 'neutral'
-  calculado?: boolean
+  /** Métrica automática (via Instagram API) — mostra a etiqueta "auto". */
+  auto?: boolean
+  /** Rodapé de sincronização quando conectado (ex.: "Sincronizado às 14:20"). */
+  sync?: string
+  /** Nota quando não conectado (ex.: "Conecte o Instagram..."). */
+  hint?: string
 }) {
   const cor = {
     success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
@@ -363,6 +393,7 @@ function KpiCard({
     brand: 'border-pink-500/30 bg-pink-500/10 text-pink-200',
     neutral: 'border-border bg-bg-soft text-muted',
   }[tone]
+  const syncExpirado = !!sync?.includes('expirado')
 
   return (
     <Card className={cn('border', cor)}>
@@ -372,14 +403,21 @@ function KpiCard({
             {icon}
             {label}
           </span>
-          {calculado && (
-            <span className="text-[9px] opacity-60" title="Calculado automaticamente">
+          {auto && (
+            <span className="text-[9px] opacity-60" title="Automático via Instagram API">
               auto
             </span>
           )}
         </div>
         <p className="text-2xl font-semibold tabular-nums">{valor}</p>
         <p className="text-[10px] opacity-70">{sub}</p>
+        {sync ? (
+          <p className={cn('flex items-center gap-1 text-[9px]', syncExpirado ? 'text-amber-300/90' : 'text-emerald-300/80')}>
+            <RefreshCw size={9} /> {sync}
+          </p>
+        ) : hint ? (
+          <p className="text-[9px] opacity-50">{hint}</p>
+        ) : null}
       </CardBody>
     </Card>
   )
@@ -448,8 +486,9 @@ function MetricasInputForm({
                 : 'Sem métricas registradas pra esse mês ainda.'}
             </p>
             <p className="mt-1 text-[11px] text-muted">
-              Esses números virão automaticamente quando a integração com Meta API for ativada
-              (próxima sprint). Por ora, registre manualmente após cada mês.
+              Alcance, seguidores e engajamento são preenchidos automaticamente quando o Instagram
+              está conectado (bloco acima). Aqui você registra a <strong className="text-zinc-300">nota qualitativa</strong> e
+              observações do mês — e serve de fallback manual quando não há conexão.
             </p>
           </div>
           <Button onClick={() => setEditing(true)}>
