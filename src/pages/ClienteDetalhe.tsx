@@ -15,8 +15,6 @@ import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { OtimizacaoTimeline } from '@/components/otimizacoes/OtimizacaoTimeline'
 import { OtimizacaoForm } from '@/components/otimizacoes/OtimizacaoForm'
 import { MetasPanel } from '@/components/metas/MetasPanel'
-import { LeadsPanel } from '@/components/leads/LeadsPanel'
-import { CriacoesPanel } from '@/components/criacoes/CriacoesPanel'
 import { SocialClienteHeader } from '@/components/social/SocialClienteHeader'
 import { SetupPerfilPanel } from '@/components/social/SetupPerfilPanel'
 import { PainelSocial } from '@/components/social/PainelSocial'
@@ -52,7 +50,7 @@ import type {
   Tarefa,
 } from '@/types/database'
 
-type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'crm' | 'log' | 'criacoes'
+type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'log'
 type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas' | 'ideias'
 // Nav top-level do cliente: Ficha (comercial) + UM operacional por vez
 // (Tráfego OU Social), como era nas páginas separadas. Qual operacional
@@ -337,9 +335,7 @@ export default function ClienteDetalhe() {
               ['visao', 'Visão geral'],
               ['tarefas', 'Tarefas'],
               ['ativos', 'Ativos'],
-              ['criacoes', 'Criações'],
               ['metas', 'Metas'],
-              ['crm', 'CRM'],
               ['log', 'Log de otimização'],
             ] as [Tab, string][]).map(([key, label]) => (
               <button
@@ -548,13 +544,9 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
-      {opTrafegoAtivo && tab === 'criacoes' && <CriacoesPanel cliente={cliente} />}
-
       {opTrafegoAtivo && tab === 'metas' && (
         <MetasPanel clienteId={cliente.id} cliente={cliente} />
       )}
-
-      {opTrafegoAtivo && tab === 'crm' && <LeadsPanel cliente={cliente} />}
 
       {opTrafegoAtivo && tab === 'log' && (
         <div className="space-y-4">
