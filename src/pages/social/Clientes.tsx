@@ -5,9 +5,9 @@ import {
   Eye,
   AlertCircle,
   CheckCircle2,
-  Image as ImageIcon,
+  CalendarDays,
+  Clock,
   Sparkles,
-  Plus,
   Pencil,
   FileText,
   Instagram,
@@ -19,10 +19,13 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
+import { KPICard } from '@/components/ds'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { CalendarioPostagensCompacto } from '@/components/clientes/CalendarioPostagensCompacto'
+import { CompactMonthCalendar } from '@/components/social/CompactMonthCalendar'
+import { TodayTomorrowPanel } from '@/components/social/TodayTomorrowPanel'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
+import { getPostsForDateRange } from '@/lib/socialPosts'
 import { supabase } from '@/lib/supabase'
 import { parseLocalDate } from '@/lib/dates'
 import { temCargo } from '@/lib/cargos'
@@ -271,6 +274,29 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
     })
   }, [clientes, q, fSquad, fSocial, fStatus, fJornada, escopo, profile])
 
+  // KPIs do mês corrente, escopados aos clientes filtrados. Publicadas +
+  // Atrasadas + Agendadas === Total (cada post tem exatamente um estado).
+  const kpis = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const posts = getPostsForDateRange(
+      items,
+      planejamentos,
+      filtered,
+      startOfMonth(today),
+      endOfMonth(today),
+    )
+    let publicadas = 0
+    let atrasadas = 0
+    let agendadas = 0
+    for (const p of posts) {
+      if (p.estado === 'publicado') publicadas++
+      else if (p.estado === 'atrasado') atrasadas++
+      else agendadas++
+    }
+    return { total: posts.length, publicadas, atrasadas, agendadas }
+  }, [items, planejamentos, filtered])
+
   const acoes = (
     <div className="flex items-center gap-1.5">
       <button
@@ -307,10 +333,54 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         />
       )}
 
-      {/* Calendário de postagens condensado (mini grade do mês corrente).
-          Escopado aos clientes desta operação (filtered) — resolve o cliente
-          de cada post via planejamentos e pinta por postado/atrasado/agendado. */}
-      <CalendarioPostagensCompacto items={items} planejamentos={planejamentos} clientes={filtered} />
+      {/* KPIs do mês (Total = Publicadas + Atrasadas + Agendadas). */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KPICard
+          label="Total do Mês"
+          value={String(kpis.total)}
+          tone="neutral"
+          sub="posts no mês"
+          icon={<CalendarDays size={12} />}
+        />
+        <KPICard
+          label="Publicadas"
+          value={String(kpis.publicadas)}
+          tone="success"
+          sub="foram ao ar"
+          icon={<CheckCircle2 size={12} />}
+        />
+        <KPICard
+          label="Atrasadas"
+          value={String(kpis.atrasadas)}
+          tone="danger"
+          sub="prazo vencido"
+          icon={<AlertCircle size={12} />}
+        />
+        <KPICard
+          label="Agendadas"
+          value={String(kpis.agendadas)}
+          tone="accent"
+          sub="no prazo"
+          icon={<Clock size={12} />}
+        />
+      </div>
+
+      {/* Destaque máximo: demandas de postagem dos próximos 2 dias. */}
+      <TodayTomorrowPanel
+        items={items}
+        planejamentos={planejamentos}
+        clientes={filtered}
+        onChanged={load}
+      />
+
+      {/* Calendário mensal colapsável com chips por dia. Escopado aos clientes
+          desta operação (filtered) — liga item → planejamento → cliente. */}
+      <CompactMonthCalendar
+        items={items}
+        planejamentos={planejamentos}
+        clientes={filtered}
+        onChanged={load}
+      />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
