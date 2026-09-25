@@ -34,8 +34,17 @@ import {
   type MetricaMeta,
   type Periodicidade,
 } from './mockMetasComerciais'
-import { calculateGoalProgress, statusDeProgresso } from './metasComerciais'
+import {
+  calculateGoalProgress,
+  contaDoIdeal,
+  idealCascadeDoFunil,
+  idealDaMeta,
+  statusDeProgresso,
+  type MetricaComIdeal,
+} from './metasComerciais'
+import { taxasIdeaisDoEscopo, type TaxasConversaoIdeal } from './mockComercialConfig'
 import { escopoLabel } from '@/components/comercial/GoalProgressCard'
+import { IdealRecalculadoLinha } from '@/components/comercial/IdealRecalculadoLinha'
 
 const CANAIS_BASE = ['Meta Ads', 'Google Ads', 'Indicação', 'Social Selling', 'Inbound', 'Orgânico']
 const pct = (v: number) => `${v.toFixed(0)}%`
@@ -51,6 +60,7 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
     metasComerciais,
     criarMetas,
     atualizarMeta,
+    taxasConversaoIdeal,
   } = useComercial()
   const [tipoPeriodo, setTipoPeriodo] = useState<'mes' | 'custom' | 'semana'>('mes')
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
@@ -106,6 +116,28 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
     return r
   }, [metasComerciais, periodicidade, refMeta])
   const planned = useMemo(() => calculatePlannedFunnel(metasInput), [metasInput])
+
+  // Ideal Recalculado (Metas): cascata a partir do REALIZADO da etapa anterior
+  // — cards Geral usam as taxas globais (sobrescritas valem nas segmentadas).
+  const cascata = useMemo(
+    () => (ehMetas ? idealCascadeDoFunil(f, taxasIdeaisDoEscopo(taxasConversaoIdeal)) : null),
+    [ehMetas, f, taxasConversaoIdeal],
+  )
+  function rodapeIdeal(metrica: MetricaComIdeal) {
+    if (!cascata) return undefined
+    const e = cascata[metrica]
+    const conta = contaDoIdeal(metrica, e, f.reunioesASerem)
+    return (
+      <IdealRecalculadoLinha
+        idealRecalculado={e.ideal}
+        statusIdeal={e.status}
+        realizado={e.realizado}
+        semBase={e.semBase}
+        conta={conta.curta}
+        explicacao={conta.extenso}
+      />
+    )
+  }
 
   /** Card de métrica de INPUT: meta editável (metas) ou comparação (marketing). */
   function pIn(metrica: MetricaMeta, atual: number, anterior: number, dir: 'maior' | 'menor') {
@@ -198,9 +230,9 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
       {/* BLOCO 2 — Reuniões */}
       <Bloco titulo="Reuniões" icon={<Megaphone size={13} />}>
-        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" {...pIn('reunioes_agendadas', f.reunioesAgendadas, fAnt.reunioesAgendadas, 'maior')} />
+        <KPICard label="Reuniões agendadas" value={String(f.reunioesAgendadas)} tone="accent" sub="no período" {...pIn('reunioes_agendadas', f.reunioesAgendadas, fAnt.reunioesAgendadas, 'maior')} rodape={rodapeIdeal('reunioes_agendadas')} />
         <KPICard label="Custo / agendada" value={fmtBRL(f.custoPorAgendada)} tone="neutral" sub="investimento ÷ agendadas" {...pCalc('custoPorAgendada', f.custoPorAgendada, fAnt.custoPorAgendada, 'menor', fmtBRL)} />
-        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" {...pIn('reunioes_realizadas', f.reunioesRealizadas, fAnt.reunioesRealizadas, 'maior')} />
+        <KPICard label="Reuniões realizadas" value={String(f.reunioesRealizadas)} tone="success" sub="call aconteceu" {...pIn('reunioes_realizadas', f.reunioesRealizadas, fAnt.reunioesRealizadas, 'maior')} rodape={rodapeIdeal('reunioes_realizadas')} />
         <KPICard label="Custo / realizada" value={fmtBRL(f.custoPorRealizada)} tone="neutral" sub="investimento ÷ realizadas" {...pCalc('custoPorRealizada', f.custoPorRealizada, fAnt.custoPorRealizada, 'menor', fmtBRL)} />
         <KPICard label="A serem realizadas" value={String(f.reunioesASerem)} tone="warning" sub="agendadas futuras" {...pIn('reunioes_a_serem', f.reunioesASerem, fAnt.reunioesASerem, 'maior')} />
         <KPICard label="No-show" value={pct(f.noShowPct)} tone={f.noShowPct > 0 ? 'danger' : 'neutral'} sub="taxa de falta" {...pCalc('noShowPct', f.noShowPct, fAnt.noShowPct, 'menor', pct)} />
@@ -212,7 +244,7 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
       {/* BLOCO 3 — Fechamentos e receita */}
       <Bloco titulo="Fechamentos e receita" icon={<DollarSign size={13} />}>
-        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" {...pIn('fechamentos', f.fechamentos, fAnt.fechamentos, 'maior')} />
+        <KPICard label="Fechamentos" value={String(f.fechamentos)} tone="success" sub="no período" {...pIn('fechamentos', f.fechamentos, fAnt.fechamentos, 'maior')} rodape={rodapeIdeal('fechamentos')} />
         <KPICard label="Txa de conversão" value={pct(f.txConversao)} tone="info" sub="fechados ÷ realizadas" {...pCalc('txConversao', f.txConversao, fAnt.txConversao, 'maior', pct)} />
         <KPICard label="MRR" value={fmtBRL(f.mrr)} tone="success" sub="receita recorrente" {...pIn('mrr', f.mrr, fAnt.mrr, 'maior')} />
         <KPICard label="Caixa recolhido" value={fmtBRL(f.caixaRecolhido)} tone="success" sub="entrada recebida" {...pIn('caixa_recolhido', f.caixaRecolhido, fAnt.caixaRecolhido, 'maior')} />
@@ -255,7 +287,7 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {metasEscopo.map((m) => (
-                <MetaEscopoCard key={m.id} meta={m} leads={leads} investimentos={investimentos} onSalvar={(v) => atualizarMeta(m.id, { valorMeta: v })} />
+                <MetaEscopoCard key={m.id} meta={m} leads={leads} investimentos={investimentos} taxas={taxasConversaoIdeal} onSalvar={(v) => atualizarMeta(m.id, { valorMeta: v })} />
               ))}
             </div>
           )}
@@ -295,14 +327,18 @@ function MetaEscopoCard({
   meta,
   leads,
   investimentos,
+  taxas,
   onSalvar,
 }: {
   meta: MetaComercial
   leads: Parameters<typeof calculateGoalProgress>[1]
   investimentos: Parameters<typeof calculateGoalProgress>[2]
+  taxas: TaxasConversaoIdeal
   onSalvar: (valor: number) => void
 }) {
   const prog = calculateGoalProgress(meta, leads, investimentos)
+  // Ideal Recalculado com as taxas do escopo (sobrescrita do canal/responsável).
+  const ideal = idealDaMeta(meta, leads, investimentos, taxas)
   const info = metricaInfo(meta.metrica)
   const st = statusDeProgresso(prog.valorAtual, meta.valorMeta, !!info.invertida)
   const [editando, setEditando] = useState(false)
@@ -334,6 +370,16 @@ function MetaEscopoCard({
           <div className="h-1.5 overflow-hidden rounded-full bg-bg-soft/60">
             <div className={`h-full rounded-full ${barra}`} style={{ width: `${Math.min(100, Math.max(0, st.percentual))}%` }} />
           </div>
+          {ideal && (
+            <IdealRecalculadoLinha
+              idealRecalculado={ideal.etapa.ideal}
+              statusIdeal={ideal.etapa.status}
+              realizado={ideal.etapa.realizado}
+              semBase={ideal.etapa.semBase}
+              conta={ideal.conta.curta}
+              explicacao={ideal.conta.extenso}
+            />
+          )}
         </>
       )}
     </div>

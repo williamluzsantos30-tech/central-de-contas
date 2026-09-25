@@ -1938,6 +1938,13 @@ create policy "auth write crm sync" on crm_sync_logs for all using (auth.role() 
 
 
 -- ─────────────────────────────────────────────────────────────────────
+-- [095] Taxas de conversão ideal entre etapas (Comercial › Metas)
+-- (migration-095-taxas-conversao-ideal.sql)
+-- ─────────────────────────────────────────────────────────────────────
+alter table comercial_config add column if not exists taxas_conversao_ideal jsonb;
+
+
+-- ─────────────────────────────────────────────────────────────────────
 -- [SEGURANÇA] A função que apaga clientes em churn não pode ser chamada
 -- pela chave pública do app (anon). Ela roda pelo agendamento diário
 -- (pg_cron, como postgres) — isso continua funcionando.

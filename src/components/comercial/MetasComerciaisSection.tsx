@@ -10,6 +10,7 @@ import { useComercial } from '@/pages/comercial/store'
 import type { MetaComercial, Periodicidade } from '@/pages/comercial/mockMetasComerciais'
 import { MetasComerciaisTable } from './MetasComerciaisTable'
 import { MetaFormModal } from './MetaFormModal'
+import { TaxasConversaoIdealBloco } from './TaxasConversaoIdealBloco'
 
 export function MetasComerciaisSection() {
   const { metasComerciais } = useComercial()
@@ -46,6 +47,8 @@ export function MetasComerciaisSection() {
       </div>
 
       <MetasComerciaisTable metas={doTipo} onEdit={(m) => setForm({ open: true, meta: m })} />
+
+      <TaxasConversaoIdealBloco />
 
       <MetaFormModal
         open={form.open}

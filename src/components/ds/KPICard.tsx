@@ -41,6 +41,8 @@ interface Props {
   /** Métrica CALCULADA (metas): mostra "Planejado: X" (derivado das metas de
    *  input), sem edição. O `value` grande é o Realizado. */
   planejadoLabel?: string
+  /** Conteúdo extra no pé do card (ex.: "Ideal Recalculado" nas Metas do Comercial). */
+  rodape?: ReactNode
 }
 
 const BARRA: Record<string, string> = { ok: 'bg-green-500', med: 'bg-orange-500', ruim: 'bg-red-500' }
@@ -93,6 +95,7 @@ export function KPICard({
   metaInvertida,
   onSalvarMeta,
   planejadoLabel,
+  rodape,
 }: Props) {
   const temSpark = sparkline && sparkline.some((v) => v !== 0)
   const comparacao =
@@ -174,6 +177,7 @@ export function KPICard({
       ) : (
         <p className="mt-1.5 text-[10px] text-muted">{sub ?? 'vs. mês anterior'}</p>
       )}
+      {rodape}
     </div>
   )
 }

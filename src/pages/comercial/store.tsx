@@ -5,7 +5,8 @@
  * no Social Selling aparece na fila do SDR, o qualificado aparece pro Closer.
  *
  * PERSISTÊNCIA (migration 088): comercial_leads (JSONB), investimentos_marketing,
- * metas_comerciais e comercial_config (SLA/Metas Marketing/Integração).
+ * metas_comerciais e comercial_config (SLA/Metas Marketing/Integração;
+ * taxas de conversão ideal na coluna taxas_conversao_ideal, migration 095).
  * FALLBACK: se as tabelas ainda não existirem, roda no mock em memória (não
  * quebra). Na 1ª carga com banco vazio, faz BOOTSTRAP do mock (grava e passa
  * a persistir). O estado local continua sendo a fonte pro render; cada
@@ -29,8 +30,11 @@ import {
 import {
   SLA_CONFIG_INICIAL,
   METAS_MARKETING_INICIAL,
+  TAXAS_CONVERSAO_IDEAL_INICIAL,
+  normalizarTaxasIdeais,
   type SlaConfigComercial,
   type MetasMarketing,
+  type TaxasConversaoIdeal,
 } from './mockComercialConfig'
 import { MOCK_INVESTIMENTOS, type InvestimentoMarketing } from './mockInvestimentos'
 import { MOCK_METAS_COMERCIAIS, type MetaComercial } from './mockMetasComerciais'
@@ -183,6 +187,9 @@ interface ComercialCtx {
   registrarInvestimentos: (periodo: string, lancamentos: LancamentoInvestimento[]) => void
   metasMarketing: MetasMarketing
   setMetasMarketing: (m: MetasMarketing) => void
+  /** Taxas de conversão ideal entre etapas (Ideal Recalculado em Comercial › Metas). */
+  taxasConversaoIdeal: TaxasConversaoIdeal
+  setTaxasConversaoIdeal: (t: TaxasConversaoIdeal) => void
   metasComerciais: MetaComercial[]
   criarMetas: (metas: Omit<MetaComercial, 'id'>[]) => void
   atualizarMeta: (id: string, patch: Partial<Omit<MetaComercial, 'id'>>) => void
@@ -221,6 +228,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const [slaConfig, setSlaConfigState] = useState<SlaConfigComercial>(SLA_CONFIG_INICIAL)
   const [investimentos, setInvestimentos] = useState<InvestimentoMarketing[]>(MOCK_INVESTIMENTOS)
   const [metasMarketing, setMetasMarketingState] = useState<MetasMarketing>(METAS_MARKETING_INICIAL)
+  const [taxasConversaoIdeal, setTaxasState] = useState<TaxasConversaoIdeal>(TAXAS_CONVERSAO_IDEAL_INICIAL)
+  const taxasTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [metasComerciais, setMetasComerciais] = useState<MetaComercial[]>(MOCK_METAS_COMERCIAIS)
   const [carregando, setCarregando] = useState(true)
   // true quando as tabelas existem (persiste); false = fallback mock em memória.
@@ -272,6 +281,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
           setMetasComerciais(((mRes.data as MetaRow[]) ?? []).map(rowToMeta))
           setSlaConfigState({ ...SLA_CONFIG_INICIAL, ...((cfg.sla as Partial<SlaConfigComercial>) ?? {}) })
           setMetasMarketingState({ ...METAS_MARKETING_INICIAL, ...((cfg.metas_marketing as Partial<MetasMarketing>) ?? {}) })
+          // Coluna da 095 ausente → undefined → defaults.
+          setTaxasState(normalizarTaxasIdeais(cfg.taxas_conversao_ideal as Partial<TaxasConversaoIdeal> | null))
           const integ = normalizarIntegracao(cfg.integracao_crm as Partial<IntegracaoConfig> | null)
           integracaoRef.current = integ
           setIntegracaoState(integ)
@@ -316,6 +327,13 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const setMetasMarketing = useCallback((m: MetasMarketing) => {
     setMetasMarketingState(m)
     persistConfig({ metas_marketing: m })
+  }, [persistConfig])
+  const setTaxasConversaoIdeal = useCallback((t: TaxasConversaoIdeal) => {
+    setTaxasState(t)
+    // Debounce (inputs mudam a cada tecla). Upsert SÓ desta coluna: sem a
+    // migration 095 falha sozinho, sem afetar SLA/metas/integração.
+    if (taxasTimer.current) clearTimeout(taxasTimer.current)
+    taxasTimer.current = setTimeout(() => persistConfig({ taxas_conversao_ideal: t }), 600)
   }, [persistConfig])
 
   // ── Integração CRM: config + log ──────────────────────────────────────────
@@ -725,6 +743,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       registrarInvestimentos,
       metasMarketing,
       setMetasMarketing,
+      taxasConversaoIdeal,
+      setTaxasConversaoIdeal,
       metasComerciais,
       criarMetas,
       atualizarMeta,
@@ -754,6 +774,8 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       registrarInvestimentos,
       metasMarketing,
       setMetasMarketing,
+      taxasConversaoIdeal,
+      setTaxasConversaoIdeal,
       metasComerciais,
       criarMetas,
       atualizarMeta,

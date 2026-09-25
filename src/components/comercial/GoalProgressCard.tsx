@@ -7,7 +7,8 @@
 import { cn } from '@/lib/utils'
 import { pessoaComercialNome } from '@/pages/comercial/mockLeads'
 import { formatMetaValor, metricaLabel, type MetaComercial } from '@/pages/comercial/mockMetasComerciais'
-import type { GoalProgress } from '@/pages/comercial/metasComerciais'
+import type { GoalProgress, StatusIdeal } from '@/pages/comercial/metasComerciais'
+import { IdealRecalculadoLinha } from './IdealRecalculadoLinha'
 
 const barra: Record<string, string> = { success: 'bg-green-500', atencao: 'bg-orange-500', critico: 'bg-red-500' }
 const texto: Record<string, string> = { success: 'text-green-300', atencao: 'text-orange-300', critico: 'text-red-300' }
@@ -23,7 +24,18 @@ export function escopoLabel(meta: MetaComercial): string {
   return 'Geral'
 }
 
-export function GoalProgressCard({ meta, progress }: { meta: MetaComercial; progress: GoalProgress }) {
+export function GoalProgressCard({
+  meta,
+  progress,
+  idealRecalculado,
+  statusIdeal,
+}: {
+  meta: MetaComercial
+  progress: GoalProgress
+  /** Ideal da etapa a partir do realizado da anterior (só Agendadas/Realizadas/Fechamentos). */
+  idealRecalculado?: number
+  statusIdeal?: StatusIdeal
+}) {
   const larguraBar = Math.min(100, Math.max(0, progress.percentual))
   return (
     <div className="rounded-lg border border-border bg-bg-card p-4">
@@ -52,6 +64,10 @@ export function GoalProgressCard({ meta, progress }: { meta: MetaComercial; prog
       <div className="h-2 overflow-hidden rounded-full bg-bg-soft/60">
         <div className={cn('h-full rounded-full transition-all', barra[progress.status])} style={{ width: `${larguraBar}%` }} />
       </div>
+
+      {idealRecalculado != null && statusIdeal && (
+        <IdealRecalculadoLinha idealRecalculado={idealRecalculado} statusIdeal={statusIdeal} realizado={progress.valorAtual} />
+      )}
     </div>
   )
 }
