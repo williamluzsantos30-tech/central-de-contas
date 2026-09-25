@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Pencil, Eye } from 'lucide-react'
+import { Plus, Search, Pencil, Eye, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -22,14 +22,18 @@ import {
   statusClienteLabel,
   tipoClienteLabel,
 } from '@/lib/utils'
+import { getTarefasDoDia, contarAtrasadasPorCliente } from '@/lib/tarefasDoDia'
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Cliente, Profile } from '@/types/database'
+import type { Cliente, Profile, Tarefa } from '@/types/database'
 
 export default function ClientesTrafego() {
   const { profile } = useAuth()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [gestores, setGestores] = useState<Profile[]>([])
+  // Tarefas não concluídas com prazo <= hoje — fonte única do KPI "Tarefas
+  // atrasadas", do painel "Tarefas do dia" e do indicador da tabela.
+  const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const { nomes: squadsAtivos } = useSquads()
   const [q, setQ] = useState('')
   const [fSquad, setFSquad] = useState('')
@@ -62,7 +66,8 @@ export default function ClientesTrafego() {
    */
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [cRes, gRes] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10)
+    const [cRes, gRes, tRes] = await Promise.all([
       supabase
         .from('clientes')
         .select(
@@ -80,9 +85,16 @@ export default function ClientesTrafego() {
         .eq('aprovado', true)
         .eq('cargo', 'gestor_trafego')
         .order('nome'),
+      // Tarefas não concluídas com prazo <= hoje (atrasadas + de hoje).
+      supabase
+        .from('tarefas')
+        .select('*, cliente:clientes(*)')
+        .lte('data_vencimento', today)
+        .neq('status', 'concluida'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setGestores((gRes.data as Profile[]) ?? [])
+    setTarefas((tRes.data as Tarefa[]) ?? [])
     setLoading(false)
   }
 
@@ -116,6 +128,17 @@ export default function ClientesTrafego() {
     })
   }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
 
+  // Fonte única: KPI "Tarefas atrasadas", painel "Tarefas do dia" e o
+  // indicador da tabela saem TODOS daqui — escopados aos clientes filtrados.
+  const tarefasDoDia = useMemo(() => {
+    const hojeISO = new Date().toISOString().slice(0, 10)
+    return getTarefasDoDia(tarefas, filtered, hojeISO)
+  }, [tarefas, filtered])
+  const atrasadasPorCliente = useMemo(
+    () => contarAtrasadasPorCliente(tarefasDoDia.atrasadas),
+    [tarefasDoDia],
+  )
+
   return (
     <div>
       <PageHeader
@@ -125,8 +148,9 @@ export default function ClientesTrafego() {
         }`}
       />
 
-      {/* Resumo operacional (KPIs verba/tarefas/ativos + Minhas tarefas de hoje). */}
-      <ResumoClientesKpi clientes={filtered} />
+      {/* Resumo operacional (KPIs verba/tarefas/ativos + painel "Tarefas do dia").
+          KPI e painel consomem a mesma fonte (tarefasDoDia). */}
+      <ResumoClientesKpi clientes={filtered} tarefasDoDia={tarefasDoDia} />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
@@ -246,7 +270,9 @@ export default function ClientesTrafego() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => (
+                  filtered.map((c) => {
+                    const nAtrasadas = atrasadasPorCliente.get(c.id) ?? 0
+                    return (
                     <tr key={c.id} className="border-t border-border hover:bg-bg-soft">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
@@ -256,6 +282,16 @@ export default function ClientesTrafego() {
                           >
                             {c.nome}
                           </Link>
+                          {nAtrasadas > 0 && (
+                            <Badge
+                              tone="danger"
+                              className="shrink-0"
+                              title={`${nAtrasadas} tarefa(s) atrasada(s) neste cliente`}
+                            >
+                              <AlertTriangle size={10} className="mr-0.5" />
+                              {nAtrasadas} atrasada{nAtrasadas > 1 ? 's' : ''}
+                            </Badge>
+                          )}
                           {c.tipo && (
                             <Badge tone="neutral" className="shrink-0">
                               {tipoClienteLabel[c.tipo]}
@@ -325,7 +361,8 @@ export default function ClientesTrafego() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
             </table>
