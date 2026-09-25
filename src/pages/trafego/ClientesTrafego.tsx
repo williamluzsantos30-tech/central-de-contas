@@ -50,13 +50,9 @@ export default function ClientesTrafego() {
   // Quem faz a call sabe melhor quando ela foi/quando remarcar.
   const podeEditarCall = !!profile
   const isAdmin = profile?.role === 'admin'
-  const podeVerArquivados =
-    isAdmin || temAlgumCargo(profile, ['diretoria', 'head'])
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
     !isAdmin && cargoOperacional ? 'meus' : 'todos',
   )
-  // Por padrão esconde arquivados (churn). Admin pode ligar.
-  const [mostrarArquivados, setMostrarArquivados] = useState(false)
 
   /**
    * `silent=true` = nao dispara o placeholder "Carregando..." — usa a
@@ -107,10 +103,8 @@ export default function ClientesTrafego() {
 
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
-      // Arquivados (churn) ficam ocultos por padrão. Toggle mostra apenas eles.
-      const eArquivado = !!c.arquivado_em
-      if (mostrarArquivados && !eArquivado) return false
-      if (!mostrarArquivados && eArquivado) return false
+      // Arquivados (churn) ficam ocultos — têm aba própria (Churns).
+      if (c.arquivado_em) return false
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fGestor && c.gestor_id !== fGestor) return false
@@ -126,7 +120,7 @@ export default function ClientesTrafego() {
       }
       return true
     })
-  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile, mostrarArquivados])
+  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile])
 
   // Fonte única: KPI "Tarefas atrasadas", painel "Tarefas do dia" e o
   // indicador da tabela saem TODOS daqui — escopados aos clientes filtrados.
@@ -142,10 +136,8 @@ export default function ClientesTrafego() {
   return (
     <div>
       <PageHeader
-        title={mostrarArquivados ? 'Clientes arquivados · Tráfego' : 'Clientes · Tráfego'}
-        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} com gestor de tráfego${
-          mostrarArquivados ? ' (arquivados)' : ''
-        }`}
+        title="Clientes · Tráfego"
+        description={`${filtered.length} ${filtered.length === 1 ? 'cliente' : 'clientes'} com gestor de tráfego`}
       />
 
       {/* Resumo operacional (KPIs verba/tarefas/ativos + painel "Tarefas do dia").
@@ -220,21 +212,6 @@ export default function ClientesTrafego() {
               </option>
             ))}
           </Select>
-          {podeVerArquivados && (
-            <button
-              type="button"
-              onClick={() => setMostrarArquivados((v) => !v)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors',
-                mostrarArquivados
-                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
-                  : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
-              )}
-              title="Mostrar apenas clientes arquivados (churn)"
-            >
-              {mostrarArquivados ? '↻ Voltar pra ativos' : '📁 Ver arquivados'}
-            </button>
-          )}
         </CardBody>
       </Card>
 

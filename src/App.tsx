@@ -15,11 +15,9 @@ import AgendaSocialMedia from '@/pages/social/Agenda'
 import SocialClientes from '@/pages/social/Clientes'
 import HeadSocial from '@/pages/social/HeadSocial'
 import CalendarioPostagens from '@/pages/social/Calendario'
-import PreviewCriacaoPDF from '@/pages/PreviewCriacaoPDF'
 import PublicoCalendario from '@/pages/PublicoCalendario'
 import PublicoNps from '@/pages/PublicoNps'
 import PublicoPortal from '@/pages/PublicoPortal'
-import PreviewCriacoesPanel from '@/pages/PreviewCriacoesPanel'
 import PreviewEdicaoVideo from '@/pages/PreviewEdicaoVideo'
 import VisaoExecutiva from '@/pages/operacional/VisaoExecutiva'
 import Onboarding from '@/pages/clientes/Onboarding'
@@ -80,8 +78,6 @@ export default function App() {
           <Route path="/publico/calendario/:token" element={<PublicoCalendario />} />
           <Route path="/publico/nps/:token" element={<PublicoNps />} />
           <Route path="/publico/portal/:token" element={<PublicoPortal />} />
-          <Route path="/preview/criacao-pdf" element={<PreviewCriacaoPDF />} />
-          <Route path="/preview/criacoes-panel" element={<PreviewCriacoesPanel />} />
           <Route path="/preview/edicao-video" element={<PreviewEdicaoVideo />} />
           <Route
             element={
