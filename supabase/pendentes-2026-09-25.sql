@@ -1,9 +1,12 @@
 -- =====================================================================
 -- MIGRATIONS PENDENTES — auditoria de 25/09/2026
 -- =====================================================================
--- Banco: projeto Supabase do .env do domus. É o MESMO banco do Central
--- MovMed (a migration 076 do Central — projetos_webdesign.concluido_em —
--- já está aplicada aqui). Então tudo que rodar aqui vale pros DOIS apps.
+-- Banco: projeto Supabase do .env do domus (ref "ikekfj…").
+-- ⚠ Este banco tem a migration 076 do CENTRAL aplicada
+-- (projetos_webdesign.concluido_em). Ou o Central usa este MESMO banco, ou
+-- aquele SQL foi rodado aqui por engano. CONFIRME antes de rodar: se for o
+-- mesmo banco, tudo aqui vale pros DOIS apps (os avisos da Parte 2 assumem
+-- esse cenário, que é o mais arriscado).
 --
 -- Auditoria feita só por leitura: existência de tabelas/colunas.
 -- Já aplicadas: 001–060 (exceto 031 e 047), 062, 065–075, 083 e a 076 do
