@@ -25,7 +25,6 @@ import {
   AlertCircle,
   CircleDot,
   ListChecks,
-  FileText,
   BarChart3,
   Activity,
   Mail,
@@ -59,7 +58,7 @@ import type {
   EscalonamentoNotificacao,
 } from '@/types/database'
 
-type AdminTab = 'geral' | 'performance' | 'metricas' | 'templates' | 'criacoes' | 'auditoria' | 'acessos' | 'escalonamento' | 'cobranca'
+type AdminTab = 'geral' | 'performance' | 'metricas' | 'templates' | 'auditoria' | 'acessos' | 'escalonamento' | 'cobranca'
 
 interface Stats {
   total: number
@@ -244,7 +243,6 @@ export default function Admin() {
     { key: 'performance', label: 'Performance', icon: TrendingUp },
     { key: 'metricas', label: 'Métricas Social Media', icon: BarChart3 },
     { key: 'templates', label: 'Templates', icon: ListChecks },
-    { key: 'criacoes', label: 'Textos do PDF', icon: FileText },
     { key: 'escalonamento', label: 'Escalonamento', icon: Activity },
     { key: 'auditoria', label: 'Auditoria', icon: ShieldCheck },
     { key: 'cobranca', label: 'Cobrança', icon: Wallet },
@@ -286,7 +284,6 @@ export default function Admin() {
       {tab === 'performance' && <PerformanceTab usuarios={aprovados} />}
       {tab === 'metricas' && <MetricasSocialMedia embedded />}
       {tab === 'templates' && <TemplatesTab />}
-      {tab === 'criacoes' && <ConfigCriacoesTab />}
       {tab === 'escalonamento' && <EscalonamentoTab />}
       {tab === 'auditoria' && <AuditoriaTab />}
       {tab === 'cobranca' && <CobrancaTab />}
@@ -2128,151 +2125,6 @@ function PlaceholderTab({ title, description }: { title: string; description: st
         <Badge tone="neutral" className="mt-2 text-[10px]">
           Em breve
         </Badge>
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
-   Tab: Configurações de Criações (textos do PDF por tipo)
-   ========================================================= */
-
-function ConfigCriacoesTab() {
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardBody>
-          <p className="text-sm text-zinc-100">
-            Texto do bloco <strong>"Sobre essa entrega"</strong> que aparece no PDF.
-          </p>
-          <p className="mt-1 text-[11px] text-muted">
-            Você edita um template por tipo. Cada Criação pode sobrescrever o texto
-            individualmente no próprio formulário (botão <em>"Personalizar texto"</em>).
-          </p>
-        </CardBody>
-      </Card>
-      {TIPOS_CRIACAO_CONFIG.map((tipo) => (
-        <ConfigCriacaoTipoCard key={tipo} tipo={tipo} />
-      ))}
-    </div>
-  )
-}
-
-const TIPOS_CRIACAO_CONFIG: import('@/types/database').TipoCriacao[] = [
-  'copy_lp',
-  'copy_criativos',
-  'planejamento',
-  'roteiro',
-]
-
-const tipoCriacaoLabelLocal: Record<import('@/types/database').TipoCriacao, string> = {
-  copy_lp: 'Copy LP',
-  copy_criativos: 'Copy Criativos',
-  planejamento: 'Planejamento',
-  roteiro: 'Roteiro',
-}
-
-function ConfigCriacaoTipoCard({
-  tipo,
-}: {
-  tipo: import('@/types/database').TipoCriacao
-}) {
-  const [titulo, setTitulo] = useState('')
-  const [paragrafosTexto, setParagrafosTexto] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [savedMsg, setSavedMsg] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelado = false
-    setLoading(true)
-    supabase
-      .from('config_criacoes_intros')
-      .select('titulo, paragrafos')
-      .eq('tipo', tipo)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelado) return
-        const t = (data?.titulo as string) ?? ''
-        const p = Array.isArray(data?.paragrafos)
-          ? (data?.paragrafos as string[]).join('\n\n')
-          : ''
-        setTitulo(t)
-        setParagrafosTexto(p)
-        setLoading(false)
-      })
-    return () => {
-      cancelado = true
-    }
-  }, [tipo])
-
-  async function salvar() {
-    setSaving(true)
-    setSavedMsg(null)
-    const paragrafos = paragrafosTexto
-      .split(/\n\s*\n/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0)
-    const { error } = await supabase.from('config_criacoes_intros').upsert({
-      tipo,
-      titulo: titulo.trim(),
-      paragrafos,
-      updated_at: new Date().toISOString(),
-    })
-    setSaving(false)
-    if (error) {
-      setSavedMsg('Erro ao salvar: ' + error.message)
-    } else {
-      setSavedMsg('Salvo!')
-      setTimeout(() => setSavedMsg(null), 2500)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText size={14} className="text-brand-300" />
-          {tipoCriacaoLabelLocal[tipo]}
-        </CardTitle>
-        {savedMsg && (
-          <span
-            className={cn(
-              'text-[11px]',
-              savedMsg === 'Salvo!' ? 'text-emerald-300' : 'text-red-300',
-            )}
-          >
-            {savedMsg}
-          </span>
-        )}
-      </CardHeader>
-      <CardBody className="space-y-3">
-        {loading ? (
-          <p className="text-xs text-muted">Carregando...</p>
-        ) : (
-          <>
-            <Field label="Título do bloco">
-              <Input
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex.: Sobre essa copy"
-              />
-            </Field>
-            <Field label="Parágrafos (separe com linha em branco)">
-              <Textarea
-                value={paragrafosTexto}
-                onChange={(e) => setParagrafosTexto(e.target.value)}
-                placeholder="Primeiro parágrafo...&#10;&#10;Segundo parágrafo...&#10;&#10;Terceiro parágrafo..."
-                className="min-h-[140px] text-sm leading-relaxed"
-              />
-            </Field>
-            <div className="flex justify-end">
-              <Button size="sm" onClick={salvar} disabled={saving}>
-                {saving ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </div>
-          </>
-        )}
       </CardBody>
     </Card>
   )
