@@ -28,6 +28,9 @@ comment on column cliente_metricas_social.sync_source is
 comment on column cliente_metricas_social.sincronizado_em is
   'Timestamp da ultima sincronizacao bem-sucedida com Meta API. Null pra registros preenchidos manualmente.';
 
+-- idempotente: permite rodar de novo sem "constraint already exists"
+alter table cliente_metricas_social
+  drop constraint if exists sync_source_valido;
 alter table cliente_metricas_social
   add constraint sync_source_valido
     check (sync_source in ('manual', 'meta_api'));

@@ -1,16 +1,15 @@
 -- =====================================================================
 -- MIGRATIONS PENDENTES — auditoria de 25/09/2026
 -- =====================================================================
--- Banco: projeto Supabase do .env do domus (ref "ikekfj…").
--- ⚠ Este banco tem a migration 076 do CENTRAL aplicada
--- (projetos_webdesign.concluido_em). Ou o Central usa este MESMO banco, ou
--- aquele SQL foi rodado aqui por engano. CONFIRME antes de rodar: se for o
--- mesmo banco, tudo aqui vale pros DOIS apps (os avisos da Parte 2 assumem
--- esse cenário, que é o mais arriscado).
+-- ⚠⚠ RODE NO PROJETO DO DOMUS — o endereço do painel
+--    (supabase.com/dashboard/project/<ref>) começa com "ikekfj".
+--    NÃO é o projeto "central contas" (produção do Central): são bancos
+--    DIFERENTES (confirmado em 25/09 — lá a 064 já existia, aqui não).
 --
 -- Auditoria feita só por leitura: existência de tabelas/colunas.
--- Já aplicadas: 001–060 (exceto 031 e 047), 062, 065–075, 083 e a 076 do
--- Central.
+-- Já aplicadas aqui: 001–060 (exceto 031 e 047), 062, 065–075, 083 — e a
+-- 076 do CENTRAL (concluido_em), que foi rodada aqui por engano (inofensiva:
+-- só uma coluna a mais que o domus não usa).
 --
 -- COMO RODAR
 --   1. Supabase → SQL Editor → New query → cole este arquivo INTEIRO → Run.
@@ -32,7 +31,7 @@
 
 
 -- #####################################################################
--- PARTE 1 — SEGURA (idempotente, não quebra o Central) — RODE INTEIRA
+-- PARTE 1 — SEGURA (idempotente) — RODE INTEIRA
 -- #####################################################################
 
 
@@ -427,6 +426,9 @@ comment on column cliente_metricas_social.sync_source is
 comment on column cliente_metricas_social.sincronizado_em is
   'Timestamp da ultima sincronizacao bem-sucedida com Meta API. Null pra registros preenchidos manualmente.';
 
+-- idempotente: permite rodar de novo sem "constraint already exists"
+alter table cliente_metricas_social
+  drop constraint if exists sync_source_valido;
 alter table cliente_metricas_social
   add constraint sync_source_valido
     check (sync_source in ('manual', 'meta_api'));
@@ -1363,6 +1365,66 @@ commit;
 
 
 -- ─────────────────────────────────────────────────────────────────────
+-- [094] Jornada aceita "escala" e "churn" (enum) — PRECISA vir antes da 082
+-- (migration-094-jornada-enum-escala-churn.sql)
+-- ─────────────────────────────────────────────────────────────────────
+-- =========================================================
+-- Migration 094: jornada do cliente aceita 'escala' e 'churn'
+-- =========================================================
+-- A coluna clientes.jornada é do tipo ENUM jornada_cliente (schema.sql),
+-- com os valores antigos: onboarding | otimizacao | expansao | retencao.
+-- O domus passou a usar onboarding | otimizacao | escala | churn (082), mas
+-- o enum nunca ganhou os valores novos — então escolher "Escala" ou "Churn"
+-- na Ficha era recusado pelo banco (22P02 invalid input value for enum).
+-- (A 082 dizia que jornada era texto livre; não é.)
+--
+-- ⚠ RODE ANTES DA 082: ela converte expansao/retencao → escala, e o valor
+-- novo só pode ser usado depois que ESTA migration for commitada.
+--
+-- Os valores antigos (expansao/retencao) continuam no enum — Postgres não
+-- remove valor de enum sem recriar o tipo, e não há necessidade.
+--
+-- Idempotente (IF NOT EXISTS). COMO RODAR: SQL Editor do projeto do DOMUS.
+-- =========================================================
+
+begin;
+alter type jornada_cliente add value if not exists 'escala';
+alter type jornada_cliente add value if not exists 'churn';
+commit;
+
+
+-- ─────────────────────────────────────────────────────────────────────
+-- [082] Converte jornadas antigas expansao/retencao → escala (depende da 094)
+-- (migration-082-jornada-etapas.sql)
+-- ─────────────────────────────────────────────────────────────────────
+-- Migration 082 — Jornada do cliente: etapas onboarding/otimizacao/escala/churn
+--
+-- A jornada de Trafego (coluna `clientes.jornada`, texto livre) passa a ter
+-- apenas 4 etapas oficiais:
+--   onboarding -> otimizacao -> escala -> churn
+--
+-- Antes existiam 'expansao' e 'retencao'. Remapeamos os dados existentes:
+--   expansao  -> escala   (escalar o que funciona)
+--   retencao  -> escala   (sustentacao vira parte da fase de escala)
+--
+-- ⚠ CORREÇÃO (25/09): `jornada` é o ENUM jornada_cliente, que não tinha
+-- 'escala' — rode a migration 094 ANTES desta (ela adiciona escala/churn).
+-- Idempotente.
+
+begin;
+update clientes
+   set jornada = 'escala'
+ where jornada in ('expansao', 'retencao');
+commit;
+
+-- Relatorio pos-migration
+select jornada, count(*)
+  from clientes
+ group by jornada
+ order by count(*) desc;
+
+
+-- ─────────────────────────────────────────────────────────────────────
 -- [085] Acessos operacionais dos papéis Social Media/Designer (só ADICIONA)
 -- (migration-085-papeis-acessos-operacionais.sql)
 -- ─────────────────────────────────────────────────────────────────────
@@ -1891,35 +1953,7 @@ revoke execute on function public.purge_clientes_churn_expirados() from public, 
 
 
 -- ─────────────────────────────────────────────────────────────────────
--- [082] ⚠ NÃO RODE ainda: converte jornada "expansao"/"retencao" em "escala". O CENTRAL (mesmo banco) ainda usa expansao/retencao — rodar agora quebra a jornada dos clientes no Central. Só depois de alinhar o Central às jornadas novas.
--- (migration-082-jornada-etapas.sql)
--- ─────────────────────────────────────────────────────────────────────
--- -- Migration 082 — Jornada do cliente: etapas onboarding/otimizacao/escala/churn
--- --
--- -- A jornada de Trafego (coluna `clientes.jornada`, texto livre) passa a ter
--- -- apenas 4 etapas oficiais:
--- --   onboarding -> otimizacao -> escala -> churn
--- --
--- -- Antes existiam 'expansao' e 'retencao'. Remapeamos os dados existentes:
--- --   expansao  -> escala   (escalar o que funciona)
--- --   retencao  -> escala   (sustentacao vira parte da fase de escala)
--- --
--- -- `jornada` nao tem check constraint (so `jornada_social` tem), entao nao
--- -- ha schema a alterar — so backfill de dados. Idempotente.
---
--- update clientes
---    set jornada = 'escala'
---  where jornada in ('expansao', 'retencao');
---
--- -- Relatorio pos-migration
--- select jornada, count(*)
---   from clientes
---  group by jornada
---  order by count(*) desc;
-
-
--- ─────────────────────────────────────────────────────────────────────
--- [084] ⚠ RLS por papel em clientes/cliente_eventos. Quem TEM papel precisa ter "Visualizar clientes" pra ver clientes — vale pro Central também (mesmo banco). Admin e quem não tem papel seguem liberados. Confira os papéis de quem usa o Central antes. Rollback no fim do bloco.
+-- [084] ⚠ RLS por papel em clientes/cliente_eventos. Quem TEM papel precisa ter "Visualizar clientes" pra ver clientes no domus. Admin e quem não tem papel seguem liberados. Confira os papéis antes. Rollback no fim do bloco.
 -- (migration-084-rls-permissoes.sql)
 -- ─────────────────────────────────────────────────────────────────────
 -- -- =========================================================

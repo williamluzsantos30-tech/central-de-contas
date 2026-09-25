@@ -8,12 +8,15 @@
 --   expansao  -> escala   (escalar o que funciona)
 --   retencao  -> escala   (sustentacao vira parte da fase de escala)
 --
--- `jornada` nao tem check constraint (so `jornada_social` tem), entao nao
--- ha schema a alterar — so backfill de dados. Idempotente.
+-- ⚠ CORREÇÃO (25/09): `jornada` é o ENUM jornada_cliente, que não tinha
+-- 'escala' — rode a migration 094 ANTES desta (ela adiciona escala/churn).
+-- Idempotente.
 
+begin;
 update clientes
    set jornada = 'escala'
  where jornada in ('expansao', 'retencao');
+commit;
 
 -- Relatorio pos-migration
 select jornada, count(*)
