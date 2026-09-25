@@ -52,11 +52,14 @@ export function CompactMonthCalendar({
   planejamentos,
   clientes,
   onChanged,
+  igNonce,
 }: {
   items: ItemSocialMedia[]
   planejamentos: PlanejamentoSocialMedia[]
   clientes: Cliente[]
   onChanged: () => void
+  /** Muda quando o cache de conexão do Instagram carrega — força re-render. */
+  igNonce?: number
 }) {
   const [aberto, setAberto] = useState(true)
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
@@ -91,8 +94,9 @@ export function CompactMonthCalendar({
     }
     for (const arr of porDia.values()) arr.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome))
     return { porDia, stats: { total: posts.length, publicados, atrasados, agendados } }
+    // igNonce entra nas deps pra recomputar quando a conexão do IG carrega.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, planejamentos, clientes])
+  }, [items, planejamentos, clientes, igNonce])
 
   const postsDoDia = diaSelecionado ? (porDia.get(diaSelecionado) ?? []) : []
 

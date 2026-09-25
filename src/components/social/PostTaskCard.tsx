@@ -10,7 +10,9 @@ import { Link } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
-import { PublicarItemBotao } from '@/components/social/PublicarItemDialog'
+import { PublicarItemBotao, ProgramarItemBotao } from '@/components/social/PublicarItemDialog'
+import { PostPublishActions } from '@/components/social/PostPublishActions'
+import { getInstagramState } from '@/components/social/mockInstagram'
 import { cn, formatoSocialMediaLabel } from '@/lib/utils'
 import type { EstadoPost, PostView } from '@/lib/socialPosts'
 
@@ -45,6 +47,10 @@ export function PostTaskCard({
         })
       : null
 
+  // Cliente conectado ao Instagram → publicação automática (Publicar via API),
+  // igual ao calendário; senão, botões manuais (Programar / Marcar publicado).
+  const conectado = getInstagramState(post.clienteId).modoConexao !== 'nao_conectado'
+
   return (
     <div
       className={cn(
@@ -77,7 +83,14 @@ export function PostTaskCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <PublicarItemBotao item={post.item} onChanged={onChanged} compact />
+        {conectado ? (
+          <PostPublishActions item={post.item} clienteId={post.clienteId} onChanged={onChanged} />
+        ) : (
+          <>
+            <ProgramarItemBotao item={post.item} onChanged={onChanged} compact />
+            <PublicarItemBotao item={post.item} onChanged={onChanged} compact />
+          </>
+        )}
         <Link
           to={`/social/clientes/${post.clienteId}?aba=operacional-social`}
           className="grid h-7 w-7 place-items-center rounded text-muted transition-colors hover:bg-bg-elev hover:text-brand-300"

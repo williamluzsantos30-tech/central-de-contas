@@ -24,6 +24,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { CompactMonthCalendar } from '@/components/social/CompactMonthCalendar'
 import { TodayTomorrowPanel } from '@/components/social/TodayTomorrowPanel'
+import { loadInstagramCache } from '@/components/social/mockInstagram'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { getPostsForDateRange } from '@/lib/socialPosts'
 import { supabase } from '@/lib/supabase'
@@ -94,6 +95,9 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
   const [gerandoPdf, setGerandoPdf] = useState(false)
+  // Nonce pra re-renderizar depois que o cache de conexão do Instagram
+  // carrega (async) — os cards derivam "conectado" de getInstagramState.
+  const [igNonce, setIgNonce] = useState(0)
   // Lista paralela de clientes do módulo SM SEM responsável atribuído —
   // mostra banner pro admin saber que precisa resolver.
   const { nomes: squadsAtivos } = useSquads()
@@ -131,6 +135,9 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
 
   useEffect(() => {
     load()
+    // Carrega o estado de conexão do Instagram (async) e força re-render pra
+    // os cards mostrarem "Publicar via API" nos clientes conectados.
+    loadInstagramCache().then(() => setIgNonce((n) => n + 1))
   }, [])
 
   // Stats por cliente, escopadas ao MÊS CORRENTE.
@@ -371,6 +378,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         planejamentos={planejamentos}
         clientes={filtered}
         onChanged={load}
+        igNonce={igNonce}
       />
 
       {/* Calendário mensal colapsável com chips por dia. Escopado aos clientes
@@ -380,6 +388,7 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         planejamentos={planejamentos}
         clientes={filtered}
         onChanged={load}
+        igNonce={igNonce}
       />
 
       <Card className="mb-4">

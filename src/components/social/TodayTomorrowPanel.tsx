@@ -31,11 +31,14 @@ export function TodayTomorrowPanel({
   planejamentos,
   clientes,
   onChanged,
+  igNonce,
 }: {
   items: ItemSocialMedia[]
   planejamentos: PlanejamentoSocialMedia[]
   clientes: Cliente[]
   onChanged: () => void
+  /** Muda quando o cache de conexão do Instagram carrega — força re-render. */
+  igNonce?: number
 }) {
   const { atrasadas, hoje, amanha, hojeDate, amanhaDate } = useMemo(() => {
     const inicioHoje = startOfToday()
@@ -61,7 +64,9 @@ export function TodayTomorrowPanel({
       hojeDate: inicioHoje,
       amanhaDate: inicioAmanha,
     }
-  }, [items, planejamentos, clientes])
+    // igNonce entra nas deps pra recomputar quando a conexão do IG carrega.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, planejamentos, clientes, igNonce])
 
   const vazioGlobal = atrasadas.length === 0 && hoje.length === 0 && amanha.length === 0
 
