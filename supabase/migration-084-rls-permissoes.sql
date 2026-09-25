@@ -49,6 +49,7 @@ grant execute on function public.tem_permissao(text) to authenticated;
 --    Ações Rápidas) exigem a permissão correspondente.
 -- ---------------------------------------------------------
 drop policy if exists "authenticated insert cliente_eventos" on cliente_eventos;
+drop policy if exists "insert cliente_eventos por permissao" on cliente_eventos; -- idempotente
 create policy "insert cliente_eventos por permissao" on cliente_eventos
   for insert with check (
     auth.role() = 'authenticated'
@@ -72,6 +73,11 @@ create policy "insert cliente_eventos por permissao" on cliente_eventos
 -- ---------------------------------------------------------
 drop policy if exists "auth read clientes" on clientes;
 drop policy if exists "auth write clientes" on clientes;
+-- idempotente: permite rodar de novo sem "policy already exists"
+drop policy if exists "clientes select por permissao" on clientes;
+drop policy if exists "clientes insert auth" on clientes;
+drop policy if exists "clientes update auth" on clientes;
+drop policy if exists "clientes delete auth" on clientes;
 
 create policy "clientes select por permissao" on clientes
   for select using (
