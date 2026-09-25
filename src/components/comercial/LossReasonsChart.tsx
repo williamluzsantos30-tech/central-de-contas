@@ -53,7 +53,7 @@ export function LossReasonsChart({ dados }: { dados: { motivo: string; qtd: numb
             />
           )
         })}
-        <text x="90" y="86" textAnchor="middle" fontSize="22" fontWeight="700" className="fill-zinc-100">
+        <text x="90" y="86" textAnchor="middle" fontSize="22" fontWeight="700" className="fill-current text-zinc-100">
           {hover != null && fatias[hover] ? fatias[hover].qtd : total}
         </text>
         <text x="90" y="102" textAnchor="middle" fontSize="9" className="fill-muted">perdas</text>

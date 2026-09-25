@@ -183,7 +183,7 @@ export interface MarketingFunnel {
 }
 
 /** Uma call "aconteceu" (não é no-show nem reunião futura ainda não ocorrida). */
-function teveCall(l: Lead): boolean {
+export function teveCall(l: Lead): boolean {
   const avançou = l.etapaFunil === 'em_negociacao' || l.etapaFunil === 'fechado' || (l.etapaFunil === 'perdido' && !!l.motivoPerda)
   return avançou && l.subStatusNegociacao !== 'no_show'
 }

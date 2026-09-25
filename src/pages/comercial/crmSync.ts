@@ -94,6 +94,12 @@ function valorInterno(lead: Lead, campo: CampoInterno): string | undefined {
       return lead.canalOriginal ?? lead.origem
     case 'especialidade':
       return lead.especialidade
+    // Classificação e criativo são do CRM (fonte da verdade): só leitura,
+    // nunca escritos de volta (evita sobrescrever "LEAD A" com "A").
+    case 'classificacao':
+    case 'criativo':
+    case 'idAnuncio':
+      return undefined
   }
 }
 

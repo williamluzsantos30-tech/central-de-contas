@@ -12,6 +12,7 @@
  * mapeamento de campos e devolve um Lead pronto pra Caixa de Entrada.
  */
 import type { Lead } from './mockLeads'
+import { CRIATIVOS_REFERENCIA } from './criativosReferencia'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -25,7 +26,17 @@ export type CrmProvider =
   | 'webhook_generico'
 
 /** Campo interno do Lead que um campo externo do CRM pode alimentar. */
-export type CampoInterno = 'nomeContato' | 'empresa' | 'telefone' | 'email' | 'origem' | 'especialidade'
+export type CampoInterno =
+  | 'nomeContato'
+  | 'empresa'
+  | 'telefone'
+  | 'email'
+  | 'origem'
+  | 'especialidade'
+  // Funil Tráfego — chegam prontos do CRM
+  | 'classificacao'
+  | 'criativo'
+  | 'idAnuncio'
 
 export const CAMPOS_INTERNOS: { key: CampoInterno; label: string }[] = [
   { key: 'nomeContato', label: 'Nome' },
@@ -34,7 +45,20 @@ export const CAMPOS_INTERNOS: { key: CampoInterno; label: string }[] = [
   { key: 'email', label: 'Email' },
   { key: 'origem', label: 'Origem / Canal' },
   { key: 'especialidade', label: 'Especialidade' },
+  { key: 'classificacao', label: 'Classificação do lead (A/B/C)' },
+  { key: 'criativo', label: 'Criativo / anúncio de origem' },
+  { key: 'idAnuncio', label: 'ID do anúncio (Meta ad_id)' },
 ]
+
+/**
+ * Normaliza a classificação que vem do CRM ("LEAD A", "Lead b", "A",
+ * "classificação: C"…) pra 'A' | 'B' | 'C'. Qualquer outra coisa → undefined.
+ */
+export function normalizarClassificacao(raw: string | undefined | null): 'A' | 'B' | 'C' | undefined {
+  if (!raw) return undefined
+  const m = String(raw).trim().toUpperCase().match(/(?:^|[^A-Z])([ABC])$/) ?? String(raw).trim().toUpperCase().match(/^([ABC])$/)
+  return (m?.[1] as 'A' | 'B' | 'C' | undefined) ?? undefined
+}
 
 /** Uma linha do mapeamento: campo que vem do CRM → campo interno do Lead. */
 export interface MapeamentoCampo {
@@ -63,6 +87,9 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'email', interno: 'email' },
       { externo: 'source', interno: 'origem' },
       { externo: 'cf_especialidade', interno: 'especialidade' },
+      { externo: 'cf_classificacao_lead', interno: 'classificacao' },
+      { externo: 'utm_content', interno: 'criativo' },
+      { externo: 'cf_ad_id', interno: 'idAnuncio' },
     ],
   },
   {
@@ -75,6 +102,8 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'phone', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
       { externo: 'hs_analytics_source', interno: 'origem' },
+      { externo: 'lead_classificacao', interno: 'classificacao' },
+      { externo: 'hs_analytics_source_data_2', interno: 'criativo' },
     ],
   },
   {
@@ -87,6 +116,8 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'phone', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
       { externo: 'source_channel', interno: 'origem' },
+      { externo: 'label', interno: 'classificacao' },
+      { externo: 'utm_content', interno: 'criativo' },
     ],
   },
   {
@@ -99,6 +130,8 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'phone', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
       { externo: 'pipeline', interno: 'origem' },
+      { externo: 'tags', interno: 'classificacao' },
+      { externo: 'utm_content', interno: 'criativo' },
     ],
   },
   {
@@ -111,6 +144,8 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'phone', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
       { externo: 'source', interno: 'origem' },
+      { externo: 'tags', interno: 'classificacao' },
+      { externo: 'utm_content', interno: 'criativo' },
     ],
   },
   {
@@ -121,7 +156,8 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'full_name', interno: 'nomeContato' },
       { externo: 'phone_number', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
-      { externo: 'ad_name', interno: 'origem' },
+      { externo: 'ad_name', interno: 'criativo' },
+      { externo: 'ad_id', interno: 'idAnuncio' },
     ],
   },
   {
@@ -134,6 +170,9 @@ export const CRM_PRESETS: CrmPreset[] = [
       { externo: 'phone', interno: 'telefone' },
       { externo: 'email', interno: 'email' },
       { externo: 'source', interno: 'origem' },
+      { externo: 'classificacao', interno: 'classificacao' },
+      { externo: 'ad_name', interno: 'criativo' },
+      { externo: 'ad_id', interno: 'idAnuncio' },
     ],
   },
 ]
@@ -343,12 +382,30 @@ export function fakeWebhookPayload(provider: CrmProvider): Record<string, string
   const base = amostras[Math.floor(Math.random() * amostras.length)]
   // ID do registro no CRM de origem — vira o crmExternoId do Lead.
   const extras = { ...base.extras, [CAMPO_ID_ENTRADA[provider]]: gerarIdExterno(provider) }
+  // Funil Tráfego: classificação (sempre) + criativo (só lead de anúncio Meta),
+  // cada CRM com seus nomes de campo.
+  const pagos = CRIATIVOS_REFERENCIA.filter((c) => c.idAnuncioMeta)
+  const cr = provider === 'meta_ads' || base.source === 'Anúncio Meta' ? pagos[Math.floor(Math.random() * pagos.length)] : null
+  const cls = (['A', 'B', 'C'] as const)[Math.floor(Math.random() * 3)]
+  const nome = cr?.nomeAnuncio
+  const adId = cr?.idAnuncioMeta ?? undefined
+  const so = (o: Record<string, string | undefined>) =>
+    Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as Record<string, string>
+  const trafego: Record<CrmProvider, Record<string, string>> = {
+    rd_station: so({ cf_classificacao_lead: `LEAD ${cls}`, utm_content: nome, cf_ad_id: adId }),
+    hubspot: so({ lead_classificacao: `Lead ${cls}`, hs_analytics_source_data_2: nome }),
+    pipedrive: so({ label: `LEAD ${cls}`, utm_content: nome }),
+    kommo: so({ tags: `LEAD ${cls}`, utm_content: nome }),
+    activecampaign: so({ tags: `lead ${cls.toLowerCase()}`, utm_content: nome }),
+    meta_ads: so({ ad_name: nome, ad_id: adId }),
+    webhook_generico: so({ classificacao: cls, ad_name: nome, ad_id: adId }),
+  }
   // Adapta as CHAVES mapeadas ao provedor (cada CRM nomeia diferente) e sempre
   // anexa os EXTRAS (chaves não mapeadas) pra exercitar o dadosOriginaisCRM.
-  if (provider === 'hubspot') return { firstname: base.name, company: base.company, phone: base.personal_phone, email: base.email, hs_analytics_source: base.source, ...extras }
-  if (provider === 'meta_ads') return { full_name: base.name, phone_number: base.personal_phone, email: base.email, ad_name: base.source, ...extras }
-  if (provider === 'pipedrive') return { name: base.name, org_name: base.company, phone: base.personal_phone, email: base.email, source_channel: base.source, ...extras }
-  return { name: base.name, company: base.company, personal_phone: base.personal_phone, email: base.email, source: base.source, cf_especialidade: base.cf_especialidade, ...extras }
+  if (provider === 'hubspot') return { firstname: base.name, company: base.company, phone: base.personal_phone, email: base.email, hs_analytics_source: base.source, ...extras, ...trafego.hubspot }
+  if (provider === 'meta_ads') return { full_name: base.name, phone_number: base.personal_phone, email: base.email, ...extras, ...trafego.meta_ads }
+  if (provider === 'pipedrive') return { name: base.name, org_name: base.company, phone: base.personal_phone, email: base.email, source_channel: base.source, ...extras, ...trafego.pipedrive }
+  return { name: base.name, company: base.company, personal_phone: base.personal_phone, email: base.email, source: base.source, cf_especialidade: base.cf_especialidade, ...extras, ...trafego[provider] }
 }
 
 /** Campo do payload de entrada que traz o ID do registro no CRM. */
@@ -389,6 +446,8 @@ export function receiveWebhookLead(
     .map(([campo, valor]) => ({ campo, valor: String(valor) }))
   const hoje = todayISO()
   const nome = campos.nomeContato || 'Lead sem nome'
+  // Lead Ads da Meta é, por definição, anúncio Meta — mesmo sem campo de origem.
+  if (!campos.origem && config.provider === 'meta_ads') campos.origem = 'Anúncio Meta'
   // Sem origem mapeada = gap de rastreamento → "Sem Origem Identificada"
   // (canalOriginal fica indefinido; canalDoLead classifica pelo fallback).
   return {
@@ -408,6 +467,15 @@ export function receiveWebhookLead(
     socialSellerId: '',
     dataCaptacao: hoje,
     qualificado: false,
+    // Funil Tráfego: classificação e criativo chegam PRONTOS do CRM.
+    classificacaoCRM: normalizarClassificacao(campos.classificacao),
+    criativoOrigem:
+      campos.criativo || campos.idAnuncio
+        ? {
+            nomeAnuncio: campos.criativo || `Anúncio ${campos.idAnuncio}`,
+            ...(campos.idAnuncio ? { idAnuncioMeta: campos.idAnuncio } : {}),
+          }
+        : undefined,
     crmExternoId,
     crmExternoProvider: config.provider,
     // Veio do CRM → já nasce espelhado lá (se o provedor aceita escrita de volta).

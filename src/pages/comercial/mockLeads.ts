@@ -12,6 +12,7 @@
  * (string), coerente com o resto do app (Cliente/itens usam string).
  */
 import type { CrmProvider } from './mockIntegrations'
+import { CRIATIVOS_REFERENCIA, MES_REFERENCIA_CRIATIVOS, qualificadosNaEscala } from './criativosReferencia'
 
 export type EtapaFunil =
   | 'prospectado' // captado no Social Selling, aguardando envio à Caixa
@@ -120,6 +121,20 @@ export interface ReuniaoAgendada {
  */
 export type StatusSincronizacaoCRM = 'nao_aplicavel' | 'pendente' | 'sincronizado' | 'erro'
 
+/**
+ * Classificação do lead que chega PRONTA do CRM externo ("LEAD A", "Lead B",
+ * "C"…), via mapeamento de campos da integração. O sistema não classifica.
+ */
+export type ClassificacaoLead = 'A' | 'B' | 'C'
+
+/** Anúncio que originou o lead — vem do CRM (utm_content / ad_name / ad_id). */
+export interface CriativoOrigem {
+  /** Ex.: "Ad119 - Review 40 consultas" ou "link_in_bio". */
+  nomeAnuncio: string
+  /** ad_id na Meta Ads, quando disponível (casa com o gasto do criativo). */
+  idAnuncioMeta?: string
+}
+
 /** Qualificação BANT — padrão obrigatório pra entregar um SQL. */
 export interface BantQualificacao {
   orcamento: string // B — disponibilidade de crédito
@@ -218,6 +233,10 @@ export interface Lead {
   ultimaSincronizacaoCRM?: string
   /** Mensagem do último erro (quando sincronizacaoCRM = 'erro'). */
   erroSincronizacaoCRM?: string
+
+  // Tráfego pago (Funil Tráfego) — chegam PRONTOS do CRM, não calculados
+  classificacaoCRM?: ClassificacaoLead
+  criativoOrigem?: CriativoOrigem
 }
 
 /** Pessoa do time comercial (mock — no real seria um profile/papel). */
@@ -758,3 +777,193 @@ const SYNC_MOCK: Record<string, Partial<Lead>> = {
   },
 }
 for (const l of MOCK_LEADS) Object.assign(l, SYNC_MOCK[l.id] ?? {})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Leads de exemplo do FUNIL TRÁFEGO (Meta Ads da agência → CRM → funil).
+// Gerados de forma DETERMINÍSTICA a partir de criativosReferencia.ts: cada
+// criativo tem exatamente `qualificadosNaEscala` leads qualificados no mês de
+// referência (o ranking e o custo por qualificado batem com o gasto do mock).
+// Classificação A/B/C e criativo vêm "do CRM" (RD Station).
+// Cada criativo tem um perfil de qualidade diferente — ex.: Ad137 traz
+// qualificados mas muito lead C (fecha pouco), pra o cruzamento criativo ×
+// classificação mostrar algo acionável.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Existentes vindos do CRM também ganham classificação (sem criativo: sem utm). */
+const CLASSIF_MOCK: Record<string, ClassificacaoLead> = {
+  'lead-3': 'A',
+  'lead-9': 'B',
+  'lead-10': 'B',
+  'lead-12': 'B',
+  'lead-13': 'A',
+  'lead-14': 'C',
+  'lead-16': 'C',
+}
+for (const l of MOCK_LEADS) if (CLASSIF_MOCK[l.id]) l.classificacaoCRM = CLASSIF_MOCK[l.id]
+
+/** Probabilidade de A / B (o resto é C) dos leads de cada criativo. */
+const PERFIL_CRIATIVO: Record<string, [number, number]> = {
+  'Ad119 - Review 40 consultas': [0.45, 0.4],
+  'Ad134 - Tráfego P Médico Sem Bullets': [0.25, 0.5],
+  link_in_bio: [0.4, 0.4],
+  'Ad137 - Nina Tela Dividida': [0.08, 0.3],
+  'Ad91 - Noele Rerformulado': [0.35, 0.45],
+  'Ad117 - Review 42k': [0, 0],
+}
+/** Chance de fechar, entre os que chegaram ao Closer, por classificação. */
+const CHANCE_FECHAR: Record<ClassificacaoLead, number> = { A: 0.55, B: 0.28, C: 0.08 }
+
+const NOMES_F = ['Ana', 'Carla', 'Eduarda', 'Gabriela', 'Isabela', 'Karina', 'Mariana', 'Olívia', 'Renata', 'Sofia', 'Luiza', 'Yasmin']
+const NOMES_M = ['Bruno', 'Daniel', 'Fábio', 'Henrique', 'João', 'Lucas', 'Nicolas', 'Paulo', 'Renato', 'Tiago', 'Vinícius', 'Otávio']
+const SOBRENOMES = ['Almeida', 'Barros', 'Cardoso', 'Duarte', 'Esteves', 'Freitas', 'Gomes', 'Leal', 'Macedo', 'Nogueira', 'Pacheco', 'Queiroz', 'Rezende', 'Siqueira', 'Teixeira', 'Vasconcelos']
+const ESPECIALIDADES = ['Dermatologia', 'Ortopedia', 'Cardiologia', 'Oftalmologia', 'Odontologia', 'Ginecologia', 'Nutrologia', 'Pediatria']
+const MOTIVOS_DESQ = ['Sem orçamento', 'Fora do perfil', 'Não é o decisor', 'Contato inválido']
+const PREFIXOS_EMPRESA = ['Clínica', 'Instituto', 'Consultório', 'Centro Médico']
+
+/** PRNG determinístico (0..1) a partir de um inteiro. */
+function rnd(seed: number): number {
+  let x = Math.imul(seed, 2654435761) >>> 0
+  x ^= x >>> 16
+  x = Math.imul(x, 0x7feb352d) >>> 0
+  x ^= x >>> 15
+  x = Math.imul(x, 0x846ca68b) >>> 0
+  // `^` devolve int32 COM sinal — `>>> 0` garante 0..1 (senão pick() lê índice negativo).
+  x = (x ^ (x >>> 16)) >>> 0
+  return x / 4294967296
+}
+function pick<T>(arr: readonly T[], r: number): T {
+  return arr[Math.floor(r * arr.length) % arr.length]
+}
+function diaDoMes(mes: string, dia: number): string {
+  return `${mes}-${String(Math.max(1, Math.min(dia, 30))).padStart(2, '0')}`
+}
+
+function gerarLeadsTrafego(): Lead[] {
+  const mes = MES_REFERENCIA_CRIATIVOS
+  const out: Lead[] = []
+  let n = 0
+  CRIATIVOS_REFERENCIA.forEach((c, ci) => {
+    const [pA, pB] = PERFIL_CRIATIVO[c.nomeAnuncio] ?? [0.33, 0.33]
+    const qualificados = qualificadosNaEscala(c)
+    const naoQualificados = Math.round(qualificados * 0.3) + 1
+    const total = qualificados + naoQualificados
+    for (let k = 0; k < total; k++) {
+      n++
+      const s = ci * 1000 + k * 7 + 13
+      const qualificado = k < qualificados
+      const rc = rnd(s + 1)
+      const classe: ClassificacaoLead = qualificado
+        ? rc < pA
+          ? 'A'
+          : rc < pA + pB
+            ? 'B'
+            : 'C'
+        : rc < pA * 0.4
+          ? 'A'
+          : rc < pA * 0.4 + pB * 0.8
+            ? 'B'
+            : 'C'
+      const feminino = rnd(s + 2) < 0.5
+      const primeiro = pick(feminino ? NOMES_F : NOMES_M, rnd(s + 3))
+      const sobrenome = pick(SOBRENOMES, rnd(s + 4))
+      const especialidade = pick(ESPECIALIDADES, rnd(s + 5))
+      const diaEntrada = 1 + Math.floor(rnd(s + 6) * 22) // 01–22
+      const dataEntrada = diaDoMes(mes, diaEntrada)
+      const organico = c.idAnuncioMeta == null
+      const origem = organico ? 'Instagram (link na bio)' : 'Anúncio Meta'
+      const sdrId = rnd(s + 7) < 0.5 ? 'sdr-1' : 'sdr-2'
+      const closerId = rnd(s + 8) < 0.5 ? 'cl-1' : 'cl-2'
+
+      const lead: Lead = {
+        id: `lead-trf-${String(n).padStart(3, '0')}`,
+        nomeContato: `${feminino ? 'Dra.' : 'Dr.'} ${primeiro} ${sobrenome}`,
+        empresa: `${pick(PREFIXOS_EMPRESA, rnd(s + 9))} ${sobrenome}`,
+        telefone: `(11) 9${1000 + Math.floor(rnd(s + 10) * 8999)}-${1000 + Math.floor(rnd(s + 11) * 8999)}`,
+        origem,
+        canalOriginal: origem,
+        etapaFunil: 'caixa_entrada',
+        origemEntrada: 'crm_externo',
+        crmProvider: 'RD Station',
+        dataEntrada,
+        socialSellerId: '',
+        dataCaptacao: dataEntrada,
+        qualificado,
+        especialidade,
+        classificacaoCRM: classe,
+        criativoOrigem: c.idAnuncioMeta
+          ? { nomeAnuncio: c.nomeAnuncio, idAnuncioMeta: c.idAnuncioMeta }
+          : { nomeAnuncio: c.nomeAnuncio },
+        crmExternoId: `rd_6${String(n).padStart(4, '0')}`,
+        crmExternoProvider: 'rd_station',
+        sincronizacaoCRM: 'sincronizado',
+        ultimaSincronizacaoCRM: `${dataEntrada}T10:00:00`,
+      }
+
+      if (!qualificado) {
+        // Ainda no SDR ou desqualificado.
+        const r = rnd(s + 12)
+        if (r < 0.4) {
+          lead.etapaFunil = 'caixa_entrada'
+        } else if (r < 0.65) {
+          Object.assign(lead, { etapaFunil: 'em_qualificacao', sdrId, dataEnvioSDR: diaDoMes(mes, diaEntrada + 1) })
+        } else {
+          Object.assign(lead, {
+            etapaFunil: 'perdido',
+            sdrId,
+            dataEnvioSDR: diaDoMes(mes, diaEntrada + 1),
+            motivoDesqualificacao: pick(MOTIVOS_DESQ, rnd(s + 13)),
+          })
+        }
+        out.push(lead)
+        continue
+      }
+
+      // Qualificado pelo SDR → reunião com o Closer.
+      const diaReuniao = diaEntrada + 3 + Math.floor(rnd(s + 14) * 4)
+      const r = rnd(s + 15)
+      const futura = r < 0.12
+      const dataReuniao = futura ? diaDoMes(mes, 26 + Math.floor(rnd(s + 16) * 4)) : diaDoMes(mes, diaReuniao)
+      Object.assign(lead, {
+        sdrId,
+        dataEnvioSDR: diaDoMes(mes, diaEntrada + 1),
+        closerId,
+        dataEnvioCloser: diaDoMes(mes, diaEntrada + 2),
+        dataReuniaoAgendada: dataReuniao,
+        reuniao: { data: dataReuniao, hora: `${9 + Math.floor(rnd(s + 17) * 9)}:00`, linkCall: 'https://meet.google.com/trf-demo', closerId },
+        briefingQualificacao: `Lead ${classe} (classificação do CRM) vindo do criativo "${c.nomeAnuncio}". Interesse em ${especialidade.toLowerCase()}.`,
+      })
+
+      if (futura) {
+        lead.etapaFunil = 'reuniao_agendada'
+      } else if (r < 0.2) {
+        Object.assign(lead, { etapaFunil: 'em_negociacao', subStatusNegociacao: 'no_show', contadorNoShow: 1 })
+      } else if (rnd(s + 18) < CHANCE_FECHAR[classe]) {
+        const mrr = 2500 + Math.round(rnd(s + 19) * 35) * 100
+        Object.assign(lead, {
+          etapaFunil: 'fechado',
+          mrr,
+          caixaRecolhido: mrr,
+          contratoFechado: mrr * 12,
+          dataFechamento: diaDoMes(mes, Math.min(diaReuniao + 2 + Math.floor(rnd(s + 20) * 3), 25)),
+        })
+      } else if (rnd(s + 21) < 0.35) {
+        Object.assign(lead, {
+          etapaFunil: 'em_negociacao',
+          subStatusNegociacao: 'em_followup',
+          dataProximoContato: diaDoMes(mes, 28),
+          historicoFollowups: [{ data: diaDoMes(mes, diaReuniao), observacao: 'Proposta enviada; pediu uns dias pra decidir.' }],
+        })
+      } else {
+        Object.assign(lead, {
+          etapaFunil: 'perdido',
+          motivoPerda: pick(MOTIVOS_PERDA, rnd(s + 22)),
+          dataFechamento: diaDoMes(mes, Math.min(diaReuniao + 1, 25)),
+        })
+      }
+      out.push(lead)
+    }
+  })
+  return out
+}
+
+MOCK_LEADS.push(...gerarLeadsTrafego())

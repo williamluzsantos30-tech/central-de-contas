@@ -15,6 +15,7 @@ import { AgencyInstagramSettings } from '@/components/social/AgencyInstagramSett
 import { AgencyAdsSettings } from '@/components/ads/AgencyAdsSettings'
 import { googleAdsAdapter } from '@/components/ads/googleAds'
 import { metaAdsAdapter } from '@/components/ads/metaAds'
+import { MetaCriativosSyncBlock } from '@/components/comercial/MetaCriativosSyncBlock'
 import { useComercial } from '@/pages/comercial/store'
 import {
   CAMPOS_INTERNOS,
@@ -316,6 +317,7 @@ export function IntegracoesTab() {
         <div className="h-px flex-1 bg-border" />
       </div>
       <AgencyAdsSettings adapter={metaAdsAdapter} />
+      <MetaCriativosSyncBlock />
     </div>
   )
 }

@@ -209,7 +209,10 @@ function normalizeConn(raw: unknown): AdsConexao | null {
   }
 }
 
-type CampanhaOverride = { status?: StatusCampanhaAds; orcamentoDiario?: number; atualizadoEm: string }
+/** Evento (mesma aba) disparado quando a conta de agência (MCC/BM) muda. */
+export const EVENTO_AGENCIA_ADS = 'ads-agency-config'
+
+type CampanhaOverride ={ status?: StatusCampanhaAds; orcamentoDiario?: number; atualizadoEm: string }
 
 export function createAdsConnectionStore(opts: { connKey: string; agencyKey: string }): AdsConnectionStore {
   let connCache: Record<string, AdsConexao> | null = null
@@ -308,6 +311,9 @@ export function createAdsConnectionStore(opts: { connKey: string; agencyKey: str
     setAgencyConfig: (cfg) => {
       agencyCache = cfg
       writeJSON(opts.agencyKey, cfg)
+      // Outros blocos que dependem da conta de agência (ex.: sync de criativos
+      // do Funil Tráfego) re-leem o estado sem precisar recarregar a tela.
+      window.dispatchEvent(new CustomEvent(EVENTO_AGENCIA_ADS, { detail: opts.agencyKey }))
     },
     aplicarAcaoCampanha: (campanha, acao) => {
       const ov = overrides()

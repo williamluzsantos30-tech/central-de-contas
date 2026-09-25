@@ -106,7 +106,8 @@ function noMesCorrente(iso: string | null): boolean {
 }
 
 export default function Configuracoes() {
-  const [tab, setTab] = useState('geral')
+  // ?aba=integracoes abre direto na aba (links de outras telas, ex.: Funil Tráfego).
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('aba') || 'geral')
   const { slaConfig, setSlaConfig, metasMarketing, setMetasMarketing } = useComercial()
   const { metasFinanceiras, setMetasFinanceiras, comissaoConfig, setComissaoConfig } = useFinanceiro()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
