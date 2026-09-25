@@ -142,6 +142,98 @@ export function presetLabel(provider: CrmProvider): string {
   return CRM_PRESETS.find((p) => p.provider === provider)?.label ?? provider
 }
 
+// ── Sincronização de SAÍDA (Sistema → CRM) ────────────────────────────────
+/** Desfechos do Closer que viram atualização de status no CRM. */
+export type StatusSaida = 'fechou' | 'perdido' | 'no_show' | 'followup'
+
+export const STATUS_SAIDA: { key: StatusSaida; label: string; efeito: string }[] = [
+  { key: 'fechou', label: 'Fechou', efeito: 'Negócio ganho + valor do contrato' },
+  { key: 'perdido', label: 'Não fechou', efeito: 'Negócio perdido + motivo na nota' },
+  { key: 'no_show', label: 'No-show', efeito: 'Estágio intermediário e/ou nota com a nova data' },
+  { key: 'followup', label: 'Em follow-up', efeito: 'Negócio segue aberto + nota com o próximo contato' },
+]
+
+/**
+ * Como cada provedor recebe a escrita: nomes de campo da API e estágios
+ * sugeridos por desfecho. Estágio vazio = mantém o estágio atual no CRM e só
+ * registra a nota (quando o provedor suporta).
+ */
+export interface SaidaProvedor {
+  suportaEscrita: boolean
+  campoEstagio: string
+  campoValor: string
+  campoMotivo: string
+  campoNota: string
+  statusSugerido: Record<StatusSaida, string>
+  dica: string
+}
+
+export const SAIDA_POR_PROVEDOR: Record<CrmProvider, SaidaProvedor> = {
+  rd_station: {
+    suportaEscrita: true,
+    campoEstagio: 'deal_stage',
+    campoValor: 'amount_total',
+    campoMotivo: 'deal_lost_reason',
+    campoNota: 'annotation',
+    statusSugerido: { fechou: 'Ganho', perdido: 'Perdido', no_show: 'Reunião não realizada', followup: 'Em negociação' },
+    dica: 'No RD Station CRM, ganho/perdido marcam o negócio como fechado; os demais são nomes de etapa do funil.',
+  },
+  hubspot: {
+    suportaEscrita: true,
+    campoEstagio: 'dealstage',
+    campoValor: 'amount',
+    campoMotivo: 'closed_lost_reason',
+    campoNota: 'hs_note_body',
+    statusSugerido: { fechou: 'closedwon', perdido: 'closedlost', no_show: 'appointmentscheduled', followup: 'presentationscheduled' },
+    dica: 'Use o ID interno da etapa do pipeline de negócios (ex.: closedwon, closedlost).',
+  },
+  pipedrive: {
+    suportaEscrita: true,
+    campoEstagio: 'status',
+    campoValor: 'value',
+    campoMotivo: 'lost_reason',
+    campoNota: 'note',
+    statusSugerido: { fechou: 'won', perdido: 'lost', no_show: 'open', followup: 'open' },
+    dica: 'No Pipedrive o status do negócio é won / lost / open; no-show e follow-up mantêm aberto e viram nota/atividade.',
+  },
+  kommo: {
+    suportaEscrita: true,
+    campoEstagio: 'status_id',
+    campoValor: 'price',
+    campoMotivo: 'loss_reason',
+    campoNota: 'note_text',
+    statusSugerido: { fechou: '142', perdido: '143', no_show: 'Reunião não realizada', followup: 'Negociação' },
+    dica: 'No Kommo, 142 (Venda ganha) e 143 (Venda perdida) são IDs fixos; os demais são etapas do seu funil.',
+  },
+  activecampaign: {
+    suportaEscrita: true,
+    campoEstagio: 'status',
+    campoValor: 'value',
+    campoMotivo: 'note',
+    campoNota: 'note',
+    statusSugerido: { fechou: '1', perdido: '2', no_show: '0', followup: '0' },
+    dica: 'No ActiveCampaign o status do deal é 0 (aberto), 1 (ganho) ou 2 (perdido); o motivo vai como nota.',
+  },
+  meta_ads: {
+    suportaEscrita: false,
+    campoEstagio: '',
+    campoValor: '',
+    campoMotivo: '',
+    campoNota: '',
+    statusSugerido: { fechou: '', perdido: '', no_show: '', followup: '' },
+    dica: 'O Lead Ads da Meta só ENVIA leads — não é um CRM e não aceita escrita de volta.',
+  },
+  webhook_generico: {
+    suportaEscrita: true,
+    campoEstagio: 'status',
+    campoValor: 'value',
+    campoMotivo: 'lost_reason',
+    campoNota: 'note',
+    statusSugerido: { fechou: 'won', perdido: 'lost', no_show: 'no_show', followup: 'follow_up' },
+    dica: 'Enviamos um POST JSON para a URL de saída com os campos abaixo; use os valores que seu sistema espera.',
+  },
+}
+
 export type StatusIntegracao = 'conectado' | 'nao_configurado'
 
 export interface IntegracaoConfig {
@@ -151,6 +243,29 @@ export interface IntegracaoConfig {
   status: StatusIntegracao
   ultimoLeadEm?: string | null
   mapeamento: MapeamentoCampo[]
+  /** Sincronização bidirecional ligada (Social Selling cria / Closer atualiza no CRM). */
+  escritaAtiva: boolean
+  /** Estágio/status do CRM correspondente a cada desfecho interno. */
+  mapeamentoStatus: Record<StatusSaida, string>
+  /** Só pro webhook genérico: pra onde enviar os eventos de saída. */
+  webhookSaidaUrl?: string
+}
+
+/** A integração pode escrever no CRM agora? (conectada + escrita ligada + provedor suporta) */
+export function escritaHabilitada(cfg: IntegracaoConfig): boolean {
+  return cfg.status === 'conectado' && cfg.escritaAtiva && SAIDA_POR_PROVEDOR[cfg.provider].suportaEscrita
+}
+
+/** Completa uma config salva (possivelmente antiga) com os campos novos. */
+export function normalizarIntegracao(raw: Partial<IntegracaoConfig> | null | undefined): IntegracaoConfig {
+  if (!raw || !raw.provider) return INTEGRACAO_INICIAL
+  return {
+    ...INTEGRACAO_INICIAL,
+    ...raw,
+    mapeamento: raw.mapeamento ?? INTEGRACAO_INICIAL.mapeamento,
+    escritaAtiva: raw.escritaAtiva ?? true,
+    mapeamentoStatus: { ...SAIDA_POR_PROVEDOR[raw.provider].statusSugerido, ...(raw.mapeamentoStatus ?? {}) },
+  }
 }
 
 // Conta de exemplo (mock).
@@ -176,8 +291,29 @@ export const INTEGRACAO_INICIAL: IntegracaoConfig = (() => {
     status: 'conectado',
     ultimoLeadEm: '2026-09-20',
     mapeamento: CRM_PRESETS.find((p) => p.provider === 'rd_station')!.mapeamentoSugerido,
+    escritaAtiva: true,
+    mapeamentoStatus: { ...SAIDA_POR_PROVEDOR.rd_station.statusSugerido },
   }
 })()
+
+/** ID de registro no formato típico de cada CRM (mock). */
+export function gerarIdExterno(provider: CrmProvider): string {
+  const n = (digitos: number) => String(Math.floor(Math.random() * 10 ** digitos)).padStart(digitos, '0')
+  switch (provider) {
+    case 'rd_station':
+      return `rd_${n(5)}`
+    case 'hubspot':
+      return `hs_${n(7)}`
+    case 'pipedrive':
+      return `pd_${n(4)}`
+    case 'kommo':
+      return `km_${n(8)}`
+    case 'activecampaign':
+      return `ac_${n(5)}`
+    default:
+      return `ext_${n(6)}`
+  }
+}
 
 /** Payload fake de um CRM, pro botão "Simular Lead Recebido via Webhook". */
 export function fakeWebhookPayload(provider: CrmProvider): Record<string, string> {
@@ -205,13 +341,25 @@ export function fakeWebhookPayload(provider: CrmProvider): Record<string, string
     },
   ]
   const base = amostras[Math.floor(Math.random() * amostras.length)]
-  const extras = base.extras
+  // ID do registro no CRM de origem — vira o crmExternoId do Lead.
+  const extras = { ...base.extras, [CAMPO_ID_ENTRADA[provider]]: gerarIdExterno(provider) }
   // Adapta as CHAVES mapeadas ao provedor (cada CRM nomeia diferente) e sempre
   // anexa os EXTRAS (chaves não mapeadas) pra exercitar o dadosOriginaisCRM.
   if (provider === 'hubspot') return { firstname: base.name, company: base.company, phone: base.personal_phone, email: base.email, hs_analytics_source: base.source, ...extras }
   if (provider === 'meta_ads') return { full_name: base.name, phone_number: base.personal_phone, email: base.email, ad_name: base.source, ...extras }
   if (provider === 'pipedrive') return { name: base.name, org_name: base.company, phone: base.personal_phone, email: base.email, source_channel: base.source, ...extras }
   return { name: base.name, company: base.company, personal_phone: base.personal_phone, email: base.email, source: base.source, cf_especialidade: base.cf_especialidade, ...extras }
+}
+
+/** Campo do payload de entrada que traz o ID do registro no CRM. */
+export const CAMPO_ID_ENTRADA: Record<CrmProvider, string> = {
+  rd_station: 'id',
+  hubspot: 'hs_object_id',
+  pipedrive: 'id',
+  kommo: 'id',
+  activecampaign: 'id',
+  meta_ads: 'leadgen_id',
+  webhook_generico: 'id',
 }
 
 /**
@@ -227,10 +375,15 @@ export function receiveWebhookLead(
     const valor = payload[m.externo]
     if (valor != null && valor !== '') campos[m.interno] = valor
   }
+  // ID do registro no CRM → vínculo pra sincronização de saída (Closer).
+  const campoId = CAMPO_ID_ENTRADA[config.provider]
+  const crmExternoId = payload[campoId] || undefined
+  const podeEscrever = SAIDA_POR_PROVEDOR[config.provider].suportaEscrita
+
   // Tudo que NÃO foi mapeado pra um campo fixo cai em dadosOriginaisCRM
   // (schema livre — só contexto). Campanha nova com pergunta nova aparece
   // automaticamente, sem configurar nada.
-  const usados = new Set(config.mapeamento.map((m) => m.externo))
+  const usados = new Set([...config.mapeamento.map((m) => m.externo), campoId])
   const dadosOriginaisCRM = Object.entries(payload)
     .filter(([k, v]) => !usados.has(k) && v != null && v !== '')
     .map(([campo, valor]) => ({ campo, valor: String(valor) }))
@@ -255,5 +408,10 @@ export function receiveWebhookLead(
     socialSellerId: '',
     dataCaptacao: hoje,
     qualificado: false,
+    crmExternoId,
+    crmExternoProvider: config.provider,
+    // Veio do CRM → já nasce espelhado lá (se o provedor aceita escrita de volta).
+    sincronizacaoCRM: crmExternoId && podeEscrever ? 'sincronizado' : 'nao_aplicavel',
+    ultimaSincronizacaoCRM: crmExternoId && podeEscrever ? new Date().toISOString() : undefined,
   }
 }

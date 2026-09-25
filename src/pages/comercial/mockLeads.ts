@@ -11,6 +11,7 @@
  * Persistência: em memória (mock) via ComercialProvider. Datas em ISO
  * (string), coerente com o resto do app (Cliente/itens usam string).
  */
+import type { CrmProvider } from './mockIntegrations'
 
 export type EtapaFunil =
   | 'prospectado' // captado no Social Selling, aguardando envio à Caixa
@@ -110,6 +111,15 @@ export interface ReuniaoAgendada {
   closerId: string
 }
 
+/**
+ * Estado da sincronização Sistema → CRM externo (bidirecional).
+ *   nao_aplicavel — sem CRM com escrita ativa, ou lead sem vínculo no CRM
+ *   pendente      — envio em andamento / aguardando
+ *   sincronizado  — último envio aceito pelo CRM
+ *   erro          — último envio falhou (retry disponível)
+ */
+export type StatusSincronizacaoCRM = 'nao_aplicavel' | 'pendente' | 'sincronizado' | 'erro'
+
 /** Qualificação BANT — padrão obrigatório pra entregar um SQL. */
 export interface BantQualificacao {
   orcamento: string // B — disponibilidade de crédito
@@ -196,6 +206,18 @@ export interface Lead {
   reuniao?: ReuniaoAgendada
   resumoConversa?: string
   bant?: BantQualificacao
+
+  // Sincronização bidirecional com o CRM externo (Sistema → CRM)
+  /** ID do registro/negócio no CRM (vem do webhook de entrada ou da criação via Social Selling). */
+  crmExternoId?: string
+  /** Provedor que guarda esse registro — atualizações só vão pro mesmo CRM. */
+  crmExternoProvider?: CrmProvider
+  /** Ausente = 'nao_aplicavel' (leads anteriores à sincronização). */
+  sincronizacaoCRM?: StatusSincronizacaoCRM
+  /** Última tentativa de envio ao CRM (ISO datetime). */
+  ultimaSincronizacaoCRM?: string
+  /** Mensagem do último erro (quando sincronizacaoCRM = 'erro'). */
+  erroSincronizacaoCRM?: string
 }
 
 /** Pessoa do time comercial (mock — no real seria um profile/papel). */
@@ -699,3 +721,40 @@ export const MOCK_LEADS: Lead[] = [
     qualificado: false,
   },
 ]
+
+/**
+ * Estados de exemplo da sincronização bidirecional com o CRM (RD Station é o
+ * provedor da config inicial). Aplicados sobre os leads acima pra cobrir:
+ * sincronizado (vindos do CRM e criados via Social Selling), pendente e erro
+ * (na criação — lead-1 — e na atualização do Closer — lead-7).
+ */
+const SYNC_MOCK: Record<string, Partial<Lead>> = {
+  // Vindos do CRM via webhook: já nascem vinculados ao registro de lá.
+  'lead-9': { crmExternoId: 'rd_48213', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-19T14:02:00' },
+  'lead-3': { crmExternoId: 'rd_47901', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-15T10:21:00' },
+  'lead-12': { crmExternoId: 'rd_47655', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-22T16:40:00' },
+  'lead-13': { crmExternoId: 'rd_47402', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-18T11:05:00' },
+  'lead-14': { crmExternoId: 'rd_48377', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-20T09:12:00' },
+  // Vindos de outro CRM (HubSpot) — não recebem atualização enquanto o ativo é o RD.
+  'lead-10': { crmExternoId: 'hs_7788120', crmExternoProvider: 'hubspot', sincronizacaoCRM: 'nao_aplicavel' },
+  'lead-16': { crmExternoId: 'hs_7790341', crmExternoProvider: 'hubspot', sincronizacaoCRM: 'nao_aplicavel' },
+  // Criados no Social Selling e enviados ao CRM.
+  'lead-11': { crmExternoId: 'rd_48390', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-21T15:30:00' },
+  'lead-2': { sincronizacaoCRM: 'pendente', ultimaSincronizacaoCRM: '2026-09-24T18:02:00' },
+  'lead-1': {
+    sincronizacaoCRM: 'erro',
+    ultimaSincronizacaoCRM: '2026-09-24T17:48:00',
+    erroSincronizacaoCRM: 'Token de acesso expirado (401). Reautentique a integração no CRM.',
+  },
+  // Resultados do Closer já refletidos no CRM (ou com falha pra retry).
+  'lead-5': { crmExternoId: 'rd_47120', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-23T12:10:00' },
+  'lead-6': { crmExternoId: 'rd_46988', crmExternoProvider: 'rd_station', sincronizacaoCRM: 'sincronizado', ultimaSincronizacaoCRM: '2026-09-17T17:55:00' },
+  'lead-7': {
+    crmExternoId: 'rd_46851',
+    crmExternoProvider: 'rd_station',
+    sincronizacaoCRM: 'erro',
+    ultimaSincronizacaoCRM: '2026-09-24T11:31:00',
+    erroSincronizacaoCRM: 'CRM indisponível no momento (503). Tente novamente em instantes.',
+  },
+}
+for (const l of MOCK_LEADS) Object.assign(l, SYNC_MOCK[l.id] ?? {})

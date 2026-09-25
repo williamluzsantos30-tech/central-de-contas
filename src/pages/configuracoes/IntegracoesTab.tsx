@@ -6,8 +6,10 @@
  * Entrada do Comercial, exercitando o fluxo ponta a ponta sem CRM real.
  */
 import { useState } from 'react'
-import { Plug, Copy, Check, RefreshCw, Zap, FlaskConical, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { Plug, Copy, Check, RefreshCw, Zap, FlaskConical, Plus, Trash2, CheckCircle2, ArrowLeftRight, Info } from 'lucide-react'
 import { PrimaryButton, OutlineButton, Input, Select, Badge } from '@/components/ds'
+import { StatusMappingTable } from '@/components/comercial/StatusMappingTable'
+import { SyncStatusPanel } from '@/components/comercial/SyncStatusPanel'
 import { FinancialIntegrationBlock } from '@/components/financeiro/FinancialIntegrationBlock'
 import { AgencyInstagramSettings } from '@/components/social/AgencyInstagramSettings'
 import { AgencyAdsSettings } from '@/components/ads/AgencyAdsSettings'
@@ -17,7 +19,7 @@ import { useComercial } from '@/pages/comercial/store'
 import {
   CAMPOS_INTERNOS,
   CRM_PRESETS,
-  INTEGRACAO_INICIAL,
+  SAIDA_POR_PROVEDOR,
   fakeWebhookPayload,
   gerarToken,
   gerarWebhookUrl,
@@ -25,22 +27,30 @@ import {
   receiveWebhookLead,
   type CampoInterno,
   type CrmProvider,
-  type IntegracaoConfig,
 } from '@/pages/comercial/mockIntegrations'
 
 const ACCOUNT_ID = 'acc_movmed_demo'
 
 export function IntegracoesTab() {
-  const { receberLeadExterno } = useComercial()
-  const [cfg, setCfg] = useState<IntegracaoConfig>(INTEGRACAO_INICIAL)
+  // Config compartilhada (store do Comercial, persistida em
+  // comercial_config.integracao_crm): Social Selling e Closer leem dela pra
+  // sincronizar de volta com o CRM.
+  const { receberLeadExterno, integracaoCrm: cfg, setIntegracaoCrm: setCfg } = useComercial()
   const [copiado, setCopiado] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 
   const preset = CRM_PRESETS.find((p) => p.provider === cfg.provider)
+  const saida = SAIDA_POR_PROVEDOR[cfg.provider]
 
   function trocarProvedor(provider: CrmProvider) {
     const p = CRM_PRESETS.find((x) => x.provider === provider)!
-    setCfg((c) => ({ ...c, provider, mapeamento: p.mapeamentoSugerido, status: 'nao_configurado' }))
+    setCfg((c) => ({
+      ...c,
+      provider,
+      mapeamento: p.mapeamentoSugerido,
+      mapeamentoStatus: { ...SAIDA_POR_PROVEDOR[provider].statusSugerido },
+      status: 'nao_configurado',
+    }))
     setAviso(null)
   }
 
@@ -95,7 +105,9 @@ export function IntegracoesTab() {
               <h3 className="text-sm font-semibold text-zinc-100">Integração com CRM</h3>
               <p className="mt-0.5 max-w-xl text-[12px] text-muted">
                 Conecte o CRM que sua equipe já usa. Novos leads recebidos por lá entram
-                automaticamente na Caixa de Entrada do Comercial.
+                automaticamente na Caixa de Entrada do Comercial — e, com a sincronização
+                bidirecional, os leads captados no Social Selling e os resultados do Closer
+                voltam para o CRM.
               </p>
             </div>
           </div>
@@ -203,6 +215,55 @@ export function IntegracoesTab() {
         </div>
       </div>
 
+      {/* Sincronização bidirecional (Sistema → CRM) */}
+      <div className="rounded-xl border border-border bg-bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-500/15 text-sky-300">
+              <ArrowLeftRight size={17} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100">Sincronização bidirecional</h3>
+              <p className="mt-0.5 max-w-xl text-[12px] text-muted">
+                Além de receber leads, o sistema escreve no {presetLabel(cfg.provider)}: o Social Selling cria o
+                lead lá ao cadastrar, e o Closer atualiza o status do negócio ao registrar o resultado da call —
+                automaticamente. Se o CRM falhar, nada trava aqui: o lead fica marcado com ⚠ pra tentar de novo.
+              </p>
+            </div>
+          </div>
+          <label
+            className={`inline-flex shrink-0 items-center gap-2 text-xs ${saida.suportaEscrita ? 'cursor-pointer text-zinc-200' : 'cursor-not-allowed text-muted'}`}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand-500"
+              checked={cfg.escritaAtiva && saida.suportaEscrita}
+              disabled={!saida.suportaEscrita}
+              onChange={(e) => setCfg((c) => ({ ...c, escritaAtiva: e.target.checked }))}
+            />
+            Enviar dados de volta ao CRM
+          </label>
+        </div>
+        {!saida.suportaEscrita && (
+          <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+            <Info size={12} className="mt-0.5 shrink-0" /> {saida.dica}
+          </p>
+        )}
+        {cfg.provider === 'webhook_generico' && saida.suportaEscrita && (
+          <div className="mt-3 max-w-xl">
+            <Label>URL de saída (eventos enviados pelo sistema)</Label>
+            <Input
+              value={cfg.webhookSaidaUrl ?? ''}
+              onChange={(e) => setCfg((c) => ({ ...c, webhookSaidaUrl: e.target.value }))}
+              placeholder="https://seu-sistema.com/webhooks/crm"
+              className="font-mono text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      <StatusMappingTable cfg={cfg} onChange={(mapeamentoStatus) => setCfg((c) => ({ ...c, mapeamentoStatus }))} />
+
       {/* Ações */}
       <div className="flex flex-wrap items-center gap-2">
         <PrimaryButton size="sm" onClick={() => dispararLeadTeste('Teste de integração')}>
@@ -221,6 +282,9 @@ export function IntegracoesTab() {
           <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> <span>{aviso}</span>
         </div>
       )}
+
+      {/* Auditoria da saída Sistema → CRM */}
+      <SyncStatusPanel />
 
       {/* Integração Financeira (mesmo padrão do bloco de CRM) */}
       <div className="flex items-center gap-3 pt-2">

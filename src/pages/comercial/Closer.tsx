@@ -12,6 +12,7 @@ import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData, fmtBRL } from '@/comp
 import { CloseDealModal } from '@/components/comercial/CloseDealModal'
 import { SLABadge } from '@/components/comercial/SLABadge'
 import { FollowUpBanner } from '@/components/comercial/FollowUpBanner'
+import { SyncStatusBadge } from '@/components/comercial/SyncStatusBadge'
 import { useComercial } from './store'
 import { pessoaComercialNome, type Lead } from './mockLeads'
 import { calculateLeadSLA, slaPrioridade, followupVencido } from './sla'
@@ -38,7 +39,7 @@ function statusView(l: Lead): { label: string; tone: Tone } {
 }
 
 export default function Closer() {
-  const { leads, slaConfig, registrarResultado } = useComercial()
+  const { leads, slaConfig, registrarResultado, sincronizarLead } = useComercial()
   const [q, setQ] = useState('')
   const [leadSel, setLeadSel] = useState<Lead | null>(null)
 
@@ -103,6 +104,7 @@ export default function Closer() {
               <span className="text-[10px] text-green-300">MRR {fmtBRL(l.mrr)}</span>
             )}
             {l.etapaFunil === 'perdido' && l.motivoPerda && <span className="text-[10px] text-muted">{l.motivoPerda}</span>}
+            <SyncStatusBadge lead={l} onRetry={() => sincronizarLead(l.id)} />
           </div>
         )
       },

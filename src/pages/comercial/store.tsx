@@ -34,8 +34,76 @@ import {
 } from './mockComercialConfig'
 import { MOCK_INVESTIMENTOS, type InvestimentoMarketing } from './mockInvestimentos'
 import { MOCK_METAS_COMERCIAIS, type MetaComercial } from './mockMetasComerciais'
+import {
+  INTEGRACAO_INICIAL,
+  escritaHabilitada,
+  normalizarIntegracao,
+  type IntegracaoConfig,
+} from './mockIntegrations'
+import {
+  novoLogId,
+  statusSaidaDoLead,
+  syncLeadToCRM,
+  vinculadoAoCrmAtivo,
+  type LogSincronizacaoCRM,
+  type ResultadoSync,
+  type TipoSync,
+} from './crmSync'
+import { MOCK_SYNC_LOGS } from './mockSyncLogs'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+
+// ── Log de sincronização com CRM (tabela crm_sync_logs, migration 093) ─────
+const LOGS_KEY = 'crm-sync-logs'
+const MAX_LOGS = 300
+type LogRow = {
+  id: string
+  lead_id: string
+  lead_nome: string
+  tipo: TipoSync
+  status: 'sucesso' | 'erro'
+  provider: string
+  payload_enviado: Record<string, unknown>
+  resposta_erro: string | null
+  created_at: string
+}
+const rowToLog = (r: LogRow): LogSincronizacaoCRM => ({
+  id: r.id,
+  leadId: r.lead_id,
+  leadNome: r.lead_nome,
+  tipo: r.tipo,
+  status: r.status,
+  provider: r.provider as LogSincronizacaoCRM['provider'],
+  payloadEnviado: r.payload_enviado ?? {},
+  respostaErro: r.resposta_erro ?? undefined,
+  timestamp: r.created_at,
+})
+const logToRow = (l: LogSincronizacaoCRM): LogRow => ({
+  id: l.id,
+  lead_id: l.leadId,
+  lead_nome: l.leadNome,
+  tipo: l.tipo,
+  status: l.status,
+  provider: l.provider,
+  payload_enviado: l.payloadEnviado,
+  resposta_erro: l.respostaErro ?? null,
+  created_at: l.timestamp,
+})
+function lerLogsLocal(): LogSincronizacaoCRM[] | null {
+  try {
+    const raw = window.localStorage.getItem(LOGS_KEY)
+    return raw ? (JSON.parse(raw) as LogSincronizacaoCRM[]) : null
+  } catch {
+    return null
+  }
+}
+function gravarLogsLocal(logs: LogSincronizacaoCRM[]) {
+  try {
+    window.localStorage.setItem(LOGS_KEY, JSON.stringify(logs.slice(0, MAX_LOGS)))
+  } catch {
+    /* indisponível */
+  }
+}
 
 // ── Mappers banco ↔ app (investimentos e metas usam colunas reais) ──────────
 type InvestRow = { id: string; periodo: string; canal: string; valor: number }
@@ -135,6 +203,15 @@ interface ComercialCtx {
   ) => void
   desqualificarLead: (leadId: string, motivo: string) => void
   registrarResultado: (leadId: string, resultado: ResultadoCall) => Promise<void>
+  // ── Integração com CRM (entrada + saída/bidirecional) ────────────────────
+  integracaoCrm: IntegracaoConfig
+  setIntegracaoCrm: (next: IntegracaoConfig | ((c: IntegracaoConfig) => IntegracaoConfig)) => void
+  /** Histórico de envios ao CRM (mais recente primeiro). */
+  syncLogs: LogSincronizacaoCRM[]
+  /** Retry manual: re-envia o lead ao CRM (cria se ainda não tem vínculo). */
+  sincronizarLead: (leadId: string) => Promise<void>
+  /** Ferramenta de dev (Configurações): força um envio de sucesso ou falha. Devolve a mensagem pro aviso. */
+  simularSincronizacaoCRM: (modo: 'sucesso' | 'erro') => Promise<string>
 }
 
 const Ctx = createContext<ComercialCtx | null>(null)
@@ -148,6 +225,18 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
   const [carregando, setCarregando] = useState(true)
   // true quando as tabelas existem (persiste); false = fallback mock em memória.
   const modoBanco = useRef(false)
+
+  // Integração com CRM (config compartilhada: Configurações edita, Social
+  // Selling/Closer usam pra sincronizar). Refs = leitura sempre atual dentro
+  // dos callbacks assíncronos, sem recriar os callbacks a cada mudança.
+  const [integracaoCrm, setIntegracaoState] = useState<IntegracaoConfig>(INTEGRACAO_INICIAL)
+  const integracaoRef = useRef<IntegracaoConfig>(INTEGRACAO_INICIAL)
+  const cfgTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [syncLogs, setSyncLogs] = useState<LogSincronizacaoCRM[]>(MOCK_SYNC_LOGS)
+  // true quando crm_sync_logs existe (migration 093); senão log vai pro localStorage.
+  const logsBanco = useRef(false)
+  const leadsRef = useRef<Lead[]>(leads)
+  leadsRef.current = leads
 
   // ── Carga inicial: banco → estado, ou bootstrap do mock, ou fallback ──────
   useEffect(() => {
@@ -163,14 +252,19 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
             supabase.from('comercial_leads').upsert(MOCK_LEADS.map((l) => ({ id: l.id, data: l }))),
             supabase.from('investimentos_marketing').upsert(MOCK_INVESTIMENTOS.map(investToRow)),
             supabase.from('metas_comerciais').upsert(MOCK_METAS_COMERCIAIS.map(metaToRow)),
-            supabase.from('comercial_config').upsert({ id: 'default', sla: SLA_CONFIG_INICIAL, metas_marketing: METAS_MARKETING_INICIAL, integracao_crm: null }),
+            supabase.from('comercial_config').upsert({ id: 'default', sla: SLA_CONFIG_INICIAL, metas_marketing: METAS_MARKETING_INICIAL, integracao_crm: INTEGRACAO_INICIAL }),
           ])
+          // Log de exemplo acompanha os leads mock (coerente com os estados deles).
+          const { error: logErr } = await supabase.from('crm_sync_logs').upsert(MOCK_SYNC_LOGS.map(logToRow))
+          logsBanco.current = !logErr
+          if (logErr) gravarLogsLocal(MOCK_SYNC_LOGS)
           // estado já está com os mocks (init) — nada a trocar
         } else {
-          const [lRes, iRes, mRes] = await Promise.all([
+          const [lRes, iRes, mRes, logRes] = await Promise.all([
             supabase.from('comercial_leads').select('data'),
             supabase.from('investimentos_marketing').select('*'),
             supabase.from('metas_comerciais').select('*'),
+            supabase.from('crm_sync_logs').select('*').order('created_at', { ascending: false }).limit(MAX_LOGS),
           ])
           if (cancel) return
           setLeads(((lRes.data as { data: Lead }[]) ?? []).map((r) => r.data))
@@ -178,10 +272,19 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
           setMetasComerciais(((mRes.data as MetaRow[]) ?? []).map(rowToMeta))
           setSlaConfigState({ ...SLA_CONFIG_INICIAL, ...((cfg.sla as Partial<SlaConfigComercial>) ?? {}) })
           setMetasMarketingState({ ...METAS_MARKETING_INICIAL, ...((cfg.metas_marketing as Partial<MetasMarketing>) ?? {}) })
+          const integ = normalizarIntegracao(cfg.integracao_crm as Partial<IntegracaoConfig> | null)
+          integracaoRef.current = integ
+          setIntegracaoState(integ)
+          // Sem a tabela de log (093 não rodada) → log local, começando vazio
+          // (o log de exemplo só faz sentido junto dos leads mock).
+          logsBanco.current = !logRes.error
+          setSyncLogs(logRes.error ? (lerLogsLocal() ?? []) : ((logRes.data as LogRow[]) ?? []).map(rowToLog))
         }
       } catch {
         // Tabelas ainda não existem (migration 088 não rodada) → mock em memória.
         modoBanco.current = false
+        const local = lerLogsLocal()
+        if (local && !cancel) setSyncLogs(local)
       } finally {
         if (!cancel) setCarregando(false)
       }
@@ -214,6 +317,32 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     setMetasMarketingState(m)
     persistConfig({ metas_marketing: m })
   }, [persistConfig])
+
+  // ── Integração CRM: config + log ──────────────────────────────────────────
+  const setIntegracaoCrm = useCallback(
+    (next: IntegracaoConfig | ((c: IntegracaoConfig) => IntegracaoConfig)) => {
+      const valor = typeof next === 'function' ? next(integracaoRef.current) : next
+      integracaoRef.current = valor
+      setIntegracaoState(valor)
+      // Debounce: inputs do mapeamento mudam a cada tecla.
+      if (cfgTimer.current) clearTimeout(cfgTimer.current)
+      cfgTimer.current = setTimeout(() => persistConfig({ integracao_crm: valor }), 600)
+    },
+    [persistConfig],
+  )
+
+  const registrarLog = useCallback((log: LogSincronizacaoCRM) => {
+    setSyncLogs((prev) => {
+      const next = [log, ...prev].slice(0, MAX_LOGS)
+      if (!logsBanco.current) gravarLogsLocal(next)
+      return next
+    })
+    if (logsBanco.current) {
+      void supabase.from('crm_sync_logs').insert(logToRow(log)).then(({ error }) => {
+        if (error) console.warn('[comercial] registrarLog', error.message)
+      })
+    }
+  }, [])
 
   // ── Metas comerciais ──────────────────────────────────────────────────────
   const criarMetas = useCallback((metas: Omit<MetaComercial, 'id'>[]) => {
@@ -275,7 +404,103 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
     })
   }, [persistLead])
 
+  // ── Sincronização de saída (Sistema → CRM) ────────────────────────────────
+  // Nunca bloqueia a operação interna: o lead/resultado já foi salvo antes;
+  // o envio roda em paralelo e só marca o status da sincronização no lead.
+  const executarSync = useCallback(
+    async (lead: Lead, tipo: TipoSync, opts?: { forcar?: 'sucesso' | 'erro' }): Promise<ResultadoSync> => {
+      const cfg = integracaoRef.current
+      const r = await syncLeadToCRM(lead, tipo, cfg, opts)
+      const agora = new Date().toISOString()
+      registrarLog({
+        id: novoLogId(),
+        leadId: lead.id,
+        leadNome: lead.nomeContato,
+        tipo,
+        status: r.ok ? 'sucesso' : 'erro',
+        provider: cfg.provider,
+        payloadEnviado: r.payload,
+        respostaErro: r.ok ? undefined : r.erro,
+        timestamp: agora,
+      })
+      if (r.ok) {
+        patchLead(lead.id, {
+          crmExternoId: r.crmExternoId,
+          crmExternoProvider: cfg.provider,
+          sincronizacaoCRM: 'sincronizado',
+          ultimaSincronizacaoCRM: agora,
+          erroSincronizacaoCRM: undefined,
+        })
+      } else {
+        patchLead(lead.id, { sincronizacaoCRM: 'erro', ultimaSincronizacaoCRM: agora, erroSincronizacaoCRM: r.erro })
+      }
+      return r
+    },
+    [patchLead, registrarLog],
+  )
+
+  /** Após o Closer registrar o resultado: atualiza o negócio no CRM (se vinculado). */
+  const sincronizarAtualizacao = useCallback(
+    (leadAtualizado: Lead) => {
+      const cfg = integracaoRef.current
+      if (!escritaHabilitada(cfg) || !vinculadoAoCrmAtivo(leadAtualizado, cfg)) return
+      patchLead(leadAtualizado.id, { sincronizacaoCRM: 'pendente' })
+      void executarSync(leadAtualizado, 'atualizacao')
+    },
+    [executarSync, patchLead],
+  )
+
+  const sincronizarLead = useCallback(
+    async (leadId: string) => {
+      const lead = leadsRef.current.find((l) => l.id === leadId)
+      if (!lead) return
+      const cfg = integracaoRef.current
+      patchLead(leadId, { sincronizacaoCRM: 'pendente' })
+      if (vinculadoAoCrmAtivo(lead, cfg)) {
+        await executarSync(lead, 'atualizacao')
+        return
+      }
+      // Ainda não existe no CRM ativo → cria; se já tem desfecho do Closer,
+      // em seguida atualiza o status do negócio recém-criado.
+      const r = await executarSync(lead, 'criacao')
+      if (r.ok && statusSaidaDoLead(lead)) {
+        await executarSync({ ...lead, crmExternoId: r.crmExternoId, crmExternoProvider: cfg.provider }, 'atualizacao')
+      }
+    },
+    [executarSync, patchLead],
+  )
+
+  const simularSincronizacaoCRM = useCallback(
+    async (modo: 'sucesso' | 'erro'): Promise<string> => {
+      const cfg = integracaoRef.current
+      if (!escritaHabilitada(cfg)) {
+        return 'Ative a sincronização bidirecional (integração conectada + escrita ligada) pra simular.'
+      }
+      const ativos = leadsRef.current.filter((l) => !l.arquivado)
+      const doSocial = (l: Lead) => l.origemEntrada !== 'crm_externo'
+      const alvo =
+        modo === 'sucesso'
+          ? // Prefere um lead do Social Selling ainda não espelhado no CRM (criação).
+            (ativos.find((l) => doSocial(l) && !vinculadoAoCrmAtivo(l, cfg)) ??
+            ativos.find((l) => vinculadoAoCrmAtivo(l, cfg)))
+          : // Falha num lead visível no Social Selling, pra exercitar o ⚠ + retry.
+            (ativos.find((l) => doSocial(l) && l.etapaFunil === 'prospectado' && l.sincronizacaoCRM !== 'erro') ??
+            ativos.find((l) => vinculadoAoCrmAtivo(l, cfg) && l.sincronizacaoCRM !== 'erro'))
+      if (!alvo) return 'Nenhum lead disponível pra simular.'
+      const tipo: TipoSync = vinculadoAoCrmAtivo(alvo, cfg) ? 'atualizacao' : 'criacao'
+      patchLead(alvo.id, { sincronizacaoCRM: 'pendente' })
+      const r = await executarSync(alvo, tipo, { forcar: modo })
+      const oque = tipo === 'criacao' ? 'criação' : 'atualização'
+      const tela = alvo.etapaFunil === 'prospectado' ? 'Social Selling' : 'Closer'
+      return r.ok
+        ? `✓ Envio simulado (${oque}) de "${alvo.nomeContato}" — ID no CRM: ${r.crmExternoId}.`
+        : `Falha simulada (${oque}) em "${alvo.nomeContato}": ${r.erro} Veja o aviso na tela ${tela} e use "Tentar novamente".`
+    },
+    [executarSync, patchLead],
+  )
+
   const criarLead = useCallback((dados: NovoLeadInput) => {
+    const escrever = escritaHabilitada(integracaoRef.current)
     const novo: Lead = {
       id: `lead-${Date.now()}`,
       nomeContato: dados.nomeContato.trim(),
@@ -290,10 +515,13 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       dataCaptacao: todayISO(),
       observacaoCaptacao: dados.observacaoCaptacao?.trim() || undefined,
       qualificado: false,
+      sincronizacaoCRM: escrever ? 'pendente' : 'nao_aplicavel',
     }
     setLeads((prev) => [novo, ...prev])
     persistLead(novo)
-  }, [persistLead])
+    // Cria o registro no CRM em paralelo — o lead já está salvo aqui.
+    if (escrever) void executarSync(novo, 'criacao')
+  }, [persistLead, executarSync])
 
   const registrarAbordagemSocial = useCallback(
     (leadId: string, dados: { tipo: TipoAbordagemSocial; observacao?: string; proximaAbordagem?: string }) => {
@@ -411,12 +639,18 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       if (!lead) throw new Error('Lead não encontrado.')
       const hoje = todayISO()
 
+      // Cada desfecho: salva local PRIMEIRO, depois reflete no CRM (se vinculado).
+      const aplicar = (patch: Partial<Lead>) => {
+        patchLead(leadId, patch)
+        sincronizarAtualizacao({ ...lead, ...patch })
+      }
+
       if (r.tipo === 'perdido') {
-        patchLead(leadId, { etapaFunil: 'perdido', motivoPerda: r.motivoPerda, dataFechamento: hoje, subStatusNegociacao: undefined })
+        aplicar({ etapaFunil: 'perdido', motivoPerda: r.motivoPerda, dataFechamento: hoje, subStatusNegociacao: undefined })
         return
       }
       if (r.tipo === 'no_show') {
-        patchLead(leadId, {
+        aplicar({
           etapaFunil: 'em_negociacao',
           subStatusNegociacao: 'no_show',
           contadorNoShow: (lead.contadorNoShow ?? 0) + 1,
@@ -431,7 +665,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         return
       }
       if (r.tipo === 'followup') {
-        patchLead(leadId, {
+        aplicar({
           etapaFunil: 'em_negociacao',
           subStatusNegociacao: 'em_followup',
           dataProximoContato: r.dataProximoContato,
@@ -456,7 +690,7 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.from('clientes').insert(payload).select('id').single()
       if (error) throw error
 
-      patchLead(leadId, {
+      aplicar({
         etapaFunil: 'fechado',
         mrr: r.mrr,
         caixaRecolhido: r.caixaRecolhido,
@@ -466,8 +700,20 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
         subStatusNegociacao: undefined,
       })
     },
-    [leads, patchLead],
+    [leads, patchLead, sincronizarAtualizacao],
   )
+
+  // Envios que ficaram 'pendente' (ex.: a aba foi fechada no meio do envio)
+  // são reprocessados uma vez após a carga. Na API real, usar chave de
+  // idempotência pra não duplicar registro no CRM.
+  const pendentesReprocessados = useRef(false)
+  useEffect(() => {
+    if (carregando || pendentesReprocessados.current) return
+    pendentesReprocessados.current = true
+    for (const l of leadsRef.current) {
+      if (l.sincronizacaoCRM === 'pendente') void sincronizarLead(l.id)
+    }
+  }, [carregando, sincronizarLead])
 
   const value = useMemo<ComercialCtx>(
     () => ({
@@ -493,6 +739,11 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       registrarTentativa,
       desqualificarLead,
       registrarResultado,
+      integracaoCrm,
+      setIntegracaoCrm,
+      syncLogs,
+      sincronizarLead,
+      simularSincronizacaoCRM,
     }),
     [
       leads,
@@ -517,6 +768,11 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       registrarTentativa,
       desqualificarLead,
       registrarResultado,
+      integracaoCrm,
+      setIntegracaoCrm,
+      syncLogs,
+      sincronizarLead,
+      simularSincronizacaoCRM,
     ],
   )
 

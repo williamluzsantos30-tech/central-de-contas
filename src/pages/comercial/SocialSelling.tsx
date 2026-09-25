@@ -29,6 +29,7 @@ import {
   type Lead,
 } from './mockLeads'
 import { LeadHandoffButton } from '@/components/comercial/LeadHandoffButton'
+import { SyncStatusBadge } from '@/components/comercial/SyncStatusBadge'
 
 // Stand-in do usuário logado enquanto o Comercial é mock (no real viria do
 // profile/papel). Marina = "eu" pro toggle "Apenas meus".
@@ -48,7 +49,7 @@ function statusView(l: Lead): { label: string; tone: Tone } {
 }
 
 export default function SocialSelling() {
-  const { leads, slaConfig, arquivarLead } = useComercial()
+  const { leads, slaConfig, arquivarLead, sincronizarLead } = useComercial()
   const [escopo, setEscopo] = useState<'meus' | 'todos'>('todos')
   const [fOrigem, setFOrigem] = useState('')
   const [fStatus, setFStatus] = useState('')
@@ -102,7 +103,12 @@ export default function SocialSelling() {
       header: 'Status',
       render: (l) => {
         const s = statusView(l)
-        return <StatusBadge label={s.label} tone={s.tone} />
+        return (
+          <div className="flex flex-col gap-1">
+            <StatusBadge label={s.label} tone={s.tone} />
+            <SyncStatusBadge lead={l} onRetry={() => sincronizarLead(l.id)} />
+          </div>
+        )
       },
     },
     {
