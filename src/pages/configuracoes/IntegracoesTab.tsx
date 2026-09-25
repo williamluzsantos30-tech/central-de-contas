@@ -10,7 +10,9 @@ import { Plug, Copy, Check, RefreshCw, Zap, FlaskConical, Plus, Trash2, CheckCir
 import { PrimaryButton, OutlineButton, Input, Select, Badge } from '@/components/ds'
 import { FinancialIntegrationBlock } from '@/components/financeiro/FinancialIntegrationBlock'
 import { AgencyInstagramSettings } from '@/components/social/AgencyInstagramSettings'
-import { AgencyGoogleAdsSettings } from '@/components/googleads/AgencyGoogleAdsSettings'
+import { AgencyAdsSettings } from '@/components/ads/AgencyAdsSettings'
+import { googleAdsAdapter } from '@/components/ads/googleAds'
+import { metaAdsAdapter } from '@/components/ads/metaAds'
 import { useComercial } from '@/pages/comercial/store'
 import {
   CAMPOS_INTERNOS,
@@ -236,13 +238,20 @@ export function IntegracoesTab() {
       </div>
       <AgencyInstagramSettings />
 
-      {/* Integração Google Ads (Manager/MCC) — conexão de agência */}
+      {/* Plataformas de anúncio — conexão de agência (mesmo bloco, muda o adapter) */}
       <div className="flex items-center gap-3 pt-2">
         <div className="h-px flex-1 bg-border" />
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Tráfego / Google Ads</span>
         <div className="h-px flex-1 bg-border" />
       </div>
-      <AgencyGoogleAdsSettings />
+      <AgencyAdsSettings adapter={googleAdsAdapter} />
+
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Tráfego / Meta Ads</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <AgencyAdsSettings adapter={metaAdsAdapter} />
     </div>
   )
 }

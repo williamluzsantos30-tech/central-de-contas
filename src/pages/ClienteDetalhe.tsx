@@ -15,11 +15,10 @@ import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { OtimizacaoTimeline } from '@/components/otimizacoes/OtimizacaoTimeline'
 import { OtimizacaoForm } from '@/components/otimizacoes/OtimizacaoForm'
 import { MetasPanel } from '@/components/metas/MetasPanel'
-import { GoogleAdsConnectionCard } from '@/components/googleads/GoogleAdsConnectionCard'
-import { GoogleAdsPerformanceKpis } from '@/components/googleads/GoogleAdsPerformanceKpis'
-import { CampaignsTable } from '@/components/googleads/CampaignsTable'
-import { FunilClienteCard } from '@/components/googleads/FunilClienteCard'
-import { getGoogleAdsMetrics, loadGoogleAdsCache } from '@/components/googleads/mockGoogleAds'
+import { AdsPlatformPanel } from '@/components/ads/AdsPlatformPanel'
+import { FunilClienteCard } from '@/components/ads/FunilClienteCard'
+import { googleAdsAdapter } from '@/components/ads/googleAds'
+import { metaAdsAdapter } from '@/components/ads/metaAds'
 import { SocialClienteHeader } from '@/components/social/SocialClienteHeader'
 import { SetupPerfilPanel } from '@/components/social/SetupPerfilPanel'
 import { PainelSocial } from '@/components/social/PainelSocial'
@@ -55,7 +54,7 @@ import type {
   Tarefa,
 } from '@/types/database'
 
-type Tab = 'visao' | 'tarefas' | 'ativos' | 'metas' | 'log'
+type Tab = 'visao' | 'google_ads' | 'meta_ads' | 'tarefas' | 'ativos' | 'metas' | 'log'
 type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas' | 'ideias'
 // Nav top-level do cliente: Ficha (comercial) + UM operacional por vez
 // (Tráfego OU Social), como era nas páginas separadas. Qual operacional
@@ -116,8 +115,6 @@ export default function ClienteDetalhe() {
   const [novaOtimOpen, setNovaOtimOpen] = useState(false)
   const [filtroPlatform, setFiltroPlatform] = useState('')
   const [restaurandoTarefas, setRestaurandoTarefas] = useState(false)
-  // Bump força re-render após conexão/sincronização do Google Ads (mock localStorage).
-  const [gadsNonce, setGadsNonce] = useState(0)
 
   // Dados específicos de Social Media
   const [perfilSetup, setPerfilSetup] = useState<ClientePerfilSetup | null>(null)
@@ -183,11 +180,6 @@ export default function ClienteDetalhe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  useEffect(() => {
-    loadGoogleAdsCache().then(() => setGadsNonce((n) => n + 1))
-  }, [])
-
-
   async function restaurarTarefasPadrao() {
     if (!id) return
     if (
@@ -243,10 +235,6 @@ export default function ClienteDetalhe() {
     return <div className="text-muted">Carregando...</div>
   }
 
-  // Mês corrente (YYYY-MM) usado pelas métricas/campanhas do Google Ads.
-  // gadsNonce entra na dependência visual pra recomputar após conexão/sync.
-  void gadsNonce
-  const mesAtual = new Date().toISOString().slice(0, 7)
 
   const pendentes = tarefas.filter((t) => t.status !== 'concluida').length
   const atrasadas = tarefas.filter(
@@ -349,6 +337,8 @@ export default function ClienteDetalhe() {
           <div className="mb-6 flex gap-1 border-b border-border">
             {([
               ['visao', 'Visão geral'],
+              ['google_ads', 'Google Ads'],
+              ['meta_ads', 'Meta Ads'],
               ['tarefas', 'Tarefas'],
               ['ativos', 'Ativos'],
               ['metas', 'Metas'],
@@ -447,20 +437,16 @@ export default function ClienteDetalhe() {
         </>
       )}
 
+      {/* Plataformas de anúncio — mesma UI, muda só o adapter. */}
+      {opTrafegoAtivo && tab === 'google_ads' && (
+        <AdsPlatformPanel adapter={googleAdsAdapter} clienteId={cliente.id} nomeCliente={cliente.nome} />
+      )}
+      {opTrafegoAtivo && tab === 'meta_ads' && (
+        <AdsPlatformPanel adapter={metaAdsAdapter} clienteId={cliente.id} nomeCliente={cliente.nome} />
+      )}
+
       {opTrafegoAtivo && tab === 'visao' && (
         <div className="space-y-4">
-          <GoogleAdsConnectionCard
-            clienteId={cliente.id}
-            nomeCliente={cliente.nome}
-            onChanged={() => setGadsNonce((n) => n + 1)}
-          />
-          {getGoogleAdsMetrics(cliente.id, mesAtual) != null ? (
-            <GoogleAdsPerformanceKpis clienteId={cliente.id} periodo={mesAtual} />
-          ) : (
-            <p className="rounded-lg border border-dashed border-border bg-bg-soft/30 px-4 py-3 text-[11px] text-muted">
-              Conecte o Google Ads para ver a performance automaticamente.
-            </p>
-          )}
           <FunilClienteCard clienteId={cliente.id} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card>
@@ -565,21 +551,13 @@ export default function ClienteDetalhe() {
       )}
 
       {opTrafegoAtivo && tab === 'ativos' && (
-        <div className="space-y-6">
-          <section>
-            <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Campanhas (Google Ads)
-            </h3>
-            <CampaignsTable clienteId={cliente.id} periodo={mesAtual} />
-          </section>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {TIPOS_ATIVO.map((tipo) => {
-              const a = ativosByTipo.get(tipo)
-              if (!a) return null
-              return <AtivoCard key={a.id} ativo={a} onSaved={load} />
-            })}
-            <LoginsAcessosPanel clienteId={cliente.id} />
-          </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {TIPOS_ATIVO.map((tipo) => {
+            const a = ativosByTipo.get(tipo)
+            if (!a) return null
+            return <AtivoCard key={a.id} ativo={a} onSaved={load} />
+          })}
+          <LoginsAcessosPanel clienteId={cliente.id} />
         </div>
       )}
 

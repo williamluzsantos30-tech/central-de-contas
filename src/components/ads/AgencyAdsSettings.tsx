@@ -1,38 +1,37 @@
 /**
- * AgencyGoogleAdsSettings — bloco "Google Ads (Manager/MCC)" em Configurações ›
- * Integrações. Conexão a nível de AGÊNCIA (Conta Gerenciadora): configurada uma
- * vez, torna os clientes elegíveis ao Modo MCC (vínculo sem autorização
- * individual). Tudo simulado (ver mockGoogleAds), sem chamada real de API.
+ * AgencyAdsSettings — bloco de uma plataforma de anúncios em Configurações ›
+ * Integrações. Conexão a nível de AGÊNCIA (MCC no Google / Business Manager no
+ * Meta): configurada uma vez por tenant, torna os clientes elegíveis ao modo
+ * "via agência". Inclui simulação de sincronização e lista de clientes
+ * conectados. Genérico via adapter; tudo simulado (sem chamada real de API).
  */
 import { useEffect, useState } from 'react'
-import { Megaphone, CheckCircle2, FlaskConical, Unlink, Building2 } from 'lucide-react'
+import { CheckCircle2, FlaskConical, Unlink, Building2 } from 'lucide-react'
 import { PrimaryButton, OutlineButton, Input, Badge } from '@/components/ds'
 import { supabase } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
 import {
-  getAgencyGoogleAdsConfig,
-  getAllGoogleAdsConnections,
-  loadGoogleAdsCache,
-  modoConexaoGaLabel,
-  setAgencyGoogleAdsConfig,
-  simularSincronizacaoGA,
-  simularTokenExpiradoGA,
-  tokenStatusGaLabel,
-  fmtDataHoraGA,
-  type AgencyGoogleAdsConfig,
-} from './mockGoogleAds'
+  fmtDataHoraAds,
+  modoConexaoLabel,
+  tokenStatusLabel,
+  type AdsAgencyConfig,
+  type AdsPlatformAdapter,
+} from './adsPlatform'
 
-export function AgencyGoogleAdsSettings() {
-  const [cfg, setCfg] = useState<AgencyGoogleAdsConfig>(() => getAgencyGoogleAdsConfig())
-  const [mcc, setMcc] = useState(cfg.mccId ?? 'MovMed MCC')
+export function AgencyAdsSettings({ adapter }: { adapter: AdsPlatformAdapter }) {
+  const t = adapter.textos
+  const Icon = adapter.icon
+  const [cfg, setCfg] = useState<AdsAgencyConfig>(() => adapter.getAgencyConfig())
+  const [contaAgencia, setContaAgencia] = useState(cfg.contaAgenciaId ?? t.agenciaDefaultId)
   const [nomes, setNomes] = useState<Map<string, string>>(new Map())
-  const [nonce, setNonce] = useState(0)
+  const [, setNonce] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  const conexoes = getAllGoogleAdsConnections()
+  const conexoes = adapter.getAllConnections()
 
   useEffect(() => {
-    loadGoogleAdsCache().then(() => {
-      setCfg(getAgencyGoogleAdsConfig())
+    adapter.loadCache().then(() => {
+      setCfg(adapter.getAgencyConfig())
       setNonce((n) => n + 1)
     })
     supabase
@@ -41,73 +40,71 @@ export function AgencyGoogleAdsSettings() {
       .then(({ data }) =>
         setNomes(new Map(((data as { id: string; nome: string }[]) ?? []).map((c) => [c.id, c.nome]))),
       )
-  }, [])
+  }, [adapter])
 
   function conectar() {
-    const novo: AgencyGoogleAdsConfig = {
+    const novo: AdsAgencyConfig = {
       conectado: true,
-      mccId: mcc.trim() || 'MovMed MCC',
+      contaAgenciaId: contaAgencia.trim() || t.agenciaDefaultId,
       conectadoEm: new Date().toISOString(),
     }
-    setAgencyGoogleAdsConfig(novo)
+    adapter.setAgencyConfig(novo)
     setCfg(novo)
-    setAviso('Conta Gerenciadora conectada (simulado). Os clientes já podem ser vinculados via MCC na Ficha.')
+    setAviso(`${t.agenciaNome} conectada (simulado). Os clientes já podem ser vinculados via ${t.agenciaSigla} na Ficha.`)
   }
   function desconectar() {
-    const novo: AgencyGoogleAdsConfig = { conectado: false }
-    setAgencyGoogleAdsConfig(novo)
+    const novo: AdsAgencyConfig = { conectado: false }
+    adapter.setAgencyConfig(novo)
     setCfg(novo)
     setAviso(null)
   }
   function simular() {
-    const ativos = getAllGoogleAdsConnections()
+    const ativos = adapter.getAllConnections()
     if (ativos.length === 0) {
-      setAviso('Nenhum cliente conectado ainda. Conecte um cliente na Ficha (Operacional Tráfego › Visão geral) para simular.')
+      setAviso(`Nenhum cliente conectado ainda. Conecte um cliente na Ficha (Operacional Tráfego › ${adapter.nome}) para simular.`)
       return
     }
-    for (const c of ativos) simularSincronizacaoGA(c.clienteId)
+    for (const c of ativos) adapter.simularSincronizacao(c.clienteId)
     setNonce((n) => n + 1)
     setAviso(`Sincronização simulada para ${ativos.length} cliente(s) conectado(s) — campanhas atualizadas.`)
   }
 
   return (
-    <div className="space-y-4" key={nonce}>
+    <div className="space-y-4">
       {/* Card explicativo + status */}
       <div className="rounded-xl border border-border bg-bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-500/15 text-sky-300">
-              <Megaphone size={17} />
+            <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', adapter.cores.fundoIcone, adapter.cores.texto)}>
+              <Icon size={17} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-100">Google Ads (Conta Gerenciadora / MCC)</h3>
-              <p className="mt-0.5 max-w-xl text-[12px] text-muted">
-                Conexão a nível de agência. Torna os clientes sob a Conta Gerenciadora elegíveis a ter as
-                métricas e campanhas puxadas automaticamente, sem autorização individual (Modo MCC).
-              </p>
+              <h3 className="text-sm font-semibold text-zinc-100">{t.tituloConfig}</h3>
+              <p className="mt-0.5 max-w-xl text-[12px] text-muted">{t.descricaoConfig}</p>
             </div>
           </div>
           {cfg.conectado ? (
             <Badge tone="success">
-              <CheckCircle2 size={11} /> Conectado{cfg.mccId ? ` · ${cfg.mccId}` : ''}
+              <CheckCircle2 size={11} /> Conectado{cfg.contaAgenciaId ? ` · ${cfg.contaAgenciaId}` : ''}
             </Badge>
           ) : (
             <Badge tone="neutral">Não configurado</Badge>
           )}
         </div>
-
-        <p className="mt-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2 text-[11px] text-muted">
-          A conexão real depende de OAuth + credenciais de desenvolvedor do Google Ads. Esta tela já está
-          pronta para quando a integração for ativada — basta trocar a fonte de dados mockada pela chamada real.
-        </p>
+        <p className="mt-3 rounded-lg border border-border bg-bg-soft/40 px-3 py-2 text-[11px] text-muted">{t.notaApiReal}</p>
       </div>
 
-      {/* Conexão do MCC */}
-      <div className="rounded-xl border border-border bg-bg-card p-4 space-y-3">
+      {/* Conta de agência */}
+      <div className="space-y-3 rounded-xl border border-border bg-bg-card p-4">
         <div className="max-w-md">
-          <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted">Conta Gerenciadora (MCC)</label>
+          <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted">{t.agenciaNome}</label>
           <div className="flex gap-2">
-            <Input value={mcc} onChange={(e) => setMcc(e.target.value)} placeholder="ex.: MovMed MCC" disabled={cfg.conectado} />
+            <Input
+              value={contaAgencia}
+              onChange={(e) => setContaAgencia(e.target.value)}
+              placeholder={`ex.: ${t.agenciaDefaultId}`}
+              disabled={cfg.conectado}
+            />
             {cfg.conectado ? (
               <OutlineButton size="sm" onClick={desconectar} className="shrink-0">
                 <Unlink size={13} /> Desconectar
@@ -134,8 +131,8 @@ export function AgencyGoogleAdsSettings() {
 
       {/* Clientes conectados */}
       <div className="rounded-xl border border-border bg-bg-card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-zinc-100">Clientes conectados</h3>
-        <div className="overflow-hidden rounded-lg border border-border">
+        <h3 className="mb-3 text-sm font-semibold text-zinc-100">Clientes conectados · {adapter.nome}</h3>
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
@@ -151,25 +148,27 @@ export function AgencyGoogleAdsSettings() {
               {conexoes.map(({ clienteId, state }) => (
                 <tr key={clienteId} className="border-b border-border/60 last:border-b-0">
                   <td className="px-3 py-2 text-zinc-200">{nomes.get(clienteId) ?? clienteId.slice(0, 8)}</td>
-                  <td className="px-3 py-2 tabular-nums text-sky-300">{state.contaId}</td>
+                  <td className={cn('px-3 py-2 tabular-nums', adapter.cores.texto)}>{state.contaId}</td>
                   <td className="px-3 py-2">
-                    <Badge tone={state.modo === 'direta' ? 'info' : 'accent'}>{modoConexaoGaLabel[state.modo]}</Badge>
+                    <Badge tone={state.modo === 'direta' ? 'info' : 'accent'}>{modoConexaoLabel(adapter, state.modo)}</Badge>
                   </td>
                   <td className="px-3 py-2">
                     {state.tokenStatus ? (
-                      <Badge tone={state.tokenStatus === 'valido' ? 'success' : state.tokenStatus === 'expirado' ? 'warning' : 'danger'}>
-                        {tokenStatusGaLabel[state.tokenStatus]}
+                      <Badge
+                        tone={state.tokenStatus === 'valido' ? 'success' : state.tokenStatus === 'expirado' ? 'warning' : 'danger'}
+                      >
+                        {tokenStatusLabel[state.tokenStatus]}
                       </Badge>
                     ) : (
                       <span className="text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 tabular-nums text-muted">{fmtDataHoraGA(state.ultimaSincronizacao)}</td>
+                  <td className="px-3 py-2 tabular-nums text-muted">{fmtDataHoraAds(state.ultimaSincronizacao)}</td>
                   <td className="px-3 py-2">
                     {state.tokenStatus !== 'expirado' ? (
                       <button
                         onClick={() => {
-                          simularTokenExpiradoGA(clienteId)
+                          adapter.simularTokenExpirado(clienteId)
                           setNonce((n) => n + 1)
                         }}
                         className="text-[10px] text-muted underline decoration-dotted hover:text-amber-300"
@@ -186,7 +185,7 @@ export function AgencyGoogleAdsSettings() {
               {conexoes.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-[11px] text-muted">
-                    Nenhum cliente conectado. Conecte na Ficha do Cliente › Operacional Tráfego › Visão geral.
+                    Nenhum cliente conectado. Conecte na Ficha do Cliente › Operacional Tráfego › {adapter.nome}.
                   </td>
                 </tr>
               )}
