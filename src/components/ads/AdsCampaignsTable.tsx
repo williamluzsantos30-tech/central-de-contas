@@ -1,8 +1,10 @@
 /**
  * AdsCampaignsTable — campanhas de uma plataforma de anúncios no período, com
- * contadores por status. Somente leitura (as campanhas vêm da API); a ação por
- * linha é um placeholder de detalhe. Genérico via adapter.
+ * contadores por status e um indicador de saúde por campanha (pior severidade
+ * do diagnóstico). O "olho" (ou clique na linha) abre o CampaignDetailModal:
+ * diagnóstico + ações pra melhorar o desempenho. Genérico via adapter.
  */
+import { useState } from 'react'
 import { Eye } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,26 +12,38 @@ import { cn, formatCurrency } from '@/lib/utils'
 import {
   formatKpi,
   statusCampanhaLabel,
+  statusCampanhaTone,
   type AdsPlatformAdapter,
   type StatusCampanhaAds,
 } from './adsPlatform'
+import { diagnosticarCampanha, severidadeCampanha, type Severidade } from './campaignInsights'
+import { CampaignDetailModal } from './CampaignDetailModal'
 
-const statusTone: Record<StatusCampanhaAds, 'success' | 'neutral' | 'warning' | 'danger'> = {
-  ativa: 'success',
-  pausada: 'neutral',
-  em_revisao: 'warning',
-  removida: 'danger',
+const saudeCor: Record<Severidade, string> = {
+  critico: 'bg-red-400',
+  atencao: 'bg-amber-400',
+  oportunidade: 'bg-emerald-400',
+}
+const saudeTexto: Record<Severidade, string> = {
+  critico: 'Precisa de ação',
+  atencao: 'Pontos de atenção',
+  oportunidade: 'Oportunidades',
 }
 
 export function AdsCampaignsTable({
   adapter,
   clienteId,
   periodo,
+  onChanged,
+  onOtimizacaoRegistrada,
 }: {
   adapter: AdsPlatformAdapter
   clienteId: string
   periodo: string
+  onChanged?: () => void
+  onOtimizacaoRegistrada?: () => void
 }) {
+  const [abertaId, setAbertaId] = useState<string | null>(null)
   const metrics = adapter.getMetrics(clienteId, periodo)
   const Icon = adapter.icon
 
@@ -52,6 +66,7 @@ export function AdsCampaignsTable({
   const conta = (s: StatusCampanhaAds) => campanhas.filter((c) => c.status === s).length
 
   return (
+    <>
     <Card>
       <CardBody className="space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
@@ -66,6 +81,7 @@ export function AdsCampaignsTable({
           <span className="inline-flex items-center gap-1 text-yellow-300">
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" /> Em revisão {conta('em_revisao')}
           </span>
+          <span className="ml-auto text-[10px]">Clique no olho pra ver o diagnóstico e as ações de cada campanha</span>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-border">
@@ -84,42 +100,74 @@ export function AdsCampaignsTable({
               </tr>
             </thead>
             <tbody>
-              {campanhas.map((c) => (
-                <tr key={c.id} className="border-b border-border/60 transition-colors last:border-b-0 hover:bg-bg-soft/40">
-                  <td className="px-3 py-2 text-zinc-200">{c.nome}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium',
-                        adapter.cores.badge,
-                      )}
-                    >
-                      <Icon size={10} /> {adapter.nome}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-muted">{adapter.tipoCampanhaLabel(c.tipo)}</td>
-                  <td className="px-3 py-2">
-                    <Badge tone={statusTone[c.status]}>{statusCampanhaLabel[c.status]}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatCurrency(c.orcamentoDiario)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatCurrency(c.investimentoMes)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatKpi(c.cliques, 'numero')}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-emerald-300">{formatKpi(c.conversoes, 'numero')}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      className="rounded p-1.5 text-muted transition-colors hover:bg-bg-elev hover:text-zinc-100"
-                      title="Ver detalhe da campanha (em breve)"
-                      aria-label="Ver detalhe da campanha"
-                    >
-                      <Eye size={13} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {campanhas.map((c) => {
+                const recs = diagnosticarCampanha(adapter, c, metrics, periodo)
+                const sev = severidadeCampanha(recs)
+                const acionaveis = recs.filter((r) => r.severidade !== 'oportunidade').length
+                return (
+                  <tr
+                    key={c.id}
+                    onClick={() => setAbertaId(c.id)}
+                    className="cursor-pointer border-b border-border/60 transition-colors last:border-b-0 hover:bg-bg-soft/40"
+                  >
+                    <td className="px-3 py-2 text-zinc-200">{c.nome}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium',
+                          adapter.cores.badge,
+                        )}
+                      >
+                        <Icon size={10} /> {adapter.nome}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-muted">{adapter.tipoCampanhaLabel(c.tipo)}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={statusCampanhaTone[c.status]}>{statusCampanhaLabel[c.status]}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatCurrency(c.orcamentoDiario)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatCurrency(c.investimentoMes)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-zinc-200">{formatKpi(c.cliques, 'numero')}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-emerald-300">{formatKpi(c.conversoes, 'numero')}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setAbertaId(c.id)
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded p-1.5 text-muted transition-colors hover:bg-bg-elev hover:text-zinc-100"
+                        title={sev ? `${saudeTexto[sev]} — ver diagnóstico e ações` : 'Ver diagnóstico e ações'}
+                        aria-label="Ver diagnóstico e ações da campanha"
+                      >
+                        {sev && (
+                          <span className="inline-flex items-center gap-1">
+                            <span className={cn('h-1.5 w-1.5 rounded-full', saudeCor[sev])} />
+                            {acionaveis > 0 && <span className="text-[10px] font-semibold tabular-nums">{acionaveis}</span>}
+                          </span>
+                        )}
+                        <Eye size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </CardBody>
     </Card>
+
+    {abertaId && (
+      <CampaignDetailModal
+        adapter={adapter}
+        clienteId={clienteId}
+        campanhaId={abertaId}
+        periodo={periodo}
+        onClose={() => setAbertaId(null)}
+        onChanged={() => onChanged?.()}
+        onOtimizacaoRegistrada={onOtimizacaoRegistrada}
+      />
+    )}
+    </>
   )
 }

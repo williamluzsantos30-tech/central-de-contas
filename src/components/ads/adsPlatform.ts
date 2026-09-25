@@ -21,6 +21,7 @@
  */
 import type { LucideIcon } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import type { TipoOtimizacao } from '@/types/database'
 
 export type AdsPlatformKey = 'google_ads' | 'meta_ads'
 export type ModoConexaoAds = 'direta' | 'agencia' | 'nao_conectado'
@@ -44,8 +45,33 @@ export interface AdsCampanha {
   status: StatusCampanhaAds
   orcamentoDiario: number // R$
   investimentoMes: number // R$
+  impressoes: number
   cliques: number
   conversoes: number
+}
+
+/** Ação executável numa campanha (via API — simulada nesta etapa). */
+export type AcaoCampanha =
+  | { tipo: 'pausar' }
+  | { tipo: 'reativar' }
+  | { tipo: 'orcamento'; percentual: number }
+
+/**
+ * Textos das recomendações de desempenho, específicos de cada plataforma
+ * (o motor de regras em campaignInsights.ts é genérico).
+ */
+export interface AdsDicas {
+  semConversao: string
+  cpaAlto: (tipoCampanha: string) => string
+  tipoOtimCpaAlto: TipoOtimizacao
+  ctrBaixo: (tipoCampanha: string) => string
+  conversaoBaixa: string
+  subentrega: (tipoCampanha: string) => string
+  tipoOtimSubentrega: TipoOtimizacao
+  escalar: string
+  /** Só plataformas com frequência (Meta). */
+  fadiga?: string
+  saudavel: string
 }
 
 export interface AdsMetricas {
@@ -106,6 +132,8 @@ export interface AdsPlatformTextos {
   /** Cabeçalhos da tabela de campanhas. */
   tipoColuna: string
   conversoesColuna: string
+  /** "CPA" (Google) / "Custo por resultado" (Meta). */
+  cpaLabel: string
 }
 
 export interface AdsPlatformCores {
@@ -128,6 +156,10 @@ export interface AdsConnectionStore {
   getAllConnections: () => { clienteId: string; state: AdsConexao }[]
   getAgencyConfig: () => AdsAgencyConfig
   setAgencyConfig: (cfg: AdsAgencyConfig) => void
+  /** Executa uma ação na campanha (simulado: grava override em localStorage). */
+  aplicarAcaoCampanha: (campanha: AdsCampanha, acao: AcaoCampanha) => void
+  /** Aplica as ações já executadas (status/orçamento) sobre as campanhas geradas. */
+  comOverrides: (campanhas: AdsCampanha[]) => AdsCampanha[]
 }
 
 export interface AdsPlatformAdapter extends AdsConnectionStore {
@@ -137,6 +169,7 @@ export interface AdsPlatformAdapter extends AdsConnectionStore {
   cores: AdsPlatformCores
   textos: AdsPlatformTextos
   kpis: AdsKpiDef[]
+  dicas: AdsDicas
   tipoCampanhaLabel: (tipo: string) => string
   /** ÚNICO ponto a trocar pela API real. `null` se o cliente não está conectado. */
   getMetrics: (clienteId: string, periodo: string) => AdsMetricas | null
@@ -176,10 +209,19 @@ function normalizeConn(raw: unknown): AdsConexao | null {
   }
 }
 
+type CampanhaOverride = { status?: StatusCampanhaAds; orcamentoDiario?: number; atualizadoEm: string }
+
 export function createAdsConnectionStore(opts: { connKey: string; agencyKey: string }): AdsConnectionStore {
   let connCache: Record<string, AdsConexao> | null = null
   let agencyCache: AdsAgencyConfig | null = null
+  let ovCache: Record<string, CampanhaOverride> | null = null
+  const ovKey = `${opts.connKey}-campanhas`
   const nowISO = () => new Date().toISOString()
+
+  function overrides(): Record<string, CampanhaOverride> {
+    if (!ovCache) ovCache = readJSON<Record<string, CampanhaOverride>>(ovKey, {})
+    return ovCache
+  }
 
   function conns(): Record<string, AdsConexao> {
     if (!connCache) {
@@ -267,6 +309,23 @@ export function createAdsConnectionStore(opts: { connKey: string; agencyKey: str
       agencyCache = cfg
       writeJSON(opts.agencyKey, cfg)
     },
+    aplicarAcaoCampanha: (campanha, acao) => {
+      const ov = overrides()
+      const atual: CampanhaOverride = { ...(ov[campanha.id] ?? {}), atualizadoEm: nowISO() }
+      if (acao.tipo === 'pausar') atual.status = 'pausada'
+      else if (acao.tipo === 'reativar') atual.status = 'ativa'
+      else atual.orcamentoDiario = Math.max(1, Math.round(campanha.orcamentoDiario * (1 + acao.percentual / 100)))
+      ov[campanha.id] = atual
+      writeJSON(ovKey, ov)
+    },
+    comOverrides: (campanhas) => {
+      const ov = overrides()
+      return campanhas.map((c) => {
+        const o = ov[c.id]
+        if (!o) return c
+        return { ...c, status: o.status ?? c.status, orcamentoDiario: o.orcamentoDiario ?? c.orcamentoDiario }
+      })
+    },
   }
 }
 
@@ -276,41 +335,105 @@ export function hash(str: string): number {
   for (let i = 0; i < str.length; i++) h = (h * 33) ^ str.charCodeAt(i)
   return Math.abs(h)
 }
+/**
+ * Hash com boa dispersão (djb2 + finalizador do murmur3). O `hash` puro espalha
+ * mal strings que diferem só no fim ("…ctr0" / "…ctr1" davam quase o mesmo
+ * valor) — usado nos fatores por campanha pra elas variarem de verdade.
+ * (Métricas da conta seguem com `hash`, pra não mudar os números já exibidos.)
+ */
+export function seed(str: string): number {
+  let h = hash(str)
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
+  return h >>> 0
+}
 export function ranged(seed: number, min: number, max: number): number {
   const r = (seed % 1000) / 1000
   return Math.round(min + r * (max - min))
 }
 
-/** Campanhas mock: 3–5, investimento do mês rateado por peso. */
+export interface TemplateCampanha {
+  nome: string
+  tipo: string
+}
+
+/** Rateia `total` proporcionalmente aos pesos (inteiros; soma bate com o total). */
+function ratear(total: number, pesos: number[]): number[] {
+  const soma = pesos.reduce((s, w) => s + w, 0)
+  if (soma <= 0) return pesos.map(() => 0)
+  const partes = pesos.map((w) => Math.floor((total * w) / soma))
+  let resto = total - partes.reduce((s, v) => s + v, 0)
+  for (let i = 0; resto > 0 && pesos.length > 0; i = (i + 1) % pesos.length) {
+    if (pesos[i] > 0) {
+      partes[i]++
+      resto--
+    }
+  }
+  return partes
+}
+
+/**
+ * Campanhas mock coerentes com a conta: 3–5 campanhas de templates distintos
+ * (nome bate com o tipo), que SOMAM os totais da conta (investimento,
+ * impressões, cliques, conversões). CTR, taxa de conversão e ritmo de gasto
+ * variam por campanha — é o que dá material pro diagnóstico de desempenho.
+ */
 export function gerarCampanhasMock(args: {
   clienteId: string
   periodo: string
   base: number
-  investimentoTotal: number
-  tipos: readonly string[]
-  nomes: readonly string[]
+  totais: { investimento: number; impressoes: number; cliques: number; conversoes: number }
+  templates: readonly TemplateCampanha[]
 }): AdsCampanha[] {
-  const { clienteId, periodo, base, investimentoTotal, tipos, nomes } = args
-  const n = 3 + (base % 3)
-  const pesos = Array.from({ length: n }, (_, i) => 1 + (hash(`${base}w${i}`) % 5))
-  const somaPesos = pesos.reduce((s, w) => s + w, 0)
-  return Array.from({ length: n }, (_, i) => {
-    const cs = hash(`${base}camp${i}`)
-    const roll = cs % 10
+  const { clienteId, periodo, base, totais, templates } = args
+  const n = Math.min(templates.length, 3 + (base % 3))
+  const escolhidos = templates
+    .map((t, i) => ({ t, k: seed(`${base}tpl${i}`) }))
+    .sort((a, b) => a.k - b.k)
+    .slice(0, n)
+    .map((x) => x.t)
+
+  const pesoGasto = escolhidos.map((_, i) => 1 + (seed(`${base}w${i}`) % 5))
+  const fatorCtr = escolhidos.map((_, i) => 0.55 + (seed(`${base}ctr${i}`) % 100) / 100) // 0,55–1,54
+  const fatorConv = escolhidos.map((_, i) =>
+    seed(`${base}z${i}`) % 11 === 0 ? 0 : 0.35 + (seed(`${base}cv${i}`) % 130) / 100, // 0 ou 0,35–1,64
+  )
+
+  const investimento = ratear(totais.investimento, pesoGasto)
+  const impressoes = ratear(totais.impressoes, pesoGasto)
+  const cliques = ratear(totais.cliques, impressoes.map((imp, i) => imp * fatorCtr[i]))
+  const conversoes = ratear(totais.conversoes, cliques.map((cl, i) => cl * fatorConv[i]))
+  const dias = diasDecorridosNoPeriodo(periodo)
+
+  return escolhidos.map((tpl, i) => {
+    const roll = seed(`${base}camp${i}`) % 10
     const status: StatusCampanhaAds =
       roll < 6 ? 'ativa' : roll < 8 ? 'pausada' : roll < 9 ? 'em_revisao' : 'removida'
-    const cliques = ranged(hash(`${cs}cl`), 40, 2200)
+    // Ritmo de entrega 45%–102% do orçamento → orçamento diário coerente com o gasto.
+    const utilizacao = 0.45 + (seed(`${base}u${i}`) % 58) / 100
     return {
       id: `${clienteId}-${periodo}-camp${i}`,
-      nome: nomes[cs % nomes.length],
-      tipo: tipos[cs % tipos.length],
+      nome: tpl.nome,
+      tipo: tpl.tipo,
       status,
-      orcamentoDiario: ranged(hash(`${cs}orc`), 30, 400),
-      investimentoMes: Math.round((investimentoTotal * pesos[i]) / somaPesos),
-      cliques,
-      conversoes: ranged(hash(`${cs}cv`), 0, Math.max(2, Math.round(cliques * 0.08))),
+      orcamentoDiario: Math.max(20, Math.round(investimento[i] / (dias * utilizacao))),
+      investimentoMes: investimento[i],
+      impressoes: impressoes[i],
+      cliques: cliques[i],
+      conversoes: conversoes[i],
     }
   })
+}
+
+/** Dias já decorridos do período (mês corrente = dia de hoje; passado = mês inteiro). */
+export function diasDecorridosNoPeriodo(periodo: string): number {
+  const [y, m] = periodo.slice(0, 7).split('-').map(Number)
+  const hoje = new Date()
+  if (hoje.getFullYear() === y && hoje.getMonth() + 1 === m) return Math.max(1, hoje.getDate())
+  return new Date(y, m, 0).getDate()
 }
 
 // ── Helpers de período e exibição ────────────────────────────────────────────
@@ -352,6 +475,12 @@ export const statusCampanhaLabel: Record<StatusCampanhaAds, string> = {
   pausada: 'Pausada',
   em_revisao: 'Em revisão',
   removida: 'Removida',
+}
+export const statusCampanhaTone: Record<StatusCampanhaAds, 'success' | 'neutral' | 'warning' | 'danger'> = {
+  ativa: 'success',
+  pausada: 'neutral',
+  em_revisao: 'warning',
+  removida: 'danger',
 }
 export const tokenStatusLabel: Record<TokenStatusAds, string> = {
   valido: 'Válido',

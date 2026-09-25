@@ -18,7 +18,6 @@ import {
 // Mesmas chaves do mock original — conexões já feitas continuam valendo.
 const store = createAdsConnectionStore({ connKey: 'gads-conn', agencyKey: 'gads-agency' })
 
-const TIPOS = ['pesquisa', 'display', 'pmax', 'shopping', 'video'] as const
 const TIPO_LABEL: Record<string, string> = {
   pesquisa: 'Pesquisa',
   display: 'Display',
@@ -26,14 +25,25 @@ const TIPO_LABEL: Record<string, string> = {
   shopping: 'Shopping',
   video: 'Vídeo',
 }
-const NOMES = [
-  'Pesquisa · Marca',
-  'Pesquisa · Concorrentes',
-  'PMax · Conversões',
-  'Display · Remarketing',
-  'Shopping · Catálogo',
-  'Vídeo · Awareness',
-]
+// Nome sempre coerente com o tipo.
+const TEMPLATES = [
+  { nome: 'Pesquisa · Marca', tipo: 'pesquisa' },
+  { nome: 'Pesquisa · Serviços', tipo: 'pesquisa' },
+  { nome: 'Pesquisa · Concorrentes', tipo: 'pesquisa' },
+  { nome: 'PMax · Conversões', tipo: 'pmax' },
+  { nome: 'Display · Remarketing', tipo: 'display' },
+  { nome: 'Shopping · Catálogo', tipo: 'shopping' },
+  { nome: 'Vídeo · Awareness', tipo: 'video' },
+] as const
+
+const CPA_ALTO: Record<string, string> = {
+  pesquisa:
+    'Negative os termos de pesquisa irrelevantes (relatório de termos) e reduza o lance das palavras-chave com CPA alto.',
+  pmax: 'Revise os grupos de recursos e os sinais de público; exclua os termos de marca se a PMax estiver canibalizando a Pesquisa.',
+  display: 'Exclua os posicionamentos com baixo desempenho e restrinja a segmentação (públicos de intenção).',
+  shopping: 'Segmente os produtos por margem e reduza o lance dos que não convertem.',
+  video: 'Mude a estratégia para conversões ou realoque a verba para campanhas de fundo de funil.',
+}
 
 function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const state = store.getState(clienteId)
@@ -56,7 +66,15 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
     cpcMedio: cliques > 0 ? Math.round((investimento / cliques) * 100) / 100 : 0,
     conversoes,
     cpa: conversoes > 0 ? Math.round((investimento / conversoes) * 100) / 100 : 0,
-    campanhas: gerarCampanhasMock({ clienteId, periodo: p, base, investimentoTotal: investimento, tipos: TIPOS, nomes: NOMES }),
+    campanhas: store.comOverrides(
+      gerarCampanhasMock({
+        clienteId,
+        periodo: p,
+        base,
+        totais: { investimento, impressoes, cliques, conversoes },
+        templates: TEMPLATES,
+      }),
+    ),
     sincronizadoEm: state.ultimaSincronizacao,
   }
 }
@@ -92,6 +110,7 @@ export const googleAdsAdapter: AdsPlatformAdapter = {
       'A conexão real depende de OAuth + developer token do Google Ads (credenciais próprias de cada conta). Esta tela já está pronta — basta trocar a fonte de dados mockada pela chamada real.',
     tipoColuna: 'Tipo',
     conversoesColuna: 'Conversões',
+    cpaLabel: 'CPA',
   },
   kpis: [
     { key: 'investimento', label: 'Investimento', icon: Wallet, formato: 'moeda', direcao: 'maior', valor: (m) => m.investimento },
@@ -102,6 +121,26 @@ export const googleAdsAdapter: AdsPlatformAdapter = {
     { key: 'conversoes', label: 'Conversões', icon: Target, formato: 'numero', direcao: 'maior', destaque: true, valor: (m) => m.conversoes },
     { key: 'cpa', label: 'CPA', icon: Receipt, formato: 'moeda', direcao: 'menor', valor: (m) => m.cpa },
   ],
+  dicas: {
+    semConversao:
+      'Confira a ação de conversão (tag do Google Ads/GA4) e os termos de pesquisa que estão gastando. Se o rastreamento estiver ok, pause e reestruture a campanha.',
+    cpaAlto: (tipo) => CPA_ALTO[tipo] ?? 'Revise lances e segmentação da campanha.',
+    tipoOtimCpaAlto: 'ajuste_lance',
+    ctrBaixo: (tipo) =>
+      tipo === 'pesquisa'
+        ? 'Teste novos títulos e descrições (anúncios responsivos) e adicione recursos: sitelinks, frases de destaque e snippets.'
+        : 'Renove os recursos de imagem/vídeo e teste novas mensagens e chamadas.',
+    conversaoBaixa:
+      'Revise a página de destino (velocidade, clareza da oferta, formulário curto) e o alinhamento entre o anúncio e a página.',
+    subentrega: (tipo) =>
+      tipo === 'pesquisa'
+        ? 'Amplie as palavras-chave (correspondência de frase/ampla) ou aumente os lances — a campanha não está conseguindo gastar.'
+        : 'Amplie a segmentação/sinais de público ou aumente o lance — a campanha não está conseguindo gastar.',
+    tipoOtimSubentrega: 'ajuste_lance',
+    escalar:
+      'Aumente o orçamento diário em 20% — a campanha está limitada pelo orçamento com CPA abaixo da média da conta.',
+    saudavel: 'Mantenha e rode um teste A/B de anúncio pra buscar ganho incremental.',
+  },
   tipoCampanhaLabel: (t) => TIPO_LABEL[t] ?? t,
   getMetrics,
 }

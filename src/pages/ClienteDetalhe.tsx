@@ -435,10 +435,20 @@ export default function ClienteDetalhe() {
 
       {/* Plataformas de anúncio — mesma UI, muda só o adapter. */}
       {opTrafegoAtivo && tab === 'google_ads' && (
-        <AdsPlatformPanel adapter={googleAdsAdapter} clienteId={cliente.id} nomeCliente={cliente.nome} />
+        <AdsPlatformPanel
+          adapter={googleAdsAdapter}
+          clienteId={cliente.id}
+          nomeCliente={cliente.nome}
+          onOtimizacaoRegistrada={load}
+        />
       )}
       {opTrafegoAtivo && tab === 'meta_ads' && (
-        <AdsPlatformPanel adapter={metaAdsAdapter} clienteId={cliente.id} nomeCliente={cliente.nome} />
+        <AdsPlatformPanel
+          adapter={metaAdsAdapter}
+          clienteId={cliente.id}
+          nomeCliente={cliente.nome}
+          onOtimizacaoRegistrada={load}
+        />
       )}
 
       {opTrafegoAtivo && tab === 'visao' && (

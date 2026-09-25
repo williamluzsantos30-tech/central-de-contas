@@ -16,10 +16,13 @@ export function AdsPlatformPanel({
   adapter,
   clienteId,
   nomeCliente,
+  onOtimizacaoRegistrada,
 }: {
   adapter: AdsPlatformAdapter
   clienteId: string
   nomeCliente: string
+  /** Uma ação de campanha foi registrada no Log de otimização (Ficha recarrega). */
+  onOtimizacaoRegistrada?: () => void
 }) {
   // Re-render após conectar/sincronizar/desconectar (o mock é lido no render).
   const [, setNonce] = useState(0)
@@ -45,7 +48,13 @@ export function AdsPlatformPanel({
               <Icon size={12} className={adapter.cores.texto} />
               Campanhas · {adapter.nome}
             </h3>
-            <AdsCampaignsTable adapter={adapter} clienteId={clienteId} periodo={periodo} />
+            <AdsCampaignsTable
+              adapter={adapter}
+              clienteId={clienteId}
+              periodo={periodo}
+              onChanged={bump}
+              onOtimizacaoRegistrada={onOtimizacaoRegistrada}
+            />
           </section>
         </>
       ) : (

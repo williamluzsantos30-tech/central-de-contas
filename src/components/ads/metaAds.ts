@@ -29,7 +29,6 @@ import {
 const store = createAdsConnectionStore({ connKey: 'meta-ads-conn', agencyKey: 'meta-ads-agency' })
 
 // Objetivos de campanha do Gerenciador de Anúncios (ODAX).
-const TIPOS = ['leads', 'vendas', 'trafego', 'engajamento', 'reconhecimento'] as const
 const TIPO_LABEL: Record<string, string> = {
   leads: 'Cadastros (Leads)',
   vendas: 'Vendas',
@@ -37,14 +36,23 @@ const TIPO_LABEL: Record<string, string> = {
   engajamento: 'Engajamento',
   reconhecimento: 'Reconhecimento',
 }
-const NOMES = [
-  'Leads · Formulário Instantâneo',
-  'Mensagens · WhatsApp',
-  'Vendas · Conversões no site',
-  'Tráfego · Landing Page',
-  'Remarketing · Visitantes 30d',
-  'Reconhecimento · Alcance local',
-]
+// Nome sempre coerente com o objetivo.
+const TEMPLATES = [
+  { nome: 'Leads · Formulário Instantâneo', tipo: 'leads' },
+  { nome: 'Mensagens · WhatsApp', tipo: 'engajamento' },
+  { nome: 'Vendas · Conversões no site', tipo: 'vendas' },
+  { nome: 'Remarketing · Visitantes 30d', tipo: 'vendas' },
+  { nome: 'Tráfego · Landing Page', tipo: 'trafego' },
+  { nome: 'Reconhecimento · Alcance local', tipo: 'reconhecimento' },
+] as const
+
+const CPA_ALTO: Record<string, string> = {
+  leads: 'Troque o formulário pra "maior intenção", revise as perguntas de qualificação e exclua quem já virou lead.',
+  vendas: 'Exclua compradores recentes, revise o público e teste criativos com prova social e oferta clara.',
+  trafego: 'Otimize pra conversões em vez de cliques no link — tráfego barato raramente vira resultado.',
+  engajamento: 'Qualifique a conversa no primeiro contato (mensagem de boas-vindas com perguntas) e revise o público.',
+  reconhecimento: 'Use essa campanha pra alimentar públicos de remarketing, não pra resultado direto.',
+}
 
 function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const state = store.getState(clienteId)
@@ -75,7 +83,15 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
     cpm: impressoes > 0 ? Math.round((investimento / impressoes) * 1000 * 100) / 100 : 0,
     conversoes,
     cpa: conversoes > 0 ? Math.round((investimento / conversoes) * 100) / 100 : 0,
-    campanhas: gerarCampanhasMock({ clienteId, periodo: p, base, investimentoTotal: investimento, tipos: TIPOS, nomes: NOMES }),
+    campanhas: store.comOverrides(
+      gerarCampanhasMock({
+        clienteId,
+        periodo: p,
+        base,
+        totais: { investimento, impressoes, cliques, conversoes },
+        templates: TEMPLATES,
+      }),
+    ),
     sincronizadoEm: state.ultimaSincronizacao,
   }
 }
@@ -111,6 +127,7 @@ export const metaAdsAdapter: AdsPlatformAdapter = {
       'A conexão real depende de um App Meta aprovado (Marketing API, permissão ads_read) + System User do BM (credenciais próprias de cada conta). Esta tela já está pronta — basta trocar a fonte de dados mockada pela chamada real.',
     tipoColuna: 'Objetivo',
     conversoesColuna: 'Resultados',
+    cpaLabel: 'Custo por resultado',
   },
   kpis: [
     { key: 'investimento', label: 'Investimento', icon: Wallet, formato: 'moeda', direcao: 'maior', valor: (m) => m.investimento },
@@ -122,6 +139,24 @@ export const metaAdsAdapter: AdsPlatformAdapter = {
     { key: 'resultados', label: 'Resultados', icon: Target, formato: 'numero', direcao: 'maior', destaque: true, valor: (m) => m.conversoes },
     { key: 'cpr', label: 'Custo por resultado', icon: Receipt, formato: 'moeda', direcao: 'menor', valor: (m) => m.cpa },
   ],
+  dicas: {
+    semConversao:
+      'Confira o Pixel/API de Conversões e se o evento otimizado está disparando. Se estiver ok, pause e reestruture público e criativo.',
+    cpaAlto: (tipo) => CPA_ALTO[tipo] ?? 'Revise público e criativos da campanha.',
+    tipoOtimCpaAlto: 'ajuste_publico',
+    ctrBaixo: () =>
+      'Renove os criativos: gancho forte nos 3 primeiros segundos, formato vertical (Reels/Stories) e chamada mais clara.',
+    conversaoBaixa:
+      'Revise a página/formulário de destino e a coerência entre a promessa do anúncio e a oferta.',
+    subentrega: () =>
+      'Amplie o público (Advantage+) ou revise o limite de custo/lance — a campanha não está conseguindo entregar.',
+    tipoOtimSubentrega: 'ajuste_publico',
+    escalar:
+      'Aumente o orçamento diário em 20% (no máximo 20–30% por vez, pra não reiniciar a fase de aprendizado).',
+    fadiga:
+      'O público está vendo os mesmos anúncios repetidamente. Renove os criativos e amplie o público pra evitar fadiga.',
+    saudavel: 'Mantenha e teste um criativo novo (teste A/B) pra evitar fadiga futura.',
+  },
   tipoCampanhaLabel: (t) => TIPO_LABEL[t] ?? t,
   getMetrics,
 }
