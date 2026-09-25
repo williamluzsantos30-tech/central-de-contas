@@ -12,18 +12,21 @@ import { fmtBRL } from '@/components/comercial/LeadsTable'
 import { WeekNavigator } from '@/components/comercial/WeekNavigator'
 import { MetaFormModal } from '@/components/comercial/MetaFormModal'
 import { useComercial } from './store'
-import { metaDoCanal } from './mockComercialConfig'
+import { metaDoCanal, taxasIdeaisDoEscopo } from './mockComercialConfig'
 import {
   calculateMarketingFunnel,
   calculateChannelComparison,
   calculatePlannedFunnel,
   canaisDoPeriodo,
+  contaDoIdeal,
+  idealCascadeDoFunil,
   periodoMes,
   periodoRange,
   periodoSemana,
   weekRefOf,
   SEM_ORIGEM,
   type MarketingFunnel,
+  type MetricaComIdeal,
   type PlannedFunnel,
 } from './marketingCalculator'
 import {
@@ -34,15 +37,7 @@ import {
   type MetricaMeta,
   type Periodicidade,
 } from './mockMetasComerciais'
-import {
-  calculateGoalProgress,
-  contaDoIdeal,
-  idealCascadeDoFunil,
-  idealDaMeta,
-  statusDeProgresso,
-  type MetricaComIdeal,
-} from './metasComerciais'
-import { taxasIdeaisDoEscopo, type TaxasConversaoIdeal } from './mockComercialConfig'
+import { calculateGoalProgress, statusDeProgresso } from './metasComerciais'
 import { escopoLabel } from '@/components/comercial/GoalProgressCard'
 import { IdealRecalculadoLinha } from '@/components/comercial/IdealRecalculadoLinha'
 
@@ -117,11 +112,11 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
   }, [metasComerciais, periodicidade, refMeta])
   const planned = useMemo(() => calculatePlannedFunnel(metasInput), [metasInput])
 
-  // Ideal Recalculado (Metas): cascata a partir do REALIZADO da etapa anterior
-  // — cards Geral usam as taxas globais (sobrescritas valem nas segmentadas).
+  // Ideal Recalculado (Marketing): cascata a partir do REALIZADO da etapa
+  // anterior — visão Geral usa as taxas globais; aba de canal, a sobrescrita dele.
   const cascata = useMemo(
-    () => (ehMetas ? idealCascadeDoFunil(f, taxasIdeaisDoEscopo(taxasConversaoIdeal)) : null),
-    [ehMetas, f, taxasConversaoIdeal],
+    () => (ehMetas ? null : idealCascadeDoFunil(f, taxasIdeaisDoEscopo(taxasConversaoIdeal, canalSel))),
+    [ehMetas, f, taxasConversaoIdeal, canalSel],
   )
   function rodapeIdeal(metrica: MetricaComIdeal) {
     if (!cascata) return undefined
@@ -287,7 +282,7 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {metasEscopo.map((m) => (
-                <MetaEscopoCard key={m.id} meta={m} leads={leads} investimentos={investimentos} taxas={taxasConversaoIdeal} onSalvar={(v) => atualizarMeta(m.id, { valorMeta: v })} />
+                <MetaEscopoCard key={m.id} meta={m} leads={leads} investimentos={investimentos} onSalvar={(v) => atualizarMeta(m.id, { valorMeta: v })} />
               ))}
             </div>
           )}
@@ -327,18 +322,14 @@ function MetaEscopoCard({
   meta,
   leads,
   investimentos,
-  taxas,
   onSalvar,
 }: {
   meta: MetaComercial
   leads: Parameters<typeof calculateGoalProgress>[1]
   investimentos: Parameters<typeof calculateGoalProgress>[2]
-  taxas: TaxasConversaoIdeal
   onSalvar: (valor: number) => void
 }) {
   const prog = calculateGoalProgress(meta, leads, investimentos)
-  // Ideal Recalculado com as taxas do escopo (sobrescrita do canal/responsável).
-  const ideal = idealDaMeta(meta, leads, investimentos, taxas)
   const info = metricaInfo(meta.metrica)
   const st = statusDeProgresso(prog.valorAtual, meta.valorMeta, !!info.invertida)
   const [editando, setEditando] = useState(false)
@@ -370,16 +361,6 @@ function MetaEscopoCard({
           <div className="h-1.5 overflow-hidden rounded-full bg-bg-soft/60">
             <div className={`h-full rounded-full ${barra}`} style={{ width: `${Math.min(100, Math.max(0, st.percentual))}%` }} />
           </div>
-          {ideal && (
-            <IdealRecalculadoLinha
-              idealRecalculado={ideal.etapa.ideal}
-              statusIdeal={ideal.etapa.status}
-              realizado={ideal.etapa.realizado}
-              semBase={ideal.etapa.semBase}
-              conta={ideal.conta.curta}
-              explicacao={ideal.conta.extenso}
-            />
-          )}
         </>
       )}
     </div>

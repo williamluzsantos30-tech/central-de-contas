@@ -7,7 +7,8 @@
 import { cn } from '@/lib/utils'
 import { pessoaComercialNome } from '@/pages/comercial/mockLeads'
 import { formatMetaValor, metricaLabel, type MetaComercial } from '@/pages/comercial/mockMetasComerciais'
-import type { GoalProgress, StatusIdeal } from '@/pages/comercial/metasComerciais'
+import type { GoalProgress } from '@/pages/comercial/metasComerciais'
+import type { StatusIdeal } from '@/pages/comercial/marketingCalculator'
 import { IdealRecalculadoLinha } from './IdealRecalculadoLinha'
 
 const barra: Record<string, string> = { success: 'bg-green-500', atencao: 'bg-orange-500', critico: 'bg-red-500' }

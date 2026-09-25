@@ -5,6 +5,7 @@
  */
 import type { Lead } from './mockLeads'
 import type { InvestimentoMarketing } from './mockInvestimentos'
+import type { TaxasConversaoIdealValores } from './mockComercialConfig'
 
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 
@@ -327,4 +328,90 @@ export function calculateChannelComparison(
   return canaisDoPeriodo(leads, investimentos, periodo).map((canal) =>
     calculateMarketingFunnel(leads, investimentos, periodo, canal),
   )
+}
+
+// ── Ideal Recalculado (cascata entre etapas) ────────────────────────────────
+/**
+ * O "Ideal" de uma etapa vem do REALIZADO da etapa anterior × a taxa ideal —
+ * nunca de uma meta. Se a etapa anterior veio acima do esperado, a régua da
+ * seguinte sobe junto (é o que o card do Marketing mostra).
+ */
+export type StatusIdeal = 'acima' | 'abaixo'
+
+export interface IdealEtapa {
+  /** Math.round(base × taxa). */
+  ideal: number
+  realizado: number
+  status: StatusIdeal
+  /** Quanto falta pro ideal (0 se acima). */
+  diferenca: number
+  /** Realizado da etapa anterior usado como base. */
+  base: number
+  /** Taxa aplicada (%, já invertida no no-show: 75 = 1 − 25%). */
+  taxaAplicada: number
+  /** Etapa anterior zerada → não há régua pra comparar. */
+  semBase: boolean
+}
+
+/** Etapas com etapa anterior no funil (Leads Qualificados é a 1ª — sem ideal). */
+export type MetricaComIdeal = 'reunioes_agendadas' | 'reunioes_realizadas' | 'fechamentos'
+
+export type IdealCascade = Record<MetricaComIdeal, IdealEtapa>
+
+function etapa(base: number, taxaPct: number, realizado: number): IdealEtapa {
+  const ideal = Math.round(base * (taxaPct / 100))
+  return {
+    ideal,
+    realizado,
+    status: realizado >= ideal ? 'acima' : 'abaixo',
+    diferenca: Math.max(0, ideal - realizado),
+    base,
+    taxaAplicada: taxaPct,
+    semBase: base <= 0,
+  }
+}
+
+/**
+ * Cascata do Ideal Recalculado:
+ *   Agendadas  = Qualificados × SDR%
+ *   Realizadas = Agendadas que já ACONTECERAM × (1 − No-show%)
+ *   Fechamentos = Realizadas × Closer%
+ * `reunioesASerem` (agendadas futuras) sai da base das Realizadas: reunião que
+ * ainda não chegou não pode ser cobrada como no-show.
+ */
+export function calculateIdealCascade(
+  leadsQualificados: number,
+  reunioesAgendadas: number,
+  reunioesRealizadas: number,
+  fechamentos: number,
+  taxasIdeais: TaxasConversaoIdealValores,
+  reunioesASerem = 0,
+): IdealCascade {
+  return {
+    reunioes_agendadas: etapa(leadsQualificados, taxasIdeais.sdr, reunioesAgendadas),
+    reunioes_realizadas: etapa(Math.max(0, reunioesAgendadas - reunioesASerem), 100 - taxasIdeais.noShow, reunioesRealizadas),
+    fechamentos: etapa(reunioesRealizadas, taxasIdeais.closer, fechamentos),
+  }
+}
+
+/** Cascata a partir de um funil já calculado. */
+export function idealCascadeDoFunil(f: MarketingFunnel, taxasIdeais: TaxasConversaoIdealValores): IdealCascade {
+  return calculateIdealCascade(f.qualificados, f.reunioesAgendadas, f.reunioesRealizadas, f.fechamentos, taxasIdeais, f.reunioesASerem)
+}
+
+/** Textos da conta de cada etapa: curto (no card) e por extenso (tooltip). */
+export function contaDoIdeal(metrica: MetricaComIdeal, e: IdealEtapa, reunioesASerem = 0): { curta: string; extenso: string } {
+  const pct = (n: number) => `${Number(n.toFixed(1)).toLocaleString('pt-BR')}%`
+  const curta = `${e.base} × ${pct(e.taxaAplicada)}`
+  if (metrica === 'reunioes_agendadas') {
+    return { curta, extenso: `${e.base} leads qualificados × ${pct(e.taxaAplicada)} (taxa ideal SDR) = ${e.ideal}` }
+  }
+  if (metrica === 'reunioes_realizadas') {
+    const fora = reunioesASerem > 0 ? ` — ${reunioesASerem} agendada(s) ainda por acontecer fora da conta` : ''
+    return {
+      curta,
+      extenso: `${e.base} reuniões agendadas já ocorridas × ${pct(e.taxaAplicada)} (1 − no-show ideal de ${pct(100 - e.taxaAplicada)}) = ${e.ideal}${fora}`,
+    }
+  }
+  return { curta, extenso: `${e.base} reuniões realizadas × ${pct(e.taxaAplicada)} (taxa ideal Closer) = ${e.ideal}` }
 }

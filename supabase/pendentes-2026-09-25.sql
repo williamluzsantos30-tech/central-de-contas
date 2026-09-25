@@ -1938,7 +1938,7 @@ create policy "auth write crm sync" on crm_sync_logs for all using (auth.role() 
 
 
 -- ─────────────────────────────────────────────────────────────────────
--- [095] Taxas de conversão ideal entre etapas (Comercial › Metas)
+-- [095] Taxas de conversão ideal entre etapas (Comercial › Marketing)
 -- (migration-095-taxas-conversao-ideal.sql)
 -- ─────────────────────────────────────────────────────────────────────
 alter table comercial_config add column if not exists taxas_conversao_ideal jsonb;

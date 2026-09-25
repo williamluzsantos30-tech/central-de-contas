@@ -187,7 +187,7 @@ interface ComercialCtx {
   registrarInvestimentos: (periodo: string, lancamentos: LancamentoInvestimento[]) => void
   metasMarketing: MetasMarketing
   setMetasMarketing: (m: MetasMarketing) => void
-  /** Taxas de conversão ideal entre etapas (Ideal Recalculado em Comercial › Metas). */
+  /** Taxas de conversão ideal entre etapas (Ideal Recalculado em Comercial › Marketing). */
   taxasConversaoIdeal: TaxasConversaoIdeal
   setTaxasConversaoIdeal: (t: TaxasConversaoIdeal) => void
   metasComerciais: MetaComercial[]

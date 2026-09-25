@@ -62,10 +62,10 @@ export function metaDoCanal(
 
 /**
  * Taxas de Conversão IDEAL entre etapas (%) — base do "Ideal Recalculado" nos
- * cards de Comercial › Metas: o ideal de cada etapa vem do REALIZADO da etapa
- * anterior × a taxa ideal (ver calculateIdealCascade). Editável em
- * Configurações › Geral › Metas Comerciais. Global + sobrescrita por canal ou
- * por responsável (mesma ideia das Metas de Marketing).
+ * cards de Comercial › Marketing: o ideal de cada etapa vem do REALIZADO da
+ * etapa anterior × a taxa ideal (ver calculateIdealCascade). Editável em
+ * Configurações › Geral, logo abaixo das Metas de Marketing. Global +
+ * sobrescrita por canal (vale na aba do canal no Marketing).
  */
 export interface TaxasConversaoIdealValores {
   /** SDR: Leads Qualificados → Reuniões Agendadas. */
@@ -78,7 +78,6 @@ export interface TaxasConversaoIdealValores {
 
 export interface TaxasConversaoIdeal extends TaxasConversaoIdealValores {
   overridesPorCanal: Record<string, Partial<TaxasConversaoIdealValores>>
-  overridesPorResponsavel: Record<string, Partial<TaxasConversaoIdealValores>>
 }
 
 export const TAXAS_CONVERSAO_IDEAL_INICIAL: TaxasConversaoIdeal = {
@@ -86,29 +85,24 @@ export const TAXAS_CONVERSAO_IDEAL_INICIAL: TaxasConversaoIdeal = {
   noShow: 25,
   closer: 33,
   overridesPorCanal: {},
-  overridesPorResponsavel: {},
 }
 
 /** Aceita config parcial/antiga do banco (colunas ausentes → default). */
 export function normalizarTaxasIdeais(raw: Partial<TaxasConversaoIdeal> | null | undefined): TaxasConversaoIdeal {
   return {
-    ...TAXAS_CONVERSAO_IDEAL_INICIAL,
-    ...(raw ?? {}),
+    sdr: raw?.sdr ?? TAXAS_CONVERSAO_IDEAL_INICIAL.sdr,
+    noShow: raw?.noShow ?? TAXAS_CONVERSAO_IDEAL_INICIAL.noShow,
+    closer: raw?.closer ?? TAXAS_CONVERSAO_IDEAL_INICIAL.closer,
     overridesPorCanal: { ...(raw?.overridesPorCanal ?? {}) },
-    overridesPorResponsavel: { ...(raw?.overridesPorResponsavel ?? {}) },
   }
 }
 
 /**
- * Taxas efetivas pra um escopo: responsável > canal > global (campo a campo —
- * um override só de "closer" herda sdr/no-show do nível acima).
+ * Taxas efetivas de um canal: sobrescrita do canal > global (campo a campo —
+ * um override só de "closer" herda sdr/no-show do global). Sem canal = global.
  */
-export function taxasIdeaisDoEscopo(
-  cfg: TaxasConversaoIdeal,
-  escopo: { canal?: string; responsavelId?: string } = {},
-): TaxasConversaoIdealValores {
-  const doCanal = escopo.canal ? cfg.overridesPorCanal[escopo.canal] ?? {} : {}
-  const doResp = escopo.responsavelId ? cfg.overridesPorResponsavel[escopo.responsavelId] ?? {} : {}
-  const campo = (k: keyof TaxasConversaoIdealValores) => doResp[k] ?? doCanal[k] ?? cfg[k]
+export function taxasIdeaisDoEscopo(cfg: TaxasConversaoIdeal, canal?: string): TaxasConversaoIdealValores {
+  const doCanal = canal ? cfg.overridesPorCanal[canal] ?? {} : {}
+  const campo = (k: keyof TaxasConversaoIdealValores) => doCanal[k] ?? cfg[k]
   return { sdr: campo('sdr'), noShow: campo('noShow'), closer: campo('closer') }
 }

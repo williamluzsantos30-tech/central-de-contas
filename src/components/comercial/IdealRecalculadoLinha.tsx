@@ -1,12 +1,11 @@
 /**
- * Linha "Ideal Recalculado" dos cards de meta do Comercial — camada EXTRA,
- * separada do "Realizado vs. Meta": o ideal vem do realizado da etapa
- * anterior × taxa ideal (calculateIdealCascade). Um card pode estar dentro da
- * meta e abaixo do ideal ao mesmo tempo — por isso a borda tracejada e o
- * rótulo próprio.
+ * Linha "Ideal Recalculado" dos cards do funil (Comercial › Marketing) —
+ * camada EXTRA, separada do resto do card: o ideal vem do realizado da etapa
+ * anterior × taxa ideal (calculateIdealCascade). Borda tracejada e rótulo
+ * próprio pra não se confundir com a comparação vs. período anterior.
  */
 import { cn } from '@/lib/utils'
-import type { StatusIdeal } from '@/pages/comercial/metasComerciais'
+import type { StatusIdeal } from '@/pages/comercial/marketingCalculator'
 
 export function IdealRecalculadoLinha({
   idealRecalculado,

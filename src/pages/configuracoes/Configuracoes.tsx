@@ -60,6 +60,7 @@ import { useFinanceiro } from '@/pages/financeiro/store'
 import { BASES_COMISSAO } from '@/pages/financeiro/comissaoCalculator'
 import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
 import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
+import { TaxasConversaoIdealBloco } from '@/components/comercial/TaxasConversaoIdealBloco'
 import { SyncResponsaveisButton } from '@/components/clientes/SyncResponsaveisButton'
 
 const TABS: TabDef[] = [
@@ -383,6 +384,9 @@ export default function Configuracoes() {
 
           {/* Metas de Marketing */}
           <MetasMarketingSection metas={metasMarketing} onChange={setMetasMarketing} />
+
+          {/* Taxas de conversão ideal (Ideal Recalculado no Marketing) */}
+          <TaxasConversaoIdealBloco />
 
           {/* Metas Comerciais (mensais/semanais por métrica do funil) */}
           <MetasComerciaisSection />
