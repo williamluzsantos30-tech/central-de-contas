@@ -65,6 +65,7 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
+import { ClienteIdentidade } from '@/components/clientes/ClienteIdentidade'
 import { uploadToStorageSafe } from '@/lib/storage'
 import type { Cliente, ClienteEvento, Profile } from '@/types/database'
 import { getTemplate, type Pergunta } from '@/lib/npsTemplates'
@@ -377,16 +378,6 @@ const SERVICOS_CATALOGO: ServicoDef[] = [
   },
 ]
 
-const statusTone: Record<Cliente['status'], { label: string; className: string }> = {
-  ativo: { label: 'Ativo', className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' },
-  atencao: {
-    label: 'Atenção',
-    className: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
-  },
-  pausado: { label: 'Pausado', className: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200' },
-  churn: { label: 'Churn', className: 'border-red-500/40 bg-red-500/10 text-red-200' },
-}
-
 interface Props {
   cliente: Cliente
   onChanged: () => void
@@ -497,95 +488,61 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
 
   // Atualizacao de status/semaforo agora vai via RiscoStatusModal
 
-  const status = statusTone[cliente.status]
-
   return (
     <div className="space-y-6">
       {/* ============= Header ============= */}
       <div className="rounded-xl border border-border bg-bg-card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-bold text-zinc-100">{cliente.nome}</h2>
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold',
-                  status.className,
+        {/* Topo compartilhado com o Operacional Tráfego (nome, status, badges
+            editáveis) — os dois cabeçalhos são sempre a mesma coisa. */}
+        <ClienteIdentidade
+          cliente={cliente}
+          onChanged={onChanged}
+          onEdit={onEdit}
+          direita={
+              <button
+                type="button"
+                onClick={() => setNpsHistoricoOpen(true)}
+                className="group relative rounded-lg border border-border bg-bg-soft/60 px-4 py-2 text-right hover:border-brand-500/40 transition-colors"
+                title="Ver histórico de NPS"
+              >
+                {npsPrecisaRenovar && (
+                  <span
+                    className="absolute -top-2 -right-2 rounded-full border border-amber-500/50 bg-amber-500/20 px-2 py-0.5 text-[9px] font-semibold text-amber-200"
+                    title="Já se passaram 2 meses desde o último NPS — hora de recolher"
+                  >
+                    📩 Recolher
+                  </span>
                 )}
-              >
-                {status.label}
-              </span>
-            </div>
-            {cliente.nicho && (
-              <p className="mt-1 text-sm text-muted">{cliente.nicho}</p>
-            )}
-
-            {/* Row de badges de contexto */}
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px]">
-              <span className="flex items-center gap-1.5">
-                <span className="text-muted uppercase tracking-wider">Risco:</span>
-                <Badge tone={cliente.status === 'atencao' ? 'warning' : 'neutral'}>
-                  {cliente.status === 'atencao'
-                    ? 'Atenção'
-                    : cliente.status === 'churn'
-                      ? 'Churn'
-                      : 'OK'}
-                </Badge>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="text-muted uppercase tracking-wider">Jornada:</span>
-                <Badge tone="brand">{cliente.jornada ?? '—'}</Badge>
-              </span>
-              <span className="flex items-center gap-1.5 text-muted italic">
-                Outlier: — <span className="text-[10px]">(v2)</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Canto direito: NPS — clicavel, abre historico */}
-          <button
-            type="button"
-            onClick={() => setNpsHistoricoOpen(true)}
-            className="group relative rounded-lg border border-border bg-bg-soft/60 px-4 py-2 text-right hover:border-brand-500/40 transition-colors"
-            title="Ver histórico de NPS"
-          >
-            {npsPrecisaRenovar && (
-              <span
-                className="absolute -top-2 -right-2 rounded-full border border-amber-500/50 bg-amber-500/20 px-2 py-0.5 text-[9px] font-semibold text-amber-200"
-                title="Já se passaram 2 meses desde o último NPS — hora de recolher"
-              >
-                📩 Recolher
-              </span>
-            )}
-            <p className="text-[9px] uppercase tracking-wider text-muted">NPS do mês</p>
-            <p
-              className={cn(
-                'text-3xl font-bold tabular-nums leading-none mt-1',
-                cliente.nps === null
-                  ? 'text-zinc-500'
-                  : cliente.nps >= 9
-                    ? 'text-emerald-300'
-                    : cliente.nps >= 7
-                      ? 'text-amber-300'
-                      : 'text-red-300',
-              )}
-            >
-              {cliente.nps ?? '—'}
-            </p>
-            <p className="mt-1 text-[10px] text-muted">
-              {cliente.nps === null
-                ? 'sem NPS'
-                : cliente.nps >= 9
-                  ? 'Promotor'
-                  : cliente.nps >= 7
-                    ? 'Neutro'
-                    : 'Detrator'}
-            </p>
-            <p className="mt-1 text-[9px] text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity">
-              Ver histórico →
-            </p>
-          </button>
-        </div>
+                <p className="text-[9px] uppercase tracking-wider text-muted">NPS do mês</p>
+                <p
+                  className={cn(
+                    'text-3xl font-bold tabular-nums leading-none mt-1',
+                    cliente.nps === null
+                      ? 'text-zinc-500'
+                      : cliente.nps >= 9
+                        ? 'text-emerald-300'
+                        : cliente.nps >= 7
+                          ? 'text-amber-300'
+                          : 'text-red-300',
+                  )}
+                >
+                  {cliente.nps ?? '—'}
+                </p>
+                <p className="mt-1 text-[10px] text-muted">
+                  {cliente.nps === null
+                    ? 'sem NPS'
+                    : cliente.nps >= 9
+                      ? 'Promotor'
+                      : cliente.nps >= 7
+                        ? 'Neutro'
+                        : 'Detrator'}
+                </p>
+                <p className="mt-1 text-[9px] text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Ver histórico →
+                </p>
+              </button>
+          }
+        />
 
         {/* Grid info principal */}
         <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5 md:grid-cols-4">
@@ -685,13 +642,6 @@ export function ClienteFicha({ cliente, onChanged, onEdit }: Props) {
               )}
             </div>
           </div>
-        </div>
-
-        {/* Botao editar no rodape do header */}
-        <div className="mt-4 flex justify-end border-t border-border pt-3">
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Pencil size={12} /> Editar cliente
-          </Button>
         </div>
       </div>
 
