@@ -7,7 +7,8 @@ import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
 import { baixarCsv } from '@/lib/csv'
-import { temAlgumCargo } from '@/lib/cargos'
+import { temAlgumCargo, temCargo } from '@/lib/cargos'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import {
   cn,
   formatCurrency,
@@ -76,17 +77,12 @@ export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego
           '*, gestor:profiles!gestor_id(*), account_manager:profiles!account_manager_id(*), social_media:profiles!social_media_id(*)',
         )
         .order('nome'),
-      // Filtro "Todos gestores" só lista cargo gestor_trafego
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .eq('cargo', 'gestor_trafego')
-        .order('nome'),
+      // Filtro "Todos gestores": gestor de tráfego pelo cargo OU pelo papel
+      // da Equipe Operacional (filtrado abaixo com temCargo).
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome')),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setGestores((gRes.data as Profile[]) ?? [])
+    setGestores(((gRes.data as Profile[]) ?? []).filter((p) => temCargo(p, 'gestor_trafego')))
     setLoading(false)
   }
 

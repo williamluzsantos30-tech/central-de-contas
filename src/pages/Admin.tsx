@@ -37,8 +37,12 @@ import { cn, formatDateTime, userRoleLabel } from '@/lib/utils'
 import {
   CARGOS,
   cargoLabel,
+  funcaoPrincipal,
+  temAlgumCargo,
+  temCargo,
   type Cargo,
 } from '@/lib/cargos'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import { Textarea } from '@/components/ui/Textarea'
 import { TemplatesTab } from '@/pages/Templates'
 import MetricasSocialMedia from '@/pages/social/Metricas'
@@ -72,7 +76,8 @@ export default function Admin() {
     // Carrega: usuários, tarefas, items de design (4 tipos) e clientes
     // (pra mapear papéis no cliente quando responsavel_id está null).
     const [uRes, tRes, pRes, crRes, evRes, smRes, cRes] = await Promise.all([
-      supabase.from('profiles').select('*').order('nome'),
+      // Com o papel (Equipe Operacional): a função de cada um sai de temCargo/funcaoPrincipal.
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).order('nome')),
       supabase
         .from('tarefas')
         .select('status, data_vencimento, responsavel_id, cliente_id'),
@@ -719,7 +724,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         //   • no prazo  = publicado_em::date <= prazo
         //   • atrasado  = publicou depois OU nunca publicou apesar do prazo ja ter vencido
         //   • ignora    = item com prazo futuro sem publicacao (ainda nao da pra medir)
-        if (u.cargo === 'social_media') {
+        if (temCargo(u, 'social_media')) {
           const meus = pubsFiltrados.filter((it) => it.responsavel_id === u.id)
           const avaliaveis = meus.filter((it) => {
             if (!it.prazo) return false
@@ -762,7 +767,7 @@ function PerformanceTab({ usuarios }: { usuarios: Profile[] }) {
         // herdadas via cliente inflam o denominador com trabalho do gestor,
         // entao AQUI a gente conta SO tarefas com responsavel_id = user
         // (nao herda). Vale pros dois cargos.
-        if (u.cargo === 'account_manager' || u.cargo === 'gestor_trafego') {
+        if (temAlgumCargo(u, ['account_manager', 'gestor_trafego'])) {
           // 1) Calls no prazo — quantos clientes ativos sob a pessoa tiveram
           //    call realizada nos ultimos 30 dias
           //    Consideramos "sob a pessoa" = account_manager_id OU gestor_id
@@ -1045,10 +1050,11 @@ function CargoBreakdown({ stats }: { stats: ColaboradorStats[] }) {
   const grupos = useMemo(() => {
     const map = new Map<Cargo, ColaboradorStats[]>()
     for (const s of stats) {
-      if (!s.user.cargo) continue
-      const arr = map.get(s.user.cargo) ?? []
+      const funcao = funcaoPrincipal(s.user)
+      if (!funcao) continue
+      const arr = map.get(funcao) ?? []
       arr.push(s)
-      map.set(s.user.cargo, arr)
+      map.set(funcao, arr)
     }
     // Ordena dentro do cargo por score
     for (const arr of map.values()) {
@@ -1161,9 +1167,9 @@ function CargoCard({ cargo, pessoas }: { cargo: Cargo; pessoas: ColaboradorStats
 
 function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, atrasadas, score, taxaPontualidade } = stats
-  const ehSocialMedia = user.cargo === 'social_media'
+  const ehSocialMedia = temCargo(user, 'social_media')
   const ehAM =
-    user.cargo === 'account_manager' || user.cargo === 'gestor_trafego'
+    temAlgumCargo(user, ['account_manager', 'gestor_trafego'])
   const ehTaxaSimples = ehSocialMedia || ehAM
 
   const scoreColor =
@@ -1227,9 +1233,9 @@ function CargoMemberRow({ stats, rank }: { stats: ColaboradorStats; rank: number
 function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number }) {
   const { user, total, concluidas, pendentes, atrasadas, noPrazo, score, taxaPontualidade, porFrequencia } =
     stats
-  const ehSocialMedia = user.cargo === 'social_media'
+  const ehSocialMedia = temCargo(user, 'social_media')
   const ehAM =
-    user.cargo === 'account_manager' || user.cargo === 'gestor_trafego'
+    temAlgumCargo(user, ['account_manager', 'gestor_trafego'])
   const ehTaxaSimples = ehSocialMedia || ehAM
   const barraTitulo = ehSocialMedia
     ? 'Publicações no prazo'
@@ -1282,9 +1288,9 @@ function PerformanceRow({ stats, rank }: { stats: ColaboradorStats; rank: number
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-zinc-100 truncate">{user.nome}</p>
-            {user.cargo && (
+            {funcaoPrincipal(user) && (
               <Badge tone="neutral" className="text-[10px]">
-                {cargoLabel[user.cargo]}
+                {cargoLabel[funcaoPrincipal(user)!]}
               </Badge>
             )}
           </div>

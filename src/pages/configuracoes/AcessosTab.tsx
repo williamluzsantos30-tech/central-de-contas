@@ -1,7 +1,10 @@
 /**
  * Configurações › Gerenciar Acessos (movido do Admin em 25/09/2026).
  * Aprovar/rejeitar quem pediu acesso, criar usuário, ativar/desativar,
- * nível de acesso (role), cargo e cargos adicionais, foto.
+ * nível de acesso (role) e foto. A FUNÇÃO de cada pessoa (papel) e o squad
+ * NÃO são editados aqui — vêm de Configurações › Equipe Operacional (aqui
+ * só aparecem, com atalho pra lá). O `cargo`/`cargos_extras` antigo não é
+ * mais editável; lib/cargos lê o papel junto.
  *
  * SÓ ADMIN: a aba só aparece (e só renderiza) pra role 'admin' — ver
  * Configuracoes.tsx. Configurações é aberta a todos; isto não.
@@ -17,17 +20,24 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import { cn, formatDateTime, userRoleLabel } from '@/lib/utils'
-import { CARGOS, cargoLabel, type Cargo } from '@/lib/cargos'
 import { EditarFotoPerfilModal } from '@/components/layout/EditarFotoPerfilModal'
 import type { Profile } from '@/types/database'
 
-/** Usuários do sistema divididos em pendentes (aguardando aprovação) e aprovados. */
+/**
+ * Usuários do sistema divididos em pendentes (aguardando aprovação) e
+ * aprovados, com papel e squad da Equipe Operacional (só leitura aqui).
+ */
 export function useUsuariosAcesso(ativo = true) {
   const [usuarios, setUsuarios] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').order('nome')
+    const completo = await supabase
+      .from('profiles')
+      .select('*, papel:papeis_operacionais!profiles_papel_fk(*), squad:squads!profiles_squad_fk(*)')
+      .order('nome')
+    // Sem as FKs da Equipe Operacional (083) → lista simples, sem papel/squad.
+    const { data } = completo.error ? await supabase.from('profiles').select('*').order('nome') : completo
     setUsuarios((data as Profile[]) ?? [])
     setLoading(false)
   }, [])
@@ -43,16 +53,49 @@ export function useUsuariosAcesso(ativo = true) {
    Tab: Gerenciar Acessos
    ========================================================= */
 
+/**
+ * Papel · Squad vindos da Equipe Operacional — SÓ LEITURA aqui: a função
+ * de cada pessoa (gestor, social media, AM…) é definida lá, não em Acessos.
+ */
+function PapelEquipe({ u, onIrParaEquipe }: { u: Profile; onIrParaEquipe?: () => void }) {
+  if (!u.papel) {
+    return (
+      <button
+        type="button"
+        onClick={onIrParaEquipe}
+        className="inline-flex items-center gap-1 rounded-md border border-dashed border-orange-500/50 px-2 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-500/10"
+        title="Definir papel e squad em Configurações › Equipe Operacional"
+      >
+        Sem papel — definir em Equipe Operacional
+      </button>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onIrParaEquipe}
+      className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-elev px-2 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-brand-500/40"
+      title="Papel e squad vêm de Configurações › Equipe Operacional"
+    >
+      {u.papel.nome}
+      <span className="text-muted">· {u.squad?.nome ?? 'sem squad'}</span>
+    </button>
+  )
+}
+
 export function AcessosTab({
   pendentes,
   aprovados,
   loading,
   onChange,
+  onIrParaEquipe,
 }: {
   pendentes: Profile[]
   aprovados: Profile[]
   loading: boolean
   onChange: () => void
+  /** Abre a aba Equipe Operacional (onde papel e squad são definidos). */
+  onIrParaEquipe?: () => void
 }) {
   const [criarOpen, setCriarOpen] = useState(false)
   const [editFoto, setEditFoto] = useState<Profile | null>(null)
@@ -72,23 +115,6 @@ export function AcessosTab({
   }
   async function alterarRole(p: Profile, role: Profile['role']) {
     await supabase.from('profiles').update({ role }).eq('id', p.id)
-    onChange()
-  }
-  async function alterarCargo(p: Profile, cargo: Cargo) {
-    // Se o novo cargo principal estiver em cargos_extras, remove dali pra não duplicar
-    const extras = (p.cargos_extras ?? []).filter((c) => c !== cargo)
-    await supabase
-      .from('profiles')
-      .update({ cargo, cargos_extras: extras })
-      .eq('id', p.id)
-    onChange()
-  }
-  async function toggleCargoExtra(p: Profile, cargo: Cargo) {
-    const atual = p.cargos_extras ?? []
-    const next = atual.includes(cargo)
-      ? atual.filter((c) => c !== cargo)
-      : [...atual, cargo]
-    await supabase.from('profiles').update({ cargos_extras: next }).eq('id', p.id)
     onChange()
   }
 
@@ -146,17 +172,7 @@ export function AcessosTab({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Select
-                      value={u.cargo ?? 'gestor_trafego'}
-                      onChange={(e) => alterarCargo(u, e.target.value as Cargo)}
-                      className="w-40 h-8 text-[12px]"
-                    >
-                      {CARGOS.map((c) => (
-                        <option key={c} value={c}>
-                          {cargoLabel[c]}
-                        </option>
-                      ))}
-                    </Select>
+                    <PapelEquipe u={u} onIrParaEquipe={onIrParaEquipe} />
                     <Select
                       value={u.role}
                       onChange={(e) => alterarRole(u, e.target.value as Profile['role'])}
@@ -238,21 +254,12 @@ export function AcessosTab({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Select
-                      value={u.cargo ?? 'gestor_trafego'}
-                      onChange={(e) => alterarCargo(u, e.target.value as Cargo)}
-                      className="w-40 h-8 text-[12px]"
-                    >
-                      {CARGOS.map((c) => (
-                        <option key={c} value={c}>
-                          {cargoLabel[c]}
-                        </option>
-                      ))}
-                    </Select>
+                    <PapelEquipe u={u} onIrParaEquipe={onIrParaEquipe} />
                     <Select
                       value={u.role}
                       onChange={(e) => alterarRole(u, e.target.value as Profile['role'])}
                       className="w-28 h-8 text-[12px]"
+                      title="Nível de acesso"
                     >
                       <option value="admin">{userRoleLabel.admin}</option>
                       <option value="gestor">{userRoleLabel.gestor}</option>
@@ -265,33 +272,6 @@ export function AcessosTab({
                     >
                       {u.ativo ? 'Desativar' : 'Ativar'}
                     </Button>
-                  </div>
-                  {/* Linha 2: cargos adicionais (chips). Sempre visível pra ficar óbvio que existe. */}
-                  <div className="basis-full flex items-center gap-2 pt-1 pl-12">
-                    <span className="text-[10px] uppercase tracking-wider text-muted">
-                      Também atua como:
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {CARGOS.filter((c) => c !== u.cargo).map((c) => {
-                        const ativo = (u.cargos_extras ?? []).includes(c)
-                        return (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => toggleCargoExtra(u, c)}
-                            className={cn(
-                              'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
-                              ativo
-                                ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
-                                : 'border-border text-muted hover:border-brand-500/40 hover:text-zinc-300',
-                            )}
-                            title={ativo ? `Remover cargo adicional` : `Adicionar cargo adicional`}
-                          >
-                            {cargoLabel[c]}
-                          </button>
-                        )
-                      })}
-                    </div>
                   </div>
                 </li>
               ))}
@@ -345,8 +325,6 @@ function CriarUsuarioModal({
     email: '',
     senha: '',
     role: 'gestor' as Profile['role'],
-    cargo: 'gestor_trafego' as Cargo,
-    cargosExtras: [] as Cargo[],
     aprovadoImediato: true,
   })
   const [showPwd, setShowPwd] = useState(false)
@@ -360,8 +338,6 @@ function CriarUsuarioModal({
         email: '',
         senha: '',
         role: 'gestor',
-        cargo: 'gestor_trafego',
-        cargosExtras: [],
         aprovadoImediato: true,
       })
       setShowPwd(false)
@@ -382,7 +358,7 @@ function CriarUsuarioModal({
     // Verifica se já existe profile com esse e-mail
     const { data: existing } = await supabase
       .from('profiles')
-      .select('id, nome, role, cargo')
+      .select('id, nome, role')
       .eq('email', email)
       .maybeSingle()
 
@@ -404,8 +380,6 @@ function CriarUsuarioModal({
         .update({
           nome: form.nome.trim(),
           role: form.role,
-          cargo: form.cargo,
-          cargos_extras: form.cargosExtras.filter((c) => c !== form.cargo),
           ativo: true,
           aprovado: form.aprovadoImediato,
         })
@@ -427,8 +401,6 @@ function CriarUsuarioModal({
       nome: form.nome.trim(),
       email,
       role: form.role,
-      cargo: form.cargo,
-      cargos_extras: form.cargosExtras.filter((c) => c !== form.cargo),
       avatar_url: null,
       ativo: true,
       aprovado: form.aprovadoImediato,
@@ -545,62 +517,20 @@ function CriarUsuarioModal({
             entrada.
           </p>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Cargo">
-            <Select
-              value={form.cargo}
-              onChange={(e) => setForm({ ...form, cargo: e.target.value as Cargo })}
-            >
-              {CARGOS.map((c) => (
-                <option key={c} value={c}>
-                  {cargoLabel[c]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Nível de acesso">
-            <Select
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as Profile['role'] })}
-            >
-              <option value="admin">{userRoleLabel.admin}</option>
-              <option value="gestor">{userRoleLabel.gestor}</option>
-              <option value="supervisor">{userRoleLabel.supervisor}</option>
-            </Select>
-          </Field>
-        </div>
-        <Field label="Cargos adicionais (opcional)">
-          <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-bg-soft px-2 py-2">
-            {CARGOS.filter((c) => c !== form.cargo).map((c) => {
-              const ativo = form.cargosExtras.includes(c)
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      cargosExtras: ativo
-                        ? form.cargosExtras.filter((x) => x !== c)
-                        : [...form.cargosExtras, c],
-                    })
-                  }
-                  className={cn(
-                    'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
-                    ativo
-                      ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
-                      : 'border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
-                  )}
-                >
-                  {cargoLabel[c]}
-                </button>
-              )
-            })}
-          </div>
-          <p className="mt-1 text-[10px] text-muted">
-            Quando alguém trabalha em mais de uma frente (ex.: design + social). Aparece nos dropdowns das duas áreas.
-          </p>
+        <Field label="Nível de acesso">
+          <Select
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value as Profile['role'] })}
+          >
+            <option value="admin">{userRoleLabel.admin}</option>
+            <option value="gestor">{userRoleLabel.gestor}</option>
+            <option value="supervisor">{userRoleLabel.supervisor}</option>
+          </Select>
         </Field>
+        <p className="rounded-md border border-border bg-bg-soft px-3 py-2 text-[11px] text-muted">
+          A função (gestor de tráfego, social media, account manager…) e o squad são definidos depois em{' '}
+          <span className="text-zinc-200">Configurações › Equipe Operacional</span>.
+        </p>
         <label className="flex items-center gap-2 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs text-zinc-200">
           <input
             type="checkbox"

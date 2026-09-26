@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import { formatDateTime, frequenciaLabel } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { temAlgumCargo, type Cargo } from '@/lib/cargos'
@@ -47,12 +48,7 @@ export function TarefaDrawer({ open, onClose, tarefa, onChanged }: Props) {
       data_vencimento: tarefa.data_vencimento,
     })
     loadComentarios(tarefa.id)
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .order('nome')
+    buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome'))
       .then(({ data }) => {
         const all = (data as Profile[]) ?? []
         // Filtra client-side pra cargos de gestao (principal OU extras)

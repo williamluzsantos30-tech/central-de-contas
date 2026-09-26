@@ -624,7 +624,13 @@ export default function Configuracoes() {
       {tab === 'integracoes' && <IntegracoesTab />}
 
       {tab === 'acessos' && isAdmin && (
-        <AcessosTab pendentes={acessos.pendentes} aprovados={acessos.aprovados} loading={acessos.loading} onChange={acessos.reload} />
+        <AcessosTab
+          pendentes={acessos.pendentes}
+          aprovados={acessos.aprovados}
+          loading={acessos.loading}
+          onChange={acessos.reload}
+          onIrParaEquipe={() => setTab('equipe')}
+        />
       )}
 
       {(tab === 'seguranca' || tab === 'formularios') && (

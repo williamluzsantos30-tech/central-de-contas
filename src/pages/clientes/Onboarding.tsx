@@ -31,6 +31,8 @@ import {
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FilterBar, FilterPill, ROW_TONE } from '@/components/ds'
 import { supabase } from '@/lib/supabase'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
+import { temCargo } from '@/lib/cargos'
 import { cn } from '@/lib/utils'
 import { cargoLabel, type Cargo } from '@/lib/cargos'
 import type { Cliente, Profile } from '@/types/database'
@@ -113,7 +115,8 @@ export default function Onboarding() {
     setLoading(true)
     const [cRes, pRes, nRes] = await Promise.all([
       supabase.from('clientes').select('*').order('data_inicio', { ascending: true }),
-      supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      // Com o papel (Equipe Operacional) — AM/gestor saem de temCargo.
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true)),
       supabase
         .from('nps_surveys')
         .select('cliente_id, token, criado_em, respondido_em, nps_score')
@@ -176,8 +179,8 @@ export default function Onboarding() {
     return [...s].sort()
   }, [emOnboarding])
 
-  const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
-  const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
+  const ams = useMemo(() => profiles.filter((p) => temCargo(p, 'account_manager')), [profiles])
+  const gestores = useMemo(() => profiles.filter((p) => temCargo(p, 'gestor_trafego')), [profiles])
 
   const filtrados = useMemo(() => {
     const hoje = new Date()

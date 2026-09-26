@@ -65,6 +65,8 @@ import { FilterBar, FilterPill } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { CodigoCulturaModal } from '@/components/operacional/CodigoCulturaModal'
 import { supabase } from '@/lib/supabase'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
+import { temCargo } from '@/lib/cargos'
 import { cn } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import type { Cliente, Profile } from '@/types/database'
@@ -236,7 +238,8 @@ export default function VisaoExecutiva() {
     setLoading(true)
     const [cRes, pRes, eRes, jRes] = await Promise.all([
       supabase.from('clientes').select('*').order('nome'),
-      supabase.from('profiles').select('*').eq('ativo', true).eq('aprovado', true),
+      // Com o papel (Equipe Operacional) — AM/gestor saem de temCargo.
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true)),
       // Eventos de movimento comercial — expansao, perda, churn.
       // Alimenta o bloco Resultado do Negocio.
       supabase
@@ -304,8 +307,8 @@ export default function VisaoExecutiva() {
     [squadsReais],
   )
 
-  const ams = useMemo(() => profiles.filter((p) => p.cargo === 'account_manager'), [profiles])
-  const gestores = useMemo(() => profiles.filter((p) => p.cargo === 'gestor_trafego'), [profiles])
+  const ams = useMemo(() => profiles.filter((p) => temCargo(p, 'account_manager')), [profiles])
+  const gestores = useMemo(() => profiles.filter((p) => temCargo(p, 'gestor_trafego')), [profiles])
 
   const kpisLive = useMemo(() => {
     const [y, m] = mesISO.split('-').map(Number)

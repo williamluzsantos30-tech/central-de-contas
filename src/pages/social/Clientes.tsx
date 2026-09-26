@@ -27,6 +27,7 @@ import { loadInstagramCache } from '@/components/social/mockInstagram'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { getPostsForDateRange } from '@/lib/socialPosts'
 import { supabase } from '@/lib/supabase'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import { parseLocalDate } from '@/lib/dates'
 import { temCargo } from '@/lib/cargos'
 import {
@@ -116,19 +117,14 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         .order('nome'),
       supabase.from('producoes_social_media').select('*'),
       supabase.from('producoes_social_media_items').select('*'),
-      // Filtro de "Todos social media" só lista quem é cargo social_media
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .eq('cargo', 'social_media')
-        .order('nome'),
+      // Filtro de "Todos social media": quem é social media pelo cargo OU
+      // pelo papel da Equipe Operacional (filtrado abaixo com temCargo).
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome')),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
     setPlanejamentos((pRes.data as PlanejamentoSocialMedia[]) ?? [])
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
-    setResponsaveis((profRes.data as Profile[]) ?? [])
+    setResponsaveis(((profRes.data as Profile[]) ?? []).filter((p) => temCargo(p, 'social_media')))
     setLoading(false)
   }
 

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Profile } from '@/types/database'
+import { comPapel } from '@/lib/profilesComPapel'
 
 interface AuthCtx {
   session: Session | null
@@ -28,20 +29,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('auth_user_id', userId)
       .maybeSingle()
     if (byAuth.data) {
-      setProfile(byAuth.data as Profile)
+      // Com o papel da Equipe Operacional (define a função — ver lib/cargos).
+      setProfile(await comPapel(byAuth.data as Profile))
       return
     }
     // Fallback 1: id == userId (estrutura antiga / antes da migration)
     const byId = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
     if (byId.data) {
-      setProfile(byId.data as Profile)
+      setProfile(await comPapel(byId.data as Profile))
       return
     }
     // Fallback 2: por e-mail (caso o admin tenha criado o profile e ainda não foi linkado)
     if (email) {
       const byEmail = await supabase.from('profiles').select('*').eq('email', email).maybeSingle()
       if (byEmail.data) {
-        setProfile(byEmail.data as Profile)
+        setProfile(await comPapel(byEmail.data as Profile))
         // Se temos auth_user_id no schema, faz o link agora
         try {
           await supabase

@@ -8,19 +8,38 @@ export type Cargo =
   | 'diretoria'
   | 'head'
 
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
 /**
- * True se o profile tem esse cargo, considerando tanto o cargo principal
- * quanto os cargos_extras. Use sempre isso ao invés de `profile.cargo === X`,
- * senão pessoas com cargo duplo (ex.: designer + social_media) ficam invisíveis
- * pros dropdowns da segunda função.
+ * Função (Cargo) que o PAPEL operacional representa — Configurações › Equipe
+ * Operacional é quem define a função de cada pessoa (profiles.papel_id). O
+ * `cargo`/`cargos_extras` antigo continua valendo pra quem já tem.
  */
-export function temCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined, cargo: Cargo): boolean {
-  if (!profile) return false
-  if (profile.cargo === cargo) return true
-  return Array.isArray(profile.cargos_extras) && profile.cargos_extras.includes(cargo)
+export function cargoDoPapel(nomePapel: string | null | undefined): Cargo | null {
+  const n = nomePapel ? semAcento(nomePapel) : ''
+  if (!n) return null
+  if (n.startsWith('head')) return 'head'
+  if (n.includes('diretor') || n.includes('diretoria')) return 'diretoria'
+  if (n.includes('trafego')) return 'gestor_trafego'
+  if (n.includes('social')) return 'social_media'
+  if (n.includes('account') || n.includes('conta')) return 'account_manager'
+  if (n.includes('design')) return 'designer'
+  return null
 }
 
-const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+type ComCargo = Pick<Profile, 'cargo' | 'cargos_extras'> & { papel?: Profile['papel'] }
+
+/**
+ * True se o profile exerce esse cargo: cargo principal, cargos_extras OU o
+ * papel da Equipe Operacional (quando o profile vem com `papel` embarcado —
+ * ver lib/profilesComPapel). Use sempre isso ao invés de `profile.cargo === X`.
+ */
+export function temCargo(profile: ComCargo | null | undefined, cargo: Cargo): boolean {
+  if (!profile) return false
+  if (profile.cargo === cargo) return true
+  if (Array.isArray(profile.cargos_extras) && profile.cargos_extras.includes(cargo)) return true
+  return cargoDoPapel(profile.papel?.nome) === cargo
+}
 
 /**
  * True se o membro exerce a FUNÇÃO, considerando o `cargo`/`cargos_extras`
@@ -46,17 +65,25 @@ export function temFuncao(
 }
 
 /** True se tem QUALQUER um dos cargos passados (designer OU social_media etc). */
-export function temAlgumCargo(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined, cargos: Cargo[]): boolean {
+export function temAlgumCargo(profile: ComCargo | null | undefined, cargos: Cargo[]): boolean {
   return cargos.some((c) => temCargo(profile, c))
 }
 
-/** Lista todos os cargos do profile (principal + extras), deduplicado. */
-export function cargosDoProfile(profile: Pick<Profile, 'cargo' | 'cargos_extras'> | null | undefined): Cargo[] {
+/** Lista todos os cargos do profile (principal + extras + papel), deduplicado. */
+export function cargosDoProfile(profile: ComCargo | null | undefined): Cargo[] {
   if (!profile) return []
   const set = new Set<Cargo>()
   if (profile.cargo) set.add(profile.cargo)
   for (const c of profile.cargos_extras ?? []) set.add(c)
+  const doPapel = cargoDoPapel(profile.papel?.nome)
+  if (doPapel) set.add(doPapel)
   return Array.from(set)
+}
+
+/** Função principal pra exibir/agrupar: o cargo antigo ou, sem ele, o do papel. */
+export function funcaoPrincipal(profile: ComCargo | null | undefined): Cargo | null {
+  if (!profile) return null
+  return profile.cargo ?? cargoDoPapel(profile.papel?.nome)
 }
 
 export const CARGOS: Cargo[] = [
