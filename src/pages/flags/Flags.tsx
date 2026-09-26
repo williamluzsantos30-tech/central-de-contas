@@ -147,12 +147,12 @@ export default function Flags() {
         <FilterPill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
       </FilterBar>
 
-      {/* KPIs */}
+      {/* KPIs — cor de alerta só quando há flag (zero é neutro) */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KPICard icon={<Users2 size={13} />} label="Colaboradores com Flags" value={String(kpis.colaboradoresComFlags)} sub="com flag ativa" />
-        <KPICard icon={<AlertTriangle size={13} className="text-yellow-400" />} label="Flags Amarelas Ativas" value={String(kpis.amarelasAtivas)} tone="attention" sub="amarelas em vigor" />
-        <KPICard icon={<XCircle size={13} className="text-red-400" />} label="Flags Vermelhas Ativas" value={String(kpis.vermelhasAtivas)} tone="danger" sub="permanentes" />
-        <KPICard icon={<OctagonAlert size={13} className="text-red-400" />} label="Elegíveis Desligamento" value={String(kpis.elegiveisDesligamento)} tone="danger" sub="com flag vermelha" />
+        <KPICard icon={<AlertTriangle size={13} className={kpis.amarelasAtivas ? 'text-yellow-400' : undefined} />} label="Flags Amarelas Ativas" value={String(kpis.amarelasAtivas)} tone={kpis.amarelasAtivas ? 'attention' : 'neutral'} sub="amarelas em vigor" />
+        <KPICard icon={<XCircle size={13} className={kpis.vermelhasAtivas ? 'text-red-400' : undefined} />} label="Flags Vermelhas Ativas" value={String(kpis.vermelhasAtivas)} tone={kpis.vermelhasAtivas ? 'danger' : 'neutral'} sub="permanentes" />
+        <KPICard icon={<OctagonAlert size={13} className={kpis.elegiveisDesligamento ? 'text-red-400' : undefined} />} label="Elegíveis Desligamento" value={String(kpis.elegiveisDesligamento)} tone={kpis.elegiveisDesligamento ? 'danger' : 'neutral'} sub="com flag vermelha" />
       </div>
 
       {/* Tabela */}

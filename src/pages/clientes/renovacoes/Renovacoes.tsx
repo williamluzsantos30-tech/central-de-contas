@@ -10,8 +10,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Calendar, AlertTriangle, AlertCircle, XCircle, RefreshCw } from 'lucide-react'
-import { PageHeader, DataTable, Badge, type Column, type RowTone, type Tone } from '@/components/ds'
-import { cn } from '@/lib/utils'
+import { PageHeader, DataTable, Badge, AlertCard, type Column, type RowTone, type Tone } from '@/components/ds'
 import type { SemaforoCliente } from '@/types/database'
 import { useRenovacoesData, type LinhaRenovacao } from './useRenovacoesData'
 
@@ -154,10 +153,10 @@ export default function Renovacoes() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <AlertCard icon={<Calendar size={16} />} valor={d.kpis.vencendo30} label="Vencendo em 30 dias" tone="amber" />
-            <AlertCard icon={<AlertTriangle size={16} />} valor={d.kpis.vencendo15} label="Vencendo em 15 dias" tone="orange" />
-            <AlertCard icon={<AlertCircle size={16} />} valor={d.kpis.vencendo7} label="Vencendo em 7 dias" tone="red" />
-            <AlertCard icon={<XCircle size={16} />} valor={d.kpis.vencidos} label="Contratos vencidos" tone="darkred" />
+            <AlertCard icon={<Calendar size={16} />} valor={d.kpis.vencendo30} label="Vencendo em 30 dias" tone="attention" />
+            <AlertCard icon={<AlertTriangle size={16} />} valor={d.kpis.vencendo15} label="Vencendo em 15 dias" tone="warning" />
+            <AlertCard icon={<AlertCircle size={16} />} valor={d.kpis.vencendo7} label="Vencendo em 7 dias" tone="danger" />
+            <AlertCard icon={<XCircle size={16} />} valor={d.kpis.vencidos} label="Contratos vencidos" tone="danger" />
           </div>
 
           {d.vazio ? (
@@ -184,38 +183,6 @@ export default function Renovacoes() {
           )}
         </>
       )}
-    </div>
-  )
-}
-
-// ============================================================
-// AlertCard — cartão de alerta com borda esquerda colorida (severidade).
-// Específico de Renovações (o DS ainda não tem equivalente).
-// ============================================================
-const ALERT_TONE = {
-  amber: { border: 'border-l-amber-500', icon: 'text-amber-300', bg: 'bg-amber-500/[0.04]' },
-  orange: { border: 'border-l-orange-500', icon: 'text-orange-300', bg: 'bg-orange-500/[0.05]' },
-  red: { border: 'border-l-red-500', icon: 'text-red-300', bg: 'bg-red-500/[0.05]' },
-  darkred: { border: 'border-l-red-700', icon: 'text-red-400', bg: 'bg-red-700/[0.08]' },
-} as const
-
-function AlertCard({
-  icon,
-  valor,
-  label,
-  tone,
-}: {
-  icon: React.ReactNode
-  valor: number
-  label: string
-  tone: keyof typeof ALERT_TONE
-}) {
-  const t = ALERT_TONE[tone]
-  return (
-    <div className={cn('rounded-lg border border-border border-l-4 bg-bg-card p-4', t.border, t.bg)}>
-      <div className={cn('mb-2', t.icon)}>{icon}</div>
-      <p className="text-3xl font-bold leading-none tabular-nums text-zinc-100">{valor}</p>
-      <p className="mt-1.5 text-[11px] text-muted">{label}</p>
     </div>
   )
 }

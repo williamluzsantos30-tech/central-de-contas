@@ -578,28 +578,28 @@ export default function VisaoExecutiva() {
               </p>
             </div>
           ) : eMesAtual ? (
-            <div className="mb-3 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] px-4 py-3">
+            <div className="mb-3 rounded-xl border border-blue-500/40 bg-blue-500/[0.06] px-4 py-3">
               <div className="flex items-center gap-2">
-                <Clock size={13} className="text-sky-300" />
-                <p className="text-xs font-semibold text-sky-200">
+                <Clock size={13} className="text-blue-300" />
+                <p className="text-xs font-semibold text-blue-200">
                   Mês Atual
-                  <span className="ml-2 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+                  <span className="ml-2 rounded border border-blue-500/40 bg-blue-500/10 px-1.5 py-0.5 text-[10px] uppercase text-blue-300">
                     Tempo Real
                   </span>
                 </p>
               </div>
-              <p className="mt-1 text-[11px] text-sky-300/80">
+              <p className="mt-1 text-[11px] text-blue-300/80">
                 Dados de {labelMes(mesISO)} são calculados em tempo real e podem
                 mudar conforme novas movimentações são registradas.
               </p>
             </div>
           ) : podeArquivar ? (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/[0.06] px-4 py-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-yellow-500/40 bg-yellow-500/[0.06] px-4 py-3">
               <div className="flex items-start gap-2">
-                <Archive size={14} className="mt-0.5 shrink-0 text-amber-300" />
+                <Archive size={14} className="mt-0.5 shrink-0 text-yellow-300" />
                 <div>
-                  <p className="text-xs font-semibold text-amber-200">Mês encerrado</p>
-                  <p className="mt-0.5 text-[11px] text-amber-300/80">
+                  <p className="text-xs font-semibold text-yellow-200">Mês encerrado</p>
+                  <p className="mt-0.5 text-[11px] text-yellow-300/80">
                     {labelMes(mesISO)} já terminou. Arquive para <strong>congelar</strong> estas métricas e preservar o histórico — depois disso os valores não mudam mais.
                   </p>
                 </div>
@@ -635,12 +635,12 @@ export default function VisaoExecutiva() {
             {/* Hero MRR */}
             <div className="mb-6 pb-6 border-b border-border">
               <div className="flex items-center gap-2 mb-2">
-                <DollarSign size={16} className="text-emerald-300" />
+                <DollarSign size={16} className="text-green-300" />
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
                   Receita do mês (MRR)
                 </p>
               </div>
-              <p className="text-5xl font-bold tabular-nums leading-none text-emerald-300">
+              <p className="text-5xl font-bold tabular-nums leading-none text-green-300">
                 {formatBRL(kpis.mrr)}
               </p>
               <p className="mt-2 text-xs text-muted">receita recorrente mensal</p>
@@ -651,17 +651,17 @@ export default function VisaoExecutiva() {
               <SubKpi
                 titulo="NRR"
                 valor={formatPct(kpis.nrr)}
-                tone={kpis.nrr >= 0.95 ? 'emerald' : kpis.nrr >= 0.9 ? 'amber' : 'red'}
+                tone={kpis.nrr >= 0.95 ? 'green' : kpis.nrr >= 0.9 ? 'yellow' : 'red'}
               />
               <SubKpi
                 titulo="Churn Rate"
                 valor={formatPct(kpis.churnRate)}
-                tone={kpis.churnRate < 0.05 ? 'emerald' : kpis.churnRate < 0.1 ? 'amber' : 'red'}
+                tone={kpis.churnRate < 0.05 ? 'green' : kpis.churnRate < 0.1 ? 'yellow' : 'red'}
               />
               <SubKpi
                 titulo="MRR em Risco"
                 valor={formatBRL(kpis.mrrRisco)}
-                tone={kpis.mrrRisco === 0 ? 'emerald' : 'red'}
+                tone={kpis.mrrRisco === 0 ? 'green' : 'red'}
               />
               <div>
                 <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">
@@ -692,10 +692,10 @@ export default function VisaoExecutiva() {
               </p>
               <div className="space-y-3">
                 <LinhaResultado
-                  icone={<Plus size={12} className="text-emerald-400" />}
+                  icone={<Plus size={12} className="text-green-400" />}
                   label="Expansão"
                   valor={kpis.expansao}
-                  tone="emerald"
+                  tone="green"
                   sub={
                     kpis.nExpansoes > 0
                       ? `${kpis.nExpansoes} ${kpis.nExpansoes === 1 ? 'registro' : 'registros'}`
@@ -704,10 +704,10 @@ export default function VisaoExecutiva() {
                   onClick={kpis.nExpansoes > 0 ? () => setMovTipo('expansao') : undefined}
                 />
                 <LinhaResultado
-                  icone={<span className="text-amber-400 text-xs">−</span>}
+                  icone={<span className="text-yellow-400 text-xs">−</span>}
                   label="Redução"
                   valor={-kpis.reducao}
-                  tone="amber"
+                  tone="yellow"
                   sub={
                     kpis.nPerdas > 0
                       ? `${kpis.nPerdas} ${kpis.nPerdas === 1 ? 'registro' : 'registros'}`
@@ -744,7 +744,7 @@ export default function VisaoExecutiva() {
                   kpis.saldo < 0
                     ? 'text-red-300'
                     : kpis.saldo > 0
-                      ? 'text-emerald-300'
+                      ? 'text-green-300'
                       : 'text-zinc-300',
                 )}
               >
@@ -784,13 +784,13 @@ export default function VisaoExecutiva() {
                 }
               />
               <ExecKpi
-                icone={<CheckCircle2 size={14} className="text-emerald-300" />}
+                icone={<CheckCircle2 size={14} className="text-green-300" />}
                 titulo="Onboarding Finalizado"
                 valor={formatPct(kpis.pctOnboardingFinalizado)}
                 sub={`${kpis.emOnboarding} em onboarding`}
               />
               <ExecKpi
-                icone={<Smile size={14} className="text-amber-300" />}
+                icone={<Smile size={14} className="text-yellow-300" />}
                 titulo="NPS Médio"
                 valor={kpis.npsMedio !== null ? kpis.npsMedio.toFixed(1) : 'sem dado'}
                 sub={
@@ -849,8 +849,8 @@ export default function VisaoExecutiva() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <BoxAcao
                 titulo="Verde (base saudável)"
-                icon={<CheckCircle2 size={14} className="text-emerald-300" />}
-                tone="emerald"
+                icon={<CheckCircle2 size={14} className="text-green-300" />}
+                tone="green"
                 acoes={[
                   'Manter padrão atual',
                   'Documentar boas práticas',
@@ -859,8 +859,8 @@ export default function VisaoExecutiva() {
               />
               <BoxAcao
                 titulo="Amarelo (atenção)"
-                icon={<AlertTriangle size={14} className="text-amber-300" />}
-                tone="amber"
+                icon={<AlertTriangle size={14} className="text-yellow-300" />}
+                tone="yellow"
                 acoes={[
                   'Revisar onboarding',
                   'Reunião com AM e Gestores',
@@ -918,11 +918,12 @@ export default function VisaoExecutiva() {
 }
 
 // ------ Sub-componentes ------
-type Tone = 'emerald' | 'amber' | 'red' | 'neutral'
+// Mesmos tons do DS (green = success, yellow = attention).
+type Tone = 'green' | 'yellow' | 'red' | 'neutral'
 
 const toneText: Record<Tone, string> = {
-  emerald: 'text-emerald-300',
-  amber: 'text-amber-300',
+  green: 'text-green-300',
+  yellow: 'text-yellow-300',
   red: 'text-red-300',
   neutral: 'text-zinc-100',
 }
@@ -934,12 +935,12 @@ function Farol({ ok, label, valor }: { ok: boolean; label: string; valor: string
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wider',
         ok
-          ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-300'
+          ? 'border-green-500/30 bg-green-500/[0.06] text-green-300'
           : 'border-red-500/40 bg-red-500/10 text-red-300',
       )}
       title={ok ? 'Dentro da meta' : 'Fora da meta'}
     >
-      <span className={cn('h-1.5 w-1.5 rounded-full', ok ? 'bg-emerald-400' : 'bg-red-400')} />
+      <span className={cn('h-1.5 w-1.5 rounded-full', ok ? 'bg-green-400' : 'bg-red-400')} />
       {label}
       <span className="normal-case tracking-normal tabular-nums opacity-80">{valor}</span>
     </span>
@@ -979,7 +980,7 @@ function LinhaResultado({
   icone: React.ReactNode
   label: string
   valor: number
-  tone: 'emerald' | 'amber' | 'red'
+  tone: 'green' | 'yellow' | 'red'
   sub?: string
   onClick?: () => void
 }) {
@@ -1003,7 +1004,7 @@ function LinhaResultado({
       <span
         className={cn(
           'text-sm font-semibold tabular-nums',
-          tone === 'emerald' ? 'text-emerald-300' : tone === 'amber' ? 'text-amber-300' : 'text-red-300',
+          tone === 'green' ? 'text-green-300' : tone === 'yellow' ? 'text-yellow-300' : 'text-red-300',
         )}
       >
         {formatBRL(valor)}
@@ -1050,16 +1051,16 @@ function BoxAcao({
   titulo: string
   icon: React.ReactNode
   acoes: string[]
-  tone: 'emerald' | 'amber' | 'red'
+  tone: 'green' | 'yellow' | 'red'
 }) {
   const cls =
-    tone === 'emerald'
-      ? 'border-emerald-500/40 bg-emerald-500/[0.05]'
-      : tone === 'amber'
-        ? 'border-amber-500/40 bg-amber-500/[0.05]'
+    tone === 'green'
+      ? 'border-green-500/40 bg-green-500/[0.05]'
+      : tone === 'yellow'
+        ? 'border-yellow-500/40 bg-yellow-500/[0.05]'
         : 'border-red-500/40 bg-red-500/[0.05]'
   const textCls =
-    tone === 'emerald' ? 'text-emerald-200' : tone === 'amber' ? 'text-amber-200' : 'text-red-200'
+    tone === 'green' ? 'text-green-200' : tone === 'yellow' ? 'text-yellow-200' : 'text-red-200'
   return (
     <div className={cn('rounded-xl border p-4', cls)}>
       <div className="mb-3 flex items-center gap-2">
@@ -1094,7 +1095,7 @@ function BoxAcao({
 //                  OR arquivado_em > fim))
 //
 // Chart: SVG puro, 12 colunas (jan-dez), 2 barras por coluna
-// (emerald novos, red churns) + polyline sky pra Base Ativa.
+// (green novos, red churns) + polyline sky pra Base Ativa.
 
 interface MesEvolucao {
   mesLabel: string
@@ -1224,7 +1225,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
     <div className="mt-6 rounded-xl border border-border bg-bg-card p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <TrendingUp size={14} className="text-emerald-300" />
+          <TrendingUp size={14} className="text-green-300" />
           <h3 className="text-sm font-semibold text-zinc-100">Evolução de Clientes</h3>
         </div>
         <span className="rounded-md border border-border bg-bg-soft px-3 py-1 text-[11px] text-zinc-200">
@@ -1371,7 +1372,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
       {/* Legenda */}
       <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+          <span className="h-2.5 w-2.5 rounded-sm bg-green-500" />
           Novos
         </span>
         <span className="flex items-center gap-1.5">
@@ -1388,7 +1389,7 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
       <div className="mt-5 overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+            <tr className="border-b border-border bg-bg-soft/60 text-[10px] uppercase tracking-wider text-muted">
               <th className="py-2 text-left font-semibold">Mês</th>
               <th className="py-2 text-right font-semibold">Novos</th>
               <th className="py-2 text-right font-semibold">Churns</th>
@@ -1410,13 +1411,13 @@ function EvolucaoClientes({ clientes }: { clientes: Cliente[] }) {
                   title={temMov ? 'Clique para ver os clientes' : undefined}
                 >
                   <td className="py-2 text-zinc-300">{d.mesLabel}</td>
-                  <td className="py-2 text-right tabular-nums text-emerald-300">{d.novos}</td>
+                  <td className="py-2 text-right tabular-nums text-green-300">{d.novos}</td>
                   <td className="py-2 text-right tabular-nums text-red-300">{d.churns}</td>
                   <td
                     className={cn(
                       'py-2 text-right tabular-nums font-semibold',
                       d.saldo > 0
-                        ? 'text-emerald-300'
+                        ? 'text-green-300'
                         : d.saldo < 0
                           ? 'text-red-300'
                           : 'text-zinc-400',
@@ -1481,10 +1482,10 @@ function MovimentacaoMesModal({
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Coluna Novos */}
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.03] p-3">
-            <div className="mb-2 flex items-center gap-1.5 border-b border-emerald-500/20 pb-2">
-              <Users size={12} className="text-emerald-300" />
-              <p className="text-xs font-semibold text-emerald-200">Novos ({mes.novos})</p>
+          <div className="rounded-lg border border-green-500/30 bg-green-500/[0.03] p-3">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-green-500/20 pb-2">
+              <Users size={12} className="text-green-300" />
+              <p className="text-xs font-semibold text-green-200">Novos ({mes.novos})</p>
             </div>
             {mes.novosLista.length === 0 ? (
               <p className="py-6 text-center text-[11px] text-muted italic">Nenhum</p>
@@ -1494,7 +1495,7 @@ function MovimentacaoMesModal({
                   <li key={c.id}>
                     <a
                       href={`/clientes/${c.id}`}
-                      className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-emerald-500/10 hover:text-emerald-200"
+                      className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-green-500/10 hover:text-green-200"
                     >
                       <span className="truncate">{c.nome}</span>
                       <ExternalLink size={10} className="shrink-0 opacity-60" />
@@ -1562,16 +1563,16 @@ function MovimentacoesModal({
     expansao: {
       titulo: 'Expansões',
       sinal: '+',
-      texto: 'text-emerald-300',
-      borda: 'border-emerald-500/30',
-      hover: 'hover:bg-emerald-500/10',
+      texto: 'text-green-300',
+      borda: 'border-green-500/30',
+      hover: 'hover:bg-green-500/10',
     },
     perda: {
       titulo: 'Reduções',
       sinal: '−',
-      texto: 'text-amber-300',
-      borda: 'border-amber-500/30',
-      hover: 'hover:bg-amber-500/10',
+      texto: 'text-yellow-300',
+      borda: 'border-yellow-500/30',
+      hover: 'hover:bg-yellow-500/10',
     },
     churn: {
       titulo: 'Churns',
@@ -1643,7 +1644,7 @@ function MovimentacoesModal({
           <div className={cn('overflow-hidden rounded-lg border', cfg.borda)}>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+                <tr className="border-b border-border bg-bg-soft/60 text-[10px] uppercase tracking-wider text-muted">
                   <th className="px-3 py-2 text-left font-semibold">Cliente</th>
                   <th className="px-3 py-2 text-left font-semibold">Data</th>
                   <th className="px-3 py-2 text-left font-semibold">Motivo</th>
@@ -1936,16 +1937,16 @@ function ScoreSaudeSquads({
 function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: ComparacaoMoM }) {
   const cls =
     squad.classificacao === 'saudavel'
-      ? 'border-emerald-500/40'
+      ? 'border-green-500/40'
       : squad.classificacao === 'atencao'
-        ? 'border-amber-500/40'
+        ? 'border-yellow-500/40'
         : 'border-red-500/40'
 
   const scoreCls =
     squad.classificacao === 'saudavel'
-      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+      ? 'border-green-500/40 bg-green-500/10 text-green-200'
       : squad.classificacao === 'atencao'
-        ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+        ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200'
         : 'border-red-500/40 bg-red-500/10 text-red-200'
 
   const classLabel =
@@ -1966,7 +1967,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
   const mrrDown = comparacao.temAnterior && comparacao.mrrDelta < 0
   const MrrIcon = mrrUp ? ArrowUpRight : mrrDown ? ArrowDownRight : Minus
   const mrrPillCls = mrrUp
-    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+    ? 'border-green-500/30 bg-green-500/10 text-green-200'
     : mrrDown
       ? 'border-red-500/30 bg-red-500/10 text-red-200'
       : pillNeutro
@@ -1978,7 +1979,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
   const scoreUp = comparacao.temAnterior && comparacao.scoreDelta > 0
   const scoreDown = comparacao.temAnterior && comparacao.scoreDelta < 0
   const scorePillCls = scoreUp
-    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+    ? 'border-green-500/30 bg-green-500/10 text-green-200'
     : scoreDown
       ? 'border-red-500/30 bg-red-500/10 text-red-200'
       : pillNeutro
@@ -1990,8 +1991,8 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
   const nrrPct = squad.nrr * 100
   const nrrGood = squad.nrr >= 1
   const nrrWarn = squad.nrr >= 0.9
-  const nrrValCls = nrrGood ? 'text-emerald-300' : nrrWarn ? 'text-amber-300' : 'text-red-300'
-  const nrrBarCls = nrrGood ? 'bg-emerald-400' : nrrWarn ? 'bg-amber-400' : 'bg-red-400'
+  const nrrValCls = nrrGood ? 'text-green-300' : nrrWarn ? 'text-yellow-300' : 'text-red-300'
+  const nrrBarCls = nrrGood ? 'bg-green-400' : nrrWarn ? 'bg-yellow-400' : 'bg-red-400'
   const nrrBarW = Math.max(0, Math.min(100, nrrPct))
   const nrrSub = nrrGood
     ? 'Meta de retenção atingida'
@@ -2059,16 +2060,16 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
       <div className="relative h-2 overflow-hidden rounded-full bg-bg-elev">
         <div className="absolute inset-0 flex">
           <div className="w-1/3 bg-red-500/20" />
-          <div className="w-1/3 bg-amber-500/20" />
-          <div className="w-1/3 bg-emerald-500/20" />
+          <div className="w-1/3 bg-yellow-500/20" />
+          <div className="w-1/3 bg-green-500/20" />
         </div>
         <div
           className={cn(
             'absolute top-0 h-full w-1 rounded transition-all duration-300',
             squad.classificacao === 'saudavel'
-              ? 'bg-emerald-400'
+              ? 'bg-green-400'
               : squad.classificacao === 'atencao'
-                ? 'bg-amber-400'
+                ? 'bg-yellow-400'
                 : 'bg-red-400',
           )}
           style={{ left: `${scoreNorm}%` }}
@@ -2088,7 +2089,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
             className={cn(
               'rounded border px-1.5 py-0.5 text-[10px] font-medium',
               b.positive
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                ? 'border-green-500/30 bg-green-500/10 text-green-200'
                 : 'border-red-500/30 bg-red-500/10 text-red-200',
             )}
           >
@@ -2125,7 +2126,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
-                squad.churnsCount === 0 ? 'text-emerald-300' : 'text-red-300',
+                squad.churnsCount === 0 ? 'text-green-300' : 'text-red-300',
               )}
             >
               {squad.churnsCount}
@@ -2143,7 +2144,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
-                squad.revChurn > 0 ? 'text-red-300' : 'text-emerald-300',
+                squad.revChurn > 0 ? 'text-red-300' : 'text-green-300',
               )}
             >
               {formatBRL(squad.revChurn)}
@@ -2167,7 +2168,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
             <span
               className={cn(
                 'text-xs font-semibold tabular-nums',
-                squad.indicacoes > 0 ? 'text-emerald-300' : 'text-muted',
+                squad.indicacoes > 0 ? 'text-green-300' : 'text-muted',
               )}
             >
               {squad.indicacoes}
@@ -2263,7 +2264,7 @@ function SocialMediaVisao({
   return (
     <div className="mt-6">
       <div className="mb-3 flex items-center gap-2">
-        <Instagram size={14} className="text-pink-400" />
+        <Instagram size={14} className="text-muted" />
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
           Social Media
         </p>
@@ -2273,7 +2274,7 @@ function SocialMediaVisao({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-border bg-bg-card p-4">
           <div className="mb-2 flex items-center gap-2">
-            <Instagram size={12} className="text-pink-400" />
+            <Instagram size={12} className="text-muted" />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
               Clientes com Social Media
             </p>
@@ -2286,7 +2287,7 @@ function SocialMediaVisao({
 
         <div className="rounded-xl border border-border bg-bg-card p-4">
           <div className="mb-2 flex items-center gap-2">
-            <Smile size={12} className="text-amber-300" />
+            <Smile size={12} className="text-yellow-300" />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
               NPS Médio (Social)
             </p>
@@ -2308,7 +2309,7 @@ function SocialMediaVisao({
           </h4>
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
+              <tr className="border-b border-border bg-bg-soft/60 text-[10px] uppercase tracking-wider text-muted">
                 <th className="py-2 text-left font-semibold">Responsável</th>
                 <th className="py-2 text-right font-semibold">Clientes</th>
                 <th className="py-2 text-right font-semibold">NPS Médio</th>
@@ -2319,7 +2320,7 @@ function SocialMediaVisao({
                 <tr key={r.nome} className="border-b border-border/60 hover:bg-bg-soft/40">
                   <td className="py-2">
                     <span className="inline-flex items-center gap-2 text-zinc-200">
-                      <Instagram size={11} className="text-pink-400" />
+                      <Instagram size={11} className="text-muted" />
                       {r.nome}
                     </span>
                   </td>
@@ -2332,9 +2333,9 @@ function SocialMediaVisao({
                       r.nps === null
                         ? 'text-muted'
                         : r.nps >= 8
-                          ? 'text-emerald-300'
+                          ? 'text-green-300'
                           : r.nps >= 6
-                            ? 'text-amber-300'
+                            ? 'text-yellow-300'
                             : 'text-red-300',
                     )}
                   >

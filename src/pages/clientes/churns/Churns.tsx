@@ -143,14 +143,14 @@ export default function Churns() {
             </div>
           )}
 
-          {/* KPIs — perdas em vermelho (cor semântica do DS) */}
+          {/* KPIs — valores neutros (a página já é de perdas); a cor fica na variação vs. mês anterior */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <KPICard icon={<UserMinus size={13} className="text-red-400" />} label="Total Churns" value={String(d.kpis.totalChurns)} tone="danger" sparkline={d.tendencia.map((t) => t.qtd)} sub="no período" />
-            <KPICard icon={<DollarSign size={13} className="text-red-400" />} label="MRR Perdido" value={formatBRL(d.kpis.mrrPerdido)} tone="danger" sub="acumulado" />
-            <KPICard icon={<DollarSign size={13} className="text-red-400" />} label="MRR Mês Atual" value={formatBRL(d.kpis.mrrMesAtual)} tone="danger" delta={d.kpis.mrrMesAtualDeltaPct} deltaInvert sub="vs. mês anterior" />
-            <KPICard icon={<Percent size={13} className="text-red-400" />} label="Churn Rate" value={formatPct(d.kpis.churnRate)} tone="danger" sub="da base já cancelou" />
-            <KPICard icon={<Clock size={13} className="text-brand-300" />} label="Tempo Médio Casa" value={`${d.kpis.tempoMedioCasaMeses}m`} sub="até o churn" />
-            <KPICard icon={<Ticket size={13} className="text-brand-300" />} label="Ticket Médio Churn" value={formatBRL(d.kpis.ticketMedioChurn)} sub={`Ativos: ${formatBRL(d.kpis.ticketMedioAtivo)}`} />
+            <KPICard icon={<UserMinus size={13} />} label="Total Churns" value={String(d.kpis.totalChurns)} sparkline={d.tendencia.map((t) => t.qtd)} sub="no período" />
+            <KPICard icon={<DollarSign size={13} />} label="MRR Perdido" value={formatBRL(d.kpis.mrrPerdido)} sub="acumulado" />
+            <KPICard icon={<DollarSign size={13} />} label="MRR Mês Atual" value={formatBRL(d.kpis.mrrMesAtual)} delta={d.kpis.mrrMesAtualDeltaPct} deltaInvert sub="vs. mês anterior" />
+            <KPICard icon={<Percent size={13} />} label="Churn Rate" value={formatPct(d.kpis.churnRate)} sub="da base já cancelou" />
+            <KPICard icon={<Clock size={13} />} label="Tempo Médio Casa" value={`${d.kpis.tempoMedioCasaMeses}m`} sub="até o churn" />
+            <KPICard icon={<Ticket size={13} />} label="Ticket Médio Churn" value={formatBRL(d.kpis.ticketMedioChurn)} sub={`Ativos: ${formatBRL(d.kpis.ticketMedioAtivo)}`} />
           </div>
 
           {/* Filtros */}

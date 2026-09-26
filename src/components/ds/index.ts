@@ -11,6 +11,7 @@
 export { PrimaryButton, OutlineButton } from './Button'
 export { Badge } from './Badge'
 export { KPICard } from './KPICard'
+export { AlertCard } from './AlertCard'
 export { FilterBar, FilterPill, type FilterOption } from './FilterBar'
 export { DataTable, ROW_TONE, type Column, type RowTone, type SortDir } from './DataTable'
 export { FormField } from './FormField'
