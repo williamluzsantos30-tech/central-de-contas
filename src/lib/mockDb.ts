@@ -1141,6 +1141,10 @@ class Q {
 
   private _run(): Promise<{ data: any; error: any; count: number }> {
     return new Promise((resolve) => {
+      // Tabela que o mock ainda não conhece (ex.: nps_surveys, flags) = vazia,
+      // como num banco novo — antes quebrava a tela inteira no modo DEMO.
+      const registro = db as unknown as Record<string, Row[]>
+      registro[this.table] ??= []
       const table = db[this.table]
       if (this._mode === 'insert') {
         const rows = (Array.isArray(this._payload) ? this._payload : [this._payload]).map((r: any) => ({

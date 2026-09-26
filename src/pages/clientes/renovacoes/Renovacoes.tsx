@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Calendar, AlertTriangle, AlertCircle, XCircle, RefreshCw } from 'lucide-react'
-import { PageHeader, DataTable, Badge, type Column, type Tone } from '@/components/ds'
+import { PageHeader, DataTable, Badge, type Column, type RowTone, type Tone } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import type { SemaforoCliente } from '@/types/database'
 import { useRenovacoesData, type LinhaRenovacao } from './useRenovacoesData'
@@ -26,6 +26,8 @@ const RISCO: Record<SemaforoCliente, { label: string; tone: Tone }> = {
   laranja: { label: 'Risco', tone: 'warning' },
   vermelho: { label: 'Crítico', tone: 'danger' },
 }
+/** Pra ordenar do mais grave pro mais tranquilo. */
+const ORDEM_RISCO: Record<SemaforoCliente, number> = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3 }
 const STATUS_CONTRATO: Record<string, { label: string; tone: Tone }> = {
   ativo: { label: 'Ativo', tone: 'neutral' },
   renovado: { label: 'Renovado', tone: 'success' },
@@ -33,11 +35,23 @@ const STATUS_CONTRATO: Record<string, { label: string; tone: Tone }> = {
   pausado: { label: 'Pausado', tone: 'warning' },
 }
 
-/** Badge de dias restantes: vencido = vermelho; ≤7d = laranja; senão âmbar. */
-function diasBadge(dias: number): { texto: string; tone: Tone } {
+/**
+ * Escala de urgência dos dias restantes: vencido/≤7d vermelho, ≤15d laranja,
+ * ≤30d amarelo; acima disso é neutro (sem cor — não é alerta).
+ */
+function diasBadge(dias: number): { texto: string; tone: Tone | null } {
   if (dias < 0) return { texto: `Vencido há ${Math.abs(dias)}d`, tone: 'danger' }
-  if (dias <= 7) return { texto: `${dias}d`, tone: 'warning' }
-  return { texto: `${dias}d`, tone: 'attention' }
+  if (dias <= 7) return { texto: `${dias}d`, tone: 'danger' }
+  if (dias <= 15) return { texto: `${dias}d`, tone: 'warning' }
+  if (dias <= 30) return { texto: `${dias}d`, tone: 'attention' }
+  return { texto: `${dias}d`, tone: null }
+}
+
+/** Linha inteira tingida só pro que pede ação imediata. */
+function prioridade(l: LinhaRenovacao): RowTone | undefined {
+  if (l.diasRestantes < 0) return 'danger'
+  if (l.diasRestantes <= 7) return 'warning'
+  return undefined
 }
 
 export default function Renovacoes() {
@@ -56,34 +70,57 @@ export default function Renovacoes() {
   }, [busca, d.linhas])
 
   const columns: Column<LinhaRenovacao>[] = [
-    { key: 'nome', header: 'Cliente', render: (l) => <span className="font-medium text-zinc-100">{l.nome}</span> },
-    { key: 'squad', header: 'Squad', render: (l) => <span className="text-zinc-300">{l.squad ?? '—'}</span> },
-    { key: 'am', header: 'Account Manager', render: (l) => <span className="text-zinc-300">{l.accountManager ?? '—'}</span> },
-    { key: 'fim', header: 'Data Fim', render: (l) => <span className="tabular-nums text-zinc-300">{dataBR(l.contratoFim)}</span> },
+    {
+      key: 'nome',
+      header: 'Cliente',
+      sortValue: (l) => l.nome,
+      render: (l) => <span className="font-medium text-zinc-100">{l.nome}</span>,
+    },
+    { key: 'squad', header: 'Squad', sortValue: (l) => l.squad, render: (l) => <span className="text-zinc-300">{l.squad ?? '—'}</span> },
+    {
+      key: 'am',
+      header: 'Account Manager',
+      sortValue: (l) => l.accountManager,
+      render: (l) => <span className="text-zinc-300">{l.accountManager ?? '—'}</span>,
+    },
+    {
+      key: 'fim',
+      header: 'Data Fim',
+      sortValue: (l) => l.contratoFim,
+      render: (l) => <span className="tabular-nums text-zinc-300">{dataBR(l.contratoFim)}</span>,
+    },
     {
       key: 'dias',
       header: 'Dias Restantes',
+      sortValue: (l) => l.diasRestantes,
       render: (l) => {
         const b = diasBadge(l.diasRestantes)
-        return <Badge tone={b.tone} className="tabular-nums">{b.texto}</Badge>
+        return b.tone ? (
+          <Badge tone={b.tone} className="tabular-nums">{b.texto}</Badge>
+        ) : (
+          <span className="tabular-nums text-zinc-300">{b.texto}</span>
+        )
       },
     },
     {
       key: 'status',
       header: 'Status Contrato',
+      sortValue: (l) => l.contratoStatus ?? 'ativo',
       render: (l) => {
         const s = STATUS_CONTRATO[l.contratoStatus ?? 'ativo'] ?? STATUS_CONTRATO.ativo
-        return <Badge tone={s.tone}>{s.label}</Badge>
+        // "Ativo" é o normal → texto; só as exceções ganham badge.
+        return s.tone === 'neutral' ? <span className="text-zinc-300">{s.label}</span> : <Badge tone={s.tone}>{s.label}</Badge>
       },
     },
     {
       key: 'risco',
       header: 'Risco / NPS',
+      sortValue: (l) => ORDEM_RISCO[l.semaforo ?? 'verde'],
       render: (l) => {
         const r = l.semaforo ? RISCO[l.semaforo] : RISCO.verde
         return (
           <span className="inline-flex items-center gap-1.5">
-            <Badge tone={r.tone}>{r.label}</Badge>
+            {r.tone === 'success' ? <span className="text-zinc-300">{r.label}</span> : <Badge tone={r.tone}>{r.label}</Badge>}
             {typeof l.nps === 'number' && <span className="text-[10px] tabular-nums text-muted">NPS {l.nps}</span>}
           </span>
         )
@@ -137,6 +174,8 @@ export default function Renovacoes() {
                 columns={columns}
                 rows={linhas}
                 rowKey={(l) => l.id}
+                rowTone={prioridade}
+                defaultSort={{ key: 'dias', dir: 'asc' }}
                 minWidth={900}
                 search={{ value: busca, onChange: setBusca, placeholder: 'Buscar cliente...' }}
                 emptyLabel="Nenhum cliente encontrado."

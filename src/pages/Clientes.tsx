@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Pencil, Eye, Download } from 'lucide-react'
+import { Plus, Pencil, Eye, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Badge, DataTable, FilterBar, FilterPill, badgeTone, type Column, type RowTone, type Tone } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
@@ -167,98 +168,72 @@ export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego
         }
       />
 
-      {/* Filter row — chips estilo ClickUp */}
+      {/* Escopo + filtros */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {/* Toggle Meus/Time como pill segmentada */}
         <div className="inline-flex rounded-lg border border-border bg-bg-soft p-0.5">
-          <button
-            onClick={() => setEscopo('meus')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
-              escopo === 'meus'
-                ? 'bg-bg-elev text-zinc-100'
-                : 'text-muted hover:text-zinc-200',
-            )}
-          >
-            Apenas meus
-          </button>
-          <button
-            onClick={() => setEscopo('todos')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
-              escopo === 'todos' ? 'bg-bg-elev text-zinc-100' : 'text-muted hover:text-zinc-200',
-            )}
-          >
-            Todo o time
-          </button>
+          {(['meus', 'todos'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setEscopo(k)}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
+                escopo === k ? 'bg-bg-elev text-zinc-100' : 'text-muted hover:text-zinc-200',
+              )}
+            >
+              {k === 'meus' ? 'Apenas meus' : 'Todo o time'}
+            </button>
+          ))}
         </div>
-        <ChipSelect
-          value={fSquad}
-          onChange={setFSquad}
-          placeholder="Todas as Squads"
-          options={squadsAtivos.map((s) => ({ value: s, label: s }))}
-        />
-        <ChipSelect
-          value={fGestor}
-          onChange={setFGestor}
-          placeholder="Todos os Gestores"
-          options={gestores.map((g) => ({ value: g.id, label: g.nome }))}
-        />
-        <ChipSelect
-          value={fStatus}
-          onChange={setFStatus}
-          placeholder="Todos os Status"
-          options={[
-            { value: 'ativo', label: 'Ativo' },
-            { value: 'atencao', label: 'Atenção' },
-            { value: 'pausado', label: 'Pausado' },
-            { value: 'churn', label: 'Churn' },
-          ]}
-        />
-        <ChipSelect
-          value={fJornada}
-          onChange={setFJornada}
-          placeholder="Todas as Jornadas"
-          options={JORNADAS_CLIENTE.map((j) => ({ value: j, label: jornadaClienteLabel[j] }))}
-        />
-        {podeVerArquivados && (
-          <button
-            type="button"
-            onClick={() => setMostrarArquivados((v) => !v)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors',
-              mostrarArquivados
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
-                : 'border-border bg-bg-soft text-muted hover:border-amber-500/40 hover:text-amber-200',
-            )}
-          >
-            {mostrarArquivados ? 'Voltar pra ativos' : 'Ver arquivados'}
-          </button>
-        )}
-      </div>
-
-      {/* Search row */}
-      <div className="mb-4 flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar cliente..."
-            className="w-full rounded-lg border border-border bg-bg-soft/40 pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
+        <FilterBar className="flex-1">
+          <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todas as Squads" options={squadsAtivos.map((s) => ({ value: s, label: s }))} />
+          <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={gestores.map((g) => ({ value: g.id, label: g.nome }))} />
+          <FilterPill
+            value={fStatus}
+            onChange={setFStatus}
+            placeholder="Todos os Status"
+            options={[
+              { value: 'ativo', label: 'Ativo' },
+              { value: 'atencao', label: 'Atenção' },
+              { value: 'pausado', label: 'Pausado' },
+              { value: 'churn', label: 'Churn' },
+            ]}
           />
-        </div>
+          <FilterPill
+            value={fJornada}
+            onChange={setFJornada}
+            placeholder="Todas as Jornadas"
+            options={JORNADAS_CLIENTE.map((j) => ({ value: j, label: jornadaClienteLabel[j] }))}
+          />
+          {podeVerArquivados && (
+            <button
+              type="button"
+              onClick={() => setMostrarArquivados((v) => !v)}
+              className={cn(
+                'ml-auto inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors',
+                mostrarArquivados
+                  ? 'border-brand-500/40 bg-brand-500/10 text-brand-200'
+                  : 'border-border text-muted hover:border-brand-500/40 hover:text-zinc-200',
+              )}
+            >
+              {mostrarArquivados ? 'Voltar pra ativos' : 'Ver arquivados'}
+            </button>
+          )}
+        </FilterBar>
       </div>
 
-      {/* Tabela única — layout completo (colunas de Tráfego aplicadas a todos) */}
-      <TabelaTrafego
-        clientes={filtered}
-        loading={loading}
-        onEditar={(c) => {
+      <DataTable
+        columns={colunasClientes((c) => {
           setEditing(c)
           setFormOpen(true)
-        }}
+        })}
+        rows={loading ? [] : filtered}
+        rowKey={(c) => c.id}
+        rowTone={tomDoCliente}
+        defaultSort={{ key: 'cliente', dir: 'asc' }}
+        minWidth={1040}
+        search={{ value: q, onChange: setQ, placeholder: 'Buscar cliente...' }}
+        emptyLabel={loading ? 'Carregando…' : 'Nenhum cliente encontrado com esses filtros.'}
       />
 
       <ClienteForm
@@ -278,124 +253,41 @@ export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego
 // Componentes auxiliares
 // ============================================================
 
-/** Selos de serviço do cliente (Tráfego / Social), a partir dos serviços
- *  contratados (fallback pros módulos quando servicos_contratados vazio). */
-/** Tabela rica do setor Tráfego (Ticket/LT/NPS/Semáforo). */
-function TabelaTrafego({
-  clientes,
-  loading,
-  onEditar,
-}: {
-  clientes: Cliente[]
-  loading: boolean
-  onEditar: (c: Cliente) => void
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border bg-bg-soft/40 text-left text-[10px] uppercase tracking-wider text-muted">
-              <th className="px-4 py-3 font-semibold">Cliente</th>
-              <th className="px-3 py-3 font-semibold">Squad</th>
-              <th className="px-3 py-3 font-semibold">Account Manager</th>
-              <th className="px-3 py-3 font-semibold">Social Media</th>
-              <th className="px-3 py-3 font-semibold text-right">Ticket Mensal</th>
-              <th className="px-3 py-3 font-semibold text-right">LT</th>
-              <th className="px-3 py-3 font-semibold">Status</th>
-              <th className="px-3 py-3 font-semibold">Jornada</th>
-              <th className="px-3 py-3 font-semibold text-right">NPS</th>
-              <th className="px-3 py-3 font-semibold">Semáforo</th>
-              <th className="px-3 py-3 font-semibold">Última Atualização</th>
-              <th className="px-3 py-3 text-right">&nbsp;</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted">
-                  Carregando…
-                </td>
-              </tr>
-            ) : clientes.length === 0 ? (
-              <tr>
-                <td colSpan={12} className="px-4 py-12 text-center text-xs text-muted italic">
-                  Nenhum cliente encontrado com esses filtros.
-                </td>
-              </tr>
-            ) : (
-              clientes.map((c) => <ClienteRow key={c.id} cliente={c} onEditar={() => onEditar(c)} />)
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-/** Chip select ClickUp-like — usa <select> nativo estilizado com
- *  chevron custom via SVG data-uri. */
-function ChipSelect({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder: string
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="cursor-pointer appearance-none rounded-md border border-border bg-bg-soft pl-3 pr-8 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-brand-500/40 focus:border-brand-500/60 focus:outline-none transition-colors"
-      style={{
-        backgroundImage:
-          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 16 16\' fill=\'none\'%3E%3Cpath d=\'M4 6l4 4 4-4\' stroke=\'%23a1a1aa\' stroke-width=\'1.5\'/%3E%3C/svg%3E")',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 10px center',
-      }}
-    >
-      <option value="">{placeholder}</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 /**
  * Situação do cliente pro chip da coluna STATUS. Cliente em onboarding
- * ganha destaque azul (fase de entrada); fora disso, mapeia o status:
- * estável (verde), atenção (amarelo), pausado (cinza), churn (vermelho).
+ * ganha destaque (fase de entrada); fora disso, mapeia o status:
+ * estável, atenção, pausado, churn. `tone` = tom do DS; `cls` = classes
+ * prontas (mantidas pra quem monta o chip à mão, ex.: ClientesTrafego).
  */
-export function situacaoCliente(c: Cliente): { label: string; cls: string } {
-  if (c.jornada === 'onboarding') {
-    return { label: 'Onboarding', cls: 'border-sky-500/50 bg-sky-500/15 text-sky-200' }
-  }
-  const map: Record<Cliente['status'], { label: string; cls: string }> = {
-    ativo: { label: 'Estável', cls: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200' },
-    atencao: { label: 'Atenção', cls: 'border-amber-500/50 bg-amber-500/15 text-amber-200' },
-    pausado: { label: 'Pausado', cls: 'border-zinc-500/50 bg-zinc-500/15 text-zinc-200' },
-    churn: { label: 'Churn', cls: 'border-red-500/50 bg-red-500/15 text-red-200' },
-  }
-  return map[c.status]
+export function situacaoCliente(c: Cliente): { label: string; cls: string; tone: Tone } {
+  const s: { label: string; tone: Tone } =
+    c.jornada === 'onboarding'
+      ? { label: 'Onboarding', tone: 'info' }
+      : ({
+          ativo: { label: 'Estável', tone: 'success' },
+          atencao: { label: 'Atenção', tone: 'attention' },
+          pausado: { label: 'Pausado', tone: 'neutral' },
+          churn: { label: 'Churn', tone: 'danger' },
+        } as const)[c.status]
+  return { ...s, cls: badgeTone[s.tone] }
 }
 
-/** Avatar circular com iniciais — usado no cliente e no AM/Social. */
-function AvatarInicial({
-  nome,
-  cor = 'brand',
-  size = 'sm',
-}: {
-  nome: string | null | undefined
-  cor?: 'brand' | 'zinc' | 'emerald' | 'violet' | 'pink'
-  size?: 'sm' | 'xs'
-}) {
+const SEMAFORO: Record<NonNullable<Cliente['semaforo']>, { label: string; dot: string; ordem: number }> = {
+  vermelho: { label: 'Crítico', dot: 'bg-red-500', ordem: 0 },
+  laranja: { label: 'Risco', dot: 'bg-orange-500', ordem: 1 },
+  amarelo: { label: 'Atenção', dot: 'bg-yellow-500', ordem: 2 },
+  verde: { label: 'Estável', dot: 'bg-green-500', ordem: 3 },
+}
+
+/** Linha tingida só pra cliente em risco (semáforo vermelho/laranja). */
+function tomDoCliente(c: Cliente): RowTone | undefined {
+  if (c.semaforo === 'vermelho') return 'danger'
+  if (c.semaforo === 'laranja') return 'warning'
+  return undefined
+}
+
+/** Avatar circular com iniciais (neutro — a cor fica pro que exige ação). */
+function AvatarInicial({ nome, destaque, size = 'sm' }: { nome: string | null | undefined; destaque?: boolean; size?: 'sm' | 'xs' }) {
   if (!nome) return <span className="text-muted">—</span>
   const inic = nome
     .split(' ')
@@ -403,20 +295,12 @@ function AvatarInicial({
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
     .join('')
-  const corCls = {
-    brand: 'bg-brand-500/15 border-brand-500/40 text-brand-300',
-    zinc: 'bg-zinc-500/15 border-zinc-500/40 text-zinc-300',
-    emerald: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300',
-    violet: 'bg-violet-500/15 border-violet-500/40 text-violet-300',
-    pink: 'bg-pink-500/15 border-pink-500/40 text-pink-300',
-  }[cor]
-  const sizeCls = size === 'xs' ? 'h-5 w-5 text-[9px]' : 'h-6 w-6 text-[10px]'
   return (
     <span
       className={cn(
-        'inline-flex items-center justify-center rounded-full border font-semibold tabular-nums',
-        corCls,
-        sizeCls,
+        'inline-flex shrink-0 items-center justify-center rounded-full border font-semibold tabular-nums',
+        destaque ? 'border-brand-500/40 bg-brand-500/15 text-brand-300' : 'border-border bg-bg-elev text-zinc-300',
+        size === 'xs' ? 'h-5 w-5 text-[9px]' : 'h-6 w-6 text-[10px]',
       )}
       title={nome}
     >
@@ -425,41 +309,29 @@ function AvatarInicial({
   )
 }
 
-/** Linha da tabela — extraída pra manter o map limpo. */
-function ClienteRow({
-  cliente: c,
-  onEditar,
-}: {
-  cliente: Cliente
-  onEditar: () => void
-}) {
-  const lt = mesesCasa(c.data_inicio)
-  const situacao = situacaoCliente(c)
-  const semaforoCor = {
-    verde: 'bg-emerald-400',
-    amarelo: 'bg-amber-400',
-    laranja: 'bg-orange-400',
-    vermelho: 'bg-red-400',
-  }[c.semaforo ?? 'verde']
-  const semaforoLabel = {
-    verde: 'Estável',
-    amarelo: 'Atenção',
-    laranja: 'Risco',
-    vermelho: 'Crítico',
-  }[c.semaforo ?? 'verde']
-
+function Pessoa({ nome }: { nome: string | null | undefined }) {
+  if (!nome) return <span className="text-muted">—</span>
   return (
-    <tr className="border-b border-border/60 last:border-b-0 hover:bg-bg-soft/40 transition-colors">
-      {/* Cliente */}
-      <td className="px-4 py-3">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <AvatarInicial nome={nome} size="xs" />
+      <span className="text-zinc-200">{nome}</span>
+    </span>
+  )
+}
+
+/** Colunas da lista de clientes (DataTable do DS — ordenáveis). */
+function colunasClientes(onEditar: (c: Cliente) => void): Column<Cliente>[] {
+  return [
+    {
+      key: 'cliente',
+      header: 'Cliente',
+      sortValue: (c) => c.nome,
+      render: (c) => (
         <div className="flex items-center gap-2">
-          <AvatarInicial nome={c.nome} cor="brand" />
+          <AvatarInicial nome={c.nome} destaque />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <Link
-                to={`/clientes/${c.id}`}
-                className="text-xs font-semibold text-zinc-100 hover:text-brand-300 truncate"
-              >
+              <Link to={`/clientes/${c.id}`} className="truncate text-xs font-semibold text-zinc-100 hover:text-brand-300">
                 {c.nome}
               </Link>
               {c.tipo && (
@@ -468,114 +340,92 @@ function ClienteRow({
                 </span>
               )}
             </div>
-            {c.nicho && <p className="text-[10px] text-muted truncate">{c.nicho}</p>}
+            {c.nicho && <p className="truncate text-[10px] text-muted">{c.nicho}</p>}
           </div>
         </div>
-      </td>
-
-      {/* Squad */}
-      <td className="px-3 py-3 whitespace-nowrap text-zinc-200">{c.squad ?? '—'}</td>
-
-      {/* AM */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        {c.account_manager?.nome ? (
-          <div className="flex items-center gap-1.5">
-            <AvatarInicial nome={c.account_manager.nome} cor="violet" size="xs" />
-            <span className="text-zinc-200">{c.account_manager.nome}</span>
-          </div>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </td>
-
-      {/* Social Media */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        {c.social_media?.nome ? (
-          <div className="flex items-center gap-1.5">
-            <AvatarInicial nome={c.social_media.nome} cor="pink" size="xs" />
-            <span className="text-zinc-200">{c.social_media.nome}</span>
-          </div>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </td>
-
-      {/* Ticket Mensal */}
-      <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums text-emerald-300">
-        {formatCurrency(c.verba_mensal ?? 0)}
-      </td>
-
-      {/* LT — lifetime months */}
-      <td className="px-3 py-3 whitespace-nowrap text-right tabular-nums text-zinc-200">
-        {lt}m
-      </td>
-
-      {/* Status — situação (Onboarding azul / Estável verde / Atenção amarelo) */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        <span
-          className={cn(
-            'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
-            situacao.cls,
-          )}
-        >
-          {situacao.label}
-        </span>
-      </td>
-
-      {/* Jornada */}
-      <td className="px-3 py-3 whitespace-nowrap text-zinc-200">
-        {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}
-      </td>
-
-      {/* NPS */}
-      <td className="px-3 py-3 whitespace-nowrap text-right">
-        {typeof c.nps === 'number' ? (
-          <span
-            className={cn(
-              'font-semibold tabular-nums',
-              c.nps >= 9 ? 'text-emerald-300' : c.nps >= 7 ? 'text-amber-300' : 'text-red-300',
-            )}
-          >
+      ),
+    },
+    { key: 'squad', header: 'Squad', sortValue: (c) => c.squad, render: (c) => <span className="whitespace-nowrap text-zinc-200">{c.squad ?? '—'}</span> },
+    { key: 'am', header: 'AM', sortValue: (c) => c.account_manager?.nome, render: (c) => <Pessoa nome={c.account_manager?.nome} /> },
+    { key: 'social', header: 'Social Media', sortValue: (c) => c.social_media?.nome, render: (c) => <Pessoa nome={c.social_media?.nome} /> },
+    {
+      key: 'ticket',
+      header: 'Ticket',
+      align: 'right',
+      sortValue: (c) => c.verba_mensal ?? 0,
+      render: (c) => <span className="whitespace-nowrap font-semibold tabular-nums text-zinc-100">{formatCurrency(c.verba_mensal ?? 0)}</span>,
+    },
+    {
+      key: 'lt',
+      header: 'LT',
+      align: 'right',
+      sortValue: (c) => mesesCasa(c.data_inicio),
+      render: (c) => <span className="tabular-nums text-zinc-200">{mesesCasa(c.data_inicio)}m</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortValue: (c) => situacaoCliente(c).label,
+      render: (c) => {
+        const st = situacaoCliente(c)
+        // Estável é o normal → texto; as exceções ganham badge.
+        return st.tone === 'success' ? <span className="text-zinc-300">{st.label}</span> : <Badge tone={st.tone}>{st.label}</Badge>
+      },
+    },
+    {
+      key: 'jornada',
+      header: 'Jornada',
+      sortValue: (c) => (c.jornada ? jornadaClienteLabel[c.jornada] : null),
+      render: (c) => <span className="whitespace-nowrap text-zinc-200">{c.jornada ? jornadaClienteLabel[c.jornada] : '—'}</span>,
+    },
+    {
+      key: 'nps',
+      header: 'NPS',
+      align: 'right',
+      sortValue: (c) => c.nps,
+      render: (c) =>
+        typeof c.nps === 'number' ? (
+          <span className={cn('font-semibold tabular-nums', c.nps >= 9 ? 'text-green-300' : c.nps >= 7 ? 'text-yellow-300' : 'text-red-300')}>
             {c.nps}
           </span>
         ) : (
           <span className="text-muted">—</span>
-        )}
-      </td>
-
-      {/* Semáforo — dot só */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        <span
-          className={cn('inline-block h-2 w-2 rounded-full', semaforoCor)}
-          title={semaforoLabel}
-        />
-      </td>
-
-      {/* Última atualização */}
-      <td className="px-3 py-3 whitespace-nowrap text-[10px] text-muted tabular-nums">
-        {formatDate(c.updated_at)}
-      </td>
-
-      {/* Ações — hover only */}
-      <td className="px-3 py-3 whitespace-nowrap text-right">
+        ),
+    },
+    {
+      key: 'semaforo',
+      header: 'Semáforo',
+      sortValue: (c) => SEMAFORO[c.semaforo ?? 'verde'].ordem,
+      render: (c) => {
+        const sm = SEMAFORO[c.semaforo ?? 'verde']
+        return (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-zinc-300" title={sm.label}>
+            <span className={cn('h-2 w-2 rounded-full', sm.dot)} />
+            {sm.label}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'atualizacao',
+      header: 'Atualizado',
+      sortValue: (c) => c.updated_at,
+      render: (c) => <span className="whitespace-nowrap text-[10px] tabular-nums text-muted">{formatDate(c.updated_at)}</span>,
+    },
+    {
+      key: 'acoes',
+      header: '',
+      align: 'right',
+      render: (c) => (
         <div className="inline-flex gap-0.5">
-          <button
-            onClick={onEditar}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
-            title="Editar"
-          >
+          <button onClick={() => onEditar(c)} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Editar">
             <Pencil size={12} />
           </button>
-          <Link
-            to={`/clientes/${c.id}`}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300"
-            title="Abrir Ficha"
-          >
+          <Link to={`/clientes/${c.id}`} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-bg-elev hover:text-brand-300" title="Abrir Ficha">
             <Eye size={12} />
           </Link>
         </div>
-      </td>
-    </tr>
-  )
+      ),
+    },
+  ]
 }
-

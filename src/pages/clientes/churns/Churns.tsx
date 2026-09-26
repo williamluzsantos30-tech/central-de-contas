@@ -18,10 +18,9 @@ import {
   Percent,
   Clock,
   Ticket,
-  Search,
   Eye,
 } from 'lucide-react'
-import { PageHeader, KPICard, FilterBar, FilterPill, OutlineButton } from '@/components/ds'
+import { PageHeader, KPICard, FilterBar, FilterPill, OutlineButton, DataTable, Badge, type Column } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import { useSquads } from '@/hooks/useSquads'
 import { useChurnsData, type ClienteChurn } from './useChurnsData'
@@ -576,127 +575,118 @@ function TicketComparativo({ churns, baseAtiva }: { churns: number; baseAtiva: n
 }
 
 // ============================================================
-// Tabela de clientes churnados (com busca)
+// Tabela de clientes churnados (com busca + ordenação) — DataTable do DS.
+// Motivo em badge neutro: a cor do motivo já está no donut; na tabela, 6
+// cores viravam ruído.
 // ============================================================
-const MOTIVO_BADGE: Record<string, string> = {
-  'Resultado insatisfatório': 'border-red-500/40 bg-red-500/10 text-red-300',
-  'Problemas de atendimento': 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-  Preço: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
-  'Dificuldades financeiras': 'border-sky-500/40 bg-sky-500/10 text-sky-300',
-  'Mudança de estratégia': 'border-violet-500/40 bg-violet-500/10 text-violet-300',
-  'Encerramento da clínica': 'border-pink-500/40 bg-pink-500/10 text-pink-300',
-  'Não informado': 'border-zinc-500/40 bg-zinc-500/10 text-zinc-300',
-  Outro: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-300',
-}
-
 function dataBR(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  const m = /^(d{4})-(d{2})-(d{2})/.exec(iso)
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || '—'
 }
+
+const COLUNAS_CHURN: Column<ClienteChurn>[] = [
+  {
+    key: 'nome',
+    header: 'Cliente',
+    sortValue: (c) => c.nome,
+    render: (c) => (
+      <>
+        <p className="font-medium text-zinc-100">{c.nome}</p>
+        {c.nicho && <p className="text-[10px] text-muted">{c.nicho}</p>}
+      </>
+    ),
+  },
+  { key: 'squad', header: 'Squad', sortValue: (c) => c.squad, render: (c) => <span className="text-zinc-300">{c.squad ?? '—'}</span> },
+  {
+    key: 'am',
+    header: 'Account Manager',
+    sortValue: (c) => c.accountManager,
+    render: (c) => <span className="text-zinc-300">{c.accountManager ?? '—'}</span>,
+  },
+  {
+    key: 'ticket',
+    header: 'Ticket Mensal',
+    align: 'right',
+    sortValue: (c) => c.ticketMensal,
+    render: (c) => <span className="tabular-nums text-zinc-200">{formatBRL(c.ticketMensal)}</span>,
+  },
+  {
+    key: 'data',
+    header: 'Data Churn',
+    sortValue: (c) => c.dataChurn,
+    render: (c) => <span className="tabular-nums text-zinc-300">{dataBR(c.dataChurn)}</span>,
+  },
+  {
+    key: 'tempo',
+    header: 'Tempo Casa',
+    align: 'right',
+    sortValue: (c) => c.tempoCasaMeses,
+    render: (c) => <span className="tabular-nums text-zinc-300">{c.tempoCasaMeses !== null ? `${c.tempoCasaMeses}m` : '—'}</span>,
+  },
+  {
+    key: 'ltv',
+    header: 'LTV',
+    align: 'right',
+    sortValue: (c) => c.ltv,
+    render: (c) => <span className="font-semibold tabular-nums text-zinc-100">{c.ltv !== null ? formatBRL(c.ltv) : '—'}</span>,
+  },
+  {
+    key: 'motivo',
+    header: 'Motivo',
+    sortValue: (c) => c.motivo,
+    render: (c) => (
+      <Badge tone="neutral" className="max-w-[160px] truncate align-middle" title={c.motivo}>
+        {c.motivo}
+      </Badge>
+    ),
+  },
+  {
+    key: 'nps',
+    header: 'NPS',
+    align: 'right',
+    sortValue: (c) => c.nps,
+    render: (c) =>
+      typeof c.nps === 'number' ? (
+        <span className={cn('font-semibold tabular-nums', c.nps >= 9 ? 'text-green-300' : c.nps >= 7 ? 'text-yellow-300' : 'text-red-300')}>
+          {c.nps}
+        </span>
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+  },
+  {
+    key: 'ver',
+    header: '',
+    align: 'right',
+    render: (c) => (
+      <Link
+        to={`/clientes/${c.id}`}
+        className="inline-flex items-center gap-1 text-[11px] text-muted transition-colors hover:text-brand-300"
+        title="Ver ficha do cliente"
+      >
+        <Eye size={12} /> Ver
+      </Link>
+    ),
+  },
+]
 
 function TabelaChurns({ clientes }: { clientes: ClienteChurn[] }) {
   const [busca, setBusca] = useState('')
   const linhas = useMemo(() => {
     const q = busca.trim().toLowerCase()
     if (!q) return clientes
-    return clientes.filter(
-      (c) => c.nome.toLowerCase().includes(q) || c.nicho.toLowerCase().includes(q),
-    )
+    return clientes.filter((c) => c.nome.toLowerCase().includes(q) || c.nicho.toLowerCase().includes(q))
   }, [busca, clientes])
 
   return (
-    <div>
-      <div className="relative mb-3 max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar cliente..."
-          className="w-full rounded-lg border border-border bg-bg-card py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-muted focus:border-brand-500/60 focus:outline-none"
-        />
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-border bg-bg-card">
-        <table className="w-full min-w-[900px] text-xs">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted">
-              <th className="px-4 py-2.5 text-left font-semibold">Cliente</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Squad</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Account Manager</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Ticket Mensal</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Data Churn</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Tempo Casa</th>
-              <th className="px-3 py-2.5 text-right font-semibold">LTV</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Motivo</th>
-              <th className="px-3 py-2.5 text-right font-semibold">NPS</th>
-              <th className="px-3 py-2.5 text-right font-semibold" />
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map((c) => (
-              <tr key={c.id} className="border-b border-border/60 last:border-b-0 transition-colors hover:bg-bg-soft/50">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-zinc-100">{c.nome}</p>
-                  {c.nicho && <p className="text-[10px] text-muted">{c.nicho}</p>}
-                </td>
-                <td className="px-3 py-3 text-zinc-300">{c.squad ?? '—'}</td>
-                <td className="px-3 py-3 text-zinc-300">{c.accountManager ?? '—'}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{formatBRL(c.ticketMensal)}</td>
-                <td className="px-3 py-3 tabular-nums text-zinc-300">{dataBR(c.dataChurn)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-zinc-300">
-                  {c.tempoCasaMeses !== null ? `${c.tempoCasaMeses}m` : '—'}
-                </td>
-                <td className="px-3 py-3 text-right tabular-nums font-semibold text-amber-300">
-                  {c.ltv !== null ? formatBRL(c.ltv) : '—'}
-                </td>
-                <td className="px-3 py-3">
-                  <span
-                    className={cn(
-                      'inline-block max-w-[150px] truncate rounded border px-1.5 py-0.5 text-[10px] font-medium align-middle',
-                      MOTIVO_BADGE[c.motivo] ?? 'border-zinc-500/40 bg-zinc-500/10 text-zinc-300',
-                    )}
-                    title={c.motivo}
-                  >
-                    {c.motivo}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-right">
-                  {typeof c.nps === 'number' ? (
-                    <span
-                      className={cn(
-                        'font-semibold tabular-nums',
-                        c.nps >= 9 ? 'text-emerald-300' : c.nps >= 7 ? 'text-amber-300' : 'text-red-300',
-                      )}
-                    >
-                      {c.nps}
-                    </span>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-3 text-right">
-                  <Link
-                    to={`/clientes/${c.id}`}
-                    className="inline-flex items-center gap-1 text-[11px] text-muted transition-colors hover:text-brand-300"
-                    title="Ver ficha do cliente"
-                  >
-                    <Eye size={12} /> Ver
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {linhas.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted">
-                  {clientes.length === 0
-                    ? 'Nenhum churn registrado ainda.'
-                    : `Nenhum cliente encontrado para “${busca}”.`}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <DataTable
+      columns={COLUNAS_CHURN}
+      rows={linhas}
+      rowKey={(c) => c.id}
+      defaultSort={{ key: 'data', dir: 'desc' }}
+      minWidth={900}
+      search={{ value: busca, onChange: setBusca, placeholder: 'Buscar cliente...' }}
+      emptyLabel={clientes.length === 0 ? 'Nenhum churn registrado ainda.' : `Nenhum cliente encontrado para “${busca}”.`}
+    />
   )
 }

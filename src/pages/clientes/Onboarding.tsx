@@ -29,7 +29,7 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { FilterBar, FilterPill } from '@/components/ds'
+import { FilterBar, FilterPill, ROW_TONE } from '@/components/ds'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { cargoLabel, type Cargo } from '@/lib/cargos'
@@ -334,7 +334,7 @@ export default function Onboarding() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
           {/* Cabecalho */}
-          <div className="hidden grid-cols-[minmax(200px,2fr)_90px_130px_110px_60px_50px_150px_minmax(160px,1.4fr)_70px_70px] items-center gap-3 border-b border-border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted lg:grid">
+          <div className="hidden grid-cols-[minmax(200px,2fr)_80px_120px_96px_48px_44px_130px_minmax(140px,1.4fr)_72px_64px] items-center gap-3 border-b border-border bg-bg-soft/60 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted lg:grid">
             <span>Cliente</span>
             <span>Squad</span>
             <span>Account Manager</span>
@@ -554,7 +554,11 @@ function LinhaCliente({
       {/* Linha principal */}
       <div
         onClick={onToggleExpandir}
-        className="grid cursor-pointer grid-cols-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-soft/50 lg:grid-cols-[minmax(200px,2fr)_90px_130px_110px_60px_50px_150px_minmax(160px,1.4fr)_70px_70px]"
+        // Fora do SLA = linha inteira tingida (mesmo padrão do DataTable).
+        className={cn(
+          'grid cursor-pointer grid-cols-1 items-center gap-3 px-4 py-3 transition-colors lg:grid-cols-[minmax(200px,2fr)_80px_120px_96px_48px_44px_130px_minmax(140px,1.4fr)_72px_64px]',
+          r.foraDoSla ? ROW_TONE.danger : 'hover:bg-bg-soft/50',
+        )}
       >
         {/* Cliente */}
         <div className="flex items-center gap-2.5">
@@ -584,7 +588,7 @@ function LinhaCliente({
         <span className="truncate text-xs text-zinc-300">{am?.nome ?? '—'}</span>
 
         {/* Ticket */}
-        <span className="text-right text-xs font-semibold tabular-nums text-emerald-300">
+        <span className="text-right text-xs font-semibold tabular-nums text-zinc-100">
           {formatBRL(cliente.verba_mensal ?? 0)}
         </span>
 
@@ -607,7 +611,7 @@ function LinhaCliente({
             <div
               className={cn(
                 'h-full rounded-full transition-all',
-                r.foraDoSla ? 'bg-red-400' : r.etapasAtrasadas > 0 ? 'bg-amber-400' : 'bg-emerald-500',
+                r.foraDoSla ? 'bg-red-500' : r.etapasAtrasadas > 0 ? 'bg-orange-500' : 'bg-brand-500',
               )}
               style={{ width: `${Math.round(r.pct * 100)}%` }}
             />

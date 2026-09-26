@@ -15,6 +15,7 @@ import {
   DataTable,
   Badge,
   type Column,
+  type RowTone,
 } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import { useFlags } from './store'
@@ -54,14 +55,15 @@ export default function Flags() {
     {
       key: 'nome',
       header: 'Nome',
+      sortValue: (c) => c.nome,
       render: (c) => (
-        <Link to={`/flags/${c.id}`} className="font-medium text-sky-300 hover:text-sky-200 hover:underline">
+        <Link to={`/flags/${c.id}`} className="font-medium text-zinc-100 hover:text-brand-300 hover:underline">
           {c.nome}
         </Link>
       ),
     },
-    { key: 'cargo', header: 'Cargo', render: (c) => <span className="text-zinc-300">{c.cargo}</span> },
-    { key: 'squad', header: 'Squad', render: (c) => <span className="text-zinc-200">{c.squad ?? '—'}</span> },
+    { key: 'cargo', header: 'Cargo', sortValue: (c) => c.cargo, render: (c) => <span className="text-zinc-300">{c.cargo}</span> },
+    { key: 'squad', header: 'Squad', sortValue: (c) => c.squad, render: (c) => <span className="text-zinc-200">{c.squad ?? '—'}</span> },
     {
       key: 'amarelas',
       header: (
@@ -70,6 +72,7 @@ export default function Flags() {
         </span>
       ),
       align: 'center',
+      sortValue: (c) => derivar(c).amarelasAtivas,
       render: (c) => <ContadorFlag n={derivar(c).amarelasAtivas} cor="amarela" />,
     },
     {
@@ -80,11 +83,13 @@ export default function Flags() {
         </span>
       ),
       align: 'center',
+      sortValue: (c) => (derivar(c).vermelhaAtiva ? 1 : 0),
       render: (c) => <ContadorFlag n={derivar(c).vermelhaAtiva ? 1 : 0} cor="vermelha" />,
     },
     {
       key: 'ultima',
       header: 'Última Flag',
+      sortValue: (c) => derivar(c).ultimaFlag,
       render: (c) => {
         const u = derivar(c).ultimaFlag
         return <span className="tabular-nums text-zinc-300">{u ? dataBR(u) : '—'}</span>
@@ -93,6 +98,7 @@ export default function Flags() {
     {
       key: 'status',
       header: 'Status de Risco',
+      sortValue: (c) => ordemRisco(c),
       render: (c) => {
         const critico = derivar(c).statusRisco === 'critico'
         return <Badge tone={critico ? 'warning' : 'neutral'}>{critico ? 'Crítico' : 'Normal'}</Badge>
@@ -154,7 +160,15 @@ export default function Flags() {
         <FlagIcon size={14} className="text-brand-300" />
         <h2 className="text-sm font-semibold text-zinc-100">Colaboradores</h2>
       </div>
-      <DataTable columns={columns} rows={linhas} rowKey={(c) => c.id} minWidth={900} emptyLabel="Nenhum colaborador encontrado." />
+      <DataTable
+        columns={columns}
+        rows={linhas}
+        rowKey={(c) => c.id}
+        rowTone={tomDaLinha}
+        defaultSort={{ key: 'status', dir: 'asc' }}
+        minWidth={900}
+        emptyLabel="Nenhum colaborador encontrado."
+      />
 
       <RegisterFlagModal
         open={modalOpen}
@@ -164,6 +178,18 @@ export default function Flags() {
       />
     </div>
   )
+}
+
+/** Mais grave primeiro: vermelha ativa (0) → crítico (1) → normal (2). */
+function ordemRisco(c: Colaborador): number {
+  const d = derivar(c)
+  return d.vermelhaAtiva ? 0 : d.statusRisco === 'critico' ? 1 : 2
+}
+
+/** Linha tingida só pra quem pede ação (vermelha = desligamento; crítico = atenção). */
+function tomDaLinha(c: Colaborador): RowTone | undefined {
+  const r = ordemRisco(c)
+  return r === 0 ? 'danger' : r === 1 ? 'warning' : undefined
 }
 
 function ContadorFlag({ n, cor }: { n: number; cor: 'amarela' | 'vermelha' }) {
