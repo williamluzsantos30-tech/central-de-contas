@@ -61,6 +61,8 @@ import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/moc
 import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
 import { TaxasConversaoIdealBloco } from '@/components/comercial/TaxasConversaoIdealBloco'
 import { SyncResponsaveisButton } from '@/components/clientes/SyncResponsaveisButton'
+import { useAuth } from '@/contexts/AuthContext'
+import { AcessosTab, useUsuariosAcesso } from './AcessosTab'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -68,6 +70,7 @@ const TABS: TabDef[] = [
   { key: 'integracoes', label: 'Integrações', icon: Plug },
   { key: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   { key: 'formularios', label: 'Formulários', icon: ClipboardList },
+  // Só admin (filtrada no componente): aprovar/criar usuários e níveis de acesso.
   { key: 'acessos', label: 'Gerenciar Acessos', icon: KeyRound },
 ]
 
@@ -108,6 +111,17 @@ function noMesCorrente(iso: string | null): boolean {
 export default function Configuracoes() {
   // ?aba=integracoes abre direto na aba (links de outras telas, ex.: Funil Tráfego).
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('aba') || 'geral')
+  // Gerenciar Acessos é só de admin (Configurações é aberta a todos).
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
+  const acessos = useUsuariosAcesso(isAdmin)
+  const abas = useMemo(
+    () =>
+      TABS.filter((t) => t.key !== 'acessos' || isAdmin).map((t) =>
+        t.key === 'acessos' ? { ...t, badge: acessos.pendentes.length } : t,
+      ),
+    [isAdmin, acessos.pendentes.length],
+  )
   const { slaConfig, setSlaConfig, metasMarketing, setMetasMarketing } = useComercial()
   const { metasFinanceiras, setMetasFinanceiras } = useFinanceiro()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
@@ -330,7 +344,7 @@ export default function Configuracoes() {
       </p>
 
       <div className="mb-5">
-        <SettingsTabs tabs={TABS} active={tab} onChange={setTab} />
+        <SettingsTabs tabs={abas} active={tab} onChange={setTab} />
       </div>
 
       {tab === 'geral' && (
@@ -609,7 +623,11 @@ export default function Configuracoes() {
 
       {tab === 'integracoes' && <IntegracoesTab />}
 
-      {(tab === 'seguranca' || tab === 'formularios' || tab === 'acessos') && (
+      {tab === 'acessos' && isAdmin && (
+        <AcessosTab pendentes={acessos.pendentes} aprovados={acessos.aprovados} loading={acessos.loading} onChange={acessos.reload} />
+      )}
+
+      {(tab === 'seguranca' || tab === 'formularios') && (
         <div className="rounded-lg border border-dashed border-border bg-bg-soft/30 p-12 text-center">
           <p className="text-sm text-zinc-200">{TABS.find((t) => t.key === tab)?.label}</p>
           <p className="mt-1 text-[11px] text-muted">Em breve.</p>

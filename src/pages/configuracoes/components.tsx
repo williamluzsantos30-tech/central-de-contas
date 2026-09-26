@@ -57,6 +57,8 @@ export interface TabDef {
   key: string
   label: string
   icon: LucideIcon
+  /** Contador ao lado do rótulo (ex.: acessos aguardando aprovação). */
+  badge?: number
 }
 export function SettingsTabs({ tabs, active, onChange }: { tabs: TabDef[]; active: string; onChange: (k: string) => void }) {
   return (
@@ -72,6 +74,9 @@ export function SettingsTabs({ tabs, active, onChange }: { tabs: TabDef[]; activ
         >
           <t.icon size={13} />
           {t.label}
+          {!!t.badge && (
+            <span className="rounded-full bg-orange-500/20 px-1.5 text-[10px] font-semibold tabular-nums text-orange-300">{t.badge}</span>
+          )}
         </button>
       ))}
     </div>
