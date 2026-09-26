@@ -60,8 +60,8 @@ const formatoLabel: Record<FormatoSocialMedia, string> = {
 }
 
 /**
- * Quando renderizado dentro do Admin como tab, recebe `embedded=true`
- * pra não duplicar o PageHeader.
+ * Página própria em Operacional › Execução › Métricas Social (/social/metricas,
+ * só admin). `embedded=true` esconde o PageHeader se for embutida em outra tela.
  */
 export default function MetricasSocialMedia({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth()

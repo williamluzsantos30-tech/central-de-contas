@@ -5,7 +5,9 @@ import Login from '@/pages/Login'
 import Clientes from '@/pages/Clientes'
 import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
-import Admin from '@/pages/Admin'
+import PerformanceEquipe from '@/pages/operacional/PerformanceEquipe'
+import Auditoria from '@/pages/sistema/Auditoria'
+import MetricasSocialMedia from '@/pages/social/Metricas'
 import ClientesTrafego from '@/pages/trafego/ClientesTrafego'
 import ProjetosWebdesign from '@/pages/webdesign/ProjetosWebdesign'
 import CriativosWebdesign from '@/pages/webdesign/CriativosWebdesign'
@@ -97,6 +99,22 @@ export default function App() {
             {/* Dashboard removido — raiz abre a lista de clientes. */}
             <Route path="/" element={<Navigate to="/clientes" replace />} />
             <Route path="/operacional/visao" element={<VisaoExecutiva />} />
+            <Route
+              path="/operacional/performance"
+              element={
+                <AdminOnly>
+                  <PerformanceEquipe />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/auditoria"
+              element={
+                <AdminOnly>
+                  <Auditoria />
+                </AdminOnly>
+              }
+            />
             <Route path="/clientes/onboarding" element={<Onboarding />} />
             <Route path="/clientes/churns" element={<Churns />} />
             <Route path="/clientes/renovacoes" element={<Renovacoes />} />
@@ -197,21 +215,20 @@ export default function App() {
               }
             />
             <Route path="/social/calendario" element={<CalendarioPostagens />} />
-            {/* Métricas saíram do Operacional Social Media e viraram tab no Admin.
-                Mantém redirect pra qualquer link antigo. */}
-            <Route path="/social/metricas" element={<Navigate to="/admin" replace />} />
+            {/* Métricas Social Media: página própria (era aba do Admin). */}
             <Route
-              path="/templates"
-              element={<Navigate to="/admin" replace />}
-            />
-            <Route
-              path="/admin"
+              path="/social/metricas"
               element={
                 <AdminOnly>
-                  <Admin />
+                  <MetricasSocialMedia />
                 </AdminOnly>
               }
             />
+            {/* O Admin foi desmontado (26/09/2026): Templates/Escalonamento/
+                Cobrança/Acessos viraram abas de Configurações; Performance e
+                Auditoria, páginas. Redirects pra links antigos. */}
+            <Route path="/templates" element={<Navigate to="/configuracoes?aba=templates" replace />} />
+            <Route path="/admin" element={<Navigate to="/configuracoes" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

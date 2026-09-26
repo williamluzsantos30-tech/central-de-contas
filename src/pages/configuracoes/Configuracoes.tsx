@@ -9,6 +9,9 @@ import {
   ShieldCheck,
   ClipboardList,
   KeyRound,
+  ListChecks,
+  Activity,
+  Wallet,
   Save,
   Clock,
   Target,
@@ -63,6 +66,9 @@ import { TaxasConversaoIdealBloco } from '@/components/comercial/TaxasConversaoI
 import { SyncResponsaveisButton } from '@/components/clientes/SyncResponsaveisButton'
 import { useAuth } from '@/contexts/AuthContext'
 import { AcessosTab, useUsuariosAcesso } from './AcessosTab'
+import { CobrancaTab } from './CobrancaTab'
+import { EscalonamentoTab } from './EscalonamentoTab'
+import { TemplatesTab } from '@/pages/Templates'
 
 const TABS: TabDef[] = [
   { key: 'geral', label: 'Geral', icon: Settings2 },
@@ -70,9 +76,13 @@ const TABS: TabDef[] = [
   { key: 'integracoes', label: 'Integrações', icon: Plug },
   { key: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   { key: 'formularios', label: 'Formulários', icon: ClipboardList },
-  // Só admin (filtrada no componente): aprovar/criar usuários e níveis de acesso.
+  // Abas só de admin (filtradas no componente) — vieram do antigo Admin.
   { key: 'acessos', label: 'Gerenciar Acessos', icon: KeyRound },
+  { key: 'templates', label: 'Templates', icon: ListChecks },
+  { key: 'escalonamento', label: 'Escalonamento', icon: Activity },
+  { key: 'cobranca', label: 'Cobrança', icon: Wallet },
 ]
+const ABAS_SO_ADMIN = new Set(['acessos', 'templates', 'escalonamento', 'cobranca'])
 
 const MESES = ['setembro 2026', 'agosto 2026', 'julho 2026', 'junho 2026']
 
@@ -117,7 +127,7 @@ export default function Configuracoes() {
   const acessos = useUsuariosAcesso(isAdmin)
   const abas = useMemo(
     () =>
-      TABS.filter((t) => t.key !== 'acessos' || isAdmin).map((t) =>
+      TABS.filter((t) => !ABAS_SO_ADMIN.has(t.key) || isAdmin).map((t) =>
         t.key === 'acessos' ? { ...t, badge: acessos.pendentes.length } : t,
       ),
     [isAdmin, acessos.pendentes.length],
@@ -632,6 +642,10 @@ export default function Configuracoes() {
           onIrParaEquipe={() => setTab('equipe')}
         />
       )}
+
+      {isAdmin && tab === 'templates' && <TemplatesTab />}
+      {isAdmin && tab === 'escalonamento' && <EscalonamentoTab />}
+      {isAdmin && tab === 'cobranca' && <CobrancaTab />}
 
       {(tab === 'seguranca' || tab === 'formularios') && (
         <div className="rounded-lg border border-dashed border-border bg-bg-soft/30 p-12 text-center">

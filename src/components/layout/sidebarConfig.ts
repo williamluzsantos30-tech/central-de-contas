@@ -44,6 +44,8 @@ import {
   Layers,
   Scale,
   TrafficCone,
+  Trophy,
+  LineChart,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
 import type { Cargo, Modulo } from '@/lib/cargos'
@@ -98,6 +100,7 @@ export const SIDEBAR_NAV: NavNode[] = [
           { kind: 'item', to: '/clientes/renovacoes', label: 'Renovações', icon: FileClock },
           { kind: 'item', to: '/central-operacional', label: 'Central Operacional', icon: BookOpen },
           { kind: 'item', to: '/flags', label: 'Flags (Performance)', icon: Flag },
+          { kind: 'item', to: '/operacional/performance', label: 'Performance da Equipe', icon: Trophy, adminOnly: true },
         ],
       },
       {
@@ -109,6 +112,7 @@ export const SIDEBAR_NAV: NavNode[] = [
         children: [
           // Mesma lista de Clientes, filtrada por responsável vinculado.
           { kind: 'item', to: '/social/clientes', label: 'Social Media', icon: Smartphone, modulo: 'social_media', perm: PERM.visualizar },
+          { kind: 'item', to: '/social/metricas', label: 'Métricas Social', icon: LineChart, adminOnly: true },
           { kind: 'item', to: '/trafego/clientes', label: 'Tráfego', icon: Megaphone, modulo: 'trafego', perm: PERM.visualizar },
           { kind: 'item', to: '/webdesign/projetos', label: 'Landing Page', icon: LayoutGrid, modulo: 'webdesign' },
           { kind: 'item', to: '/webdesign/criativos', label: 'Criativos', icon: Sparkles, modulo: 'webdesign' },
@@ -162,7 +166,7 @@ export const SIDEBAR_SISTEMA: NavNode[] = [
     defaultOpen: true,
     children: [
       { kind: 'item', to: '/configuracoes', label: 'Configurações', icon: Settings2 },
-      { kind: 'item', to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true },
+      { kind: 'item', to: '/auditoria', label: 'Auditoria', icon: ShieldCheck, adminOnly: true },
     ],
   },
 ]

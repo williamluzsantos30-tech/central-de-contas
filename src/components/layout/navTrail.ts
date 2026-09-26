@@ -38,7 +38,6 @@ const EXTRAS: { to: string; label: string; pastas: string[] }[] = [
   { to: '/social/agenda', label: 'Agenda Social Media', pastas: ['Operacional', 'Execução'] },
   { to: '/social/head', label: 'Head Social', pastas: ['Operacional', 'Execução'] },
   { to: '/social/calendario', label: 'Calendário de Postagens', pastas: ['Operacional', 'Execução'] },
-  { to: '/templates', label: 'Templates', pastas: ['Sistema'] },
 ]
 
 /** Rótulos das sub-rotas (o que vem depois da rota do item do menu). */

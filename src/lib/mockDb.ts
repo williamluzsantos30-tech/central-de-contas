@@ -1170,8 +1170,10 @@ class Q {
         const results: Row[] = []
         for (const r of rows) {
           let existing: Row | undefined
-          if (this._onConflict.length > 0) {
-            existing = table.find((ex) => this._onConflict.every((k) => ex[k] === r[k]))
+          // Igual ao Postgres: sem onConflict, o conflito é pela chave primária (id).
+          const chaves = this._onConflict.length > 0 ? this._onConflict : r.id != null ? ['id'] : []
+          if (chaves.length > 0) {
+            existing = table.find((ex) => chaves.every((k) => ex[k] === r[k]))
           }
           if (existing) {
             Object.assign(existing, r, { updated_at: nowISO() })
