@@ -41,7 +41,6 @@ export default function CentralOperacional() {
 
   return (
     <div>
-      <nav className="mb-1 text-[11px] text-muted">Central-operacional</nav>
       <PageHeader
         title="Central Operacional"
         description="Documentos oficiais, playbooks, POPs e padrões da agência"

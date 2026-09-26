@@ -6,7 +6,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Percent, DollarSign, Activity, TrendingUp } from 'lucide-react'
 import { PageHeader, FilterPill } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { MarginKPICard } from '@/components/financeiro/MarginKPICard'
 import { MarginEvolutionChart, type MargemPonto } from '@/components/financeiro/MarginEvolutionChart'
 import { DRETable } from '@/components/financeiro/DRETable'
@@ -62,7 +61,6 @@ export default function DRE() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'DRE']} />
       <PageHeader
         title="DRE"
         description="Demonstração de Resultado — visão Competência e Caixa"

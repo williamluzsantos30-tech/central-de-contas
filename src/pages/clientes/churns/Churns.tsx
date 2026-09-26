@@ -12,7 +12,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ChevronDown,
   Download,
   UserMinus,
   DollarSign,
@@ -119,13 +118,6 @@ export default function Churns() {
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <nav className="mb-1 flex items-center gap-1.5 text-[11px] text-muted">
-        <span>Clientes</span>
-        <ChevronDown size={11} className="-rotate-90" />
-        <span className="text-zinc-300">Churns</span>
-      </nav>
-
       <PageHeader
         title="Clientes Churns"
         description="Dashboard analítico de cancelamentos"

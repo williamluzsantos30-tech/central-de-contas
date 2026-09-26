@@ -6,7 +6,6 @@ import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, TrendingUp, Coins, Scale, Timer, Users, Percent, CalendarClock, Wallet } from 'lucide-react'
 import { PageHeader, FilterPill } from '@/components/ds'
 import { cn } from '@/lib/utils'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { MarginKPICard } from '@/components/financeiro/MarginKPICard'
 import { LtvCacEvolutionChart, type RatioPonto } from '@/components/financeiro/LtvCacEvolutionChart'
 import { useFinanceiro } from './store'
@@ -39,7 +38,6 @@ export default function LtvCac() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'LTV:CAC']} />
       <PageHeader
         title="LTV:CAC"
         description="Retorno sobre aquisição — valor do cliente × custo de aquisição"

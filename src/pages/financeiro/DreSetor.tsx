@@ -7,7 +7,6 @@ import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Wallet, TrendingUp, Scale, Coins } from 'lucide-react'
 import { PageHeader, FilterPill } from '@/components/ds'
 import { cn } from '@/lib/utils'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { MarginKPICard } from '@/components/financeiro/MarginKPICard'
 import { DreSetorTable } from '@/components/financeiro/DreSetorTable'
 import { useDreData } from './useDreData'
@@ -30,7 +29,6 @@ export default function DreSetor() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'DRE por Setor']} />
       <PageHeader
         title="DRE por Setor"
         description="Custos e despesas por centro de custo — receita no consolidado"

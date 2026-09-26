@@ -7,7 +7,6 @@
 import { useMemo, useState } from 'react'
 import { Handshake, CheckCircle2, Percent, AlertOctagon, RotateCcw } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, type Column, type Tone } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData, fmtBRL } from '@/components/comercial/LeadsTable'
 import { CloseDealModal } from '@/components/comercial/CloseDealModal'
 import { SLABadge } from '@/components/comercial/SLABadge'
@@ -126,7 +125,6 @@ export default function Closer() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Closer']} />
       <PageHeader title="Closer" description="Calls de vendas e fechamento de propostas" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">

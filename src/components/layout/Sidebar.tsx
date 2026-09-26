@@ -1,18 +1,13 @@
 import { useState } from 'react'
-import { useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
-import { ChevronDown, Sun, Moon, Settings2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Link, useLocation } from 'react-router-dom'
+import { ChevronDown, Sun, Moon, Camera, LogOut } from 'lucide-react'
+import { cn, userRoleLabel } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  loadCargoPermissoes,
-  cargosDoProfile,
-  temAlgumCargo,
-  moduloLabel,
-  type Modulo,
-} from '@/lib/cargos'
+import { Avatar } from '@/components/ui/Avatar'
 import { useTheme } from '@/hooks/useTheme'
-import { usePermissoes } from '@/hooks/usePermissoes'
+import { EditarFotoPerfilModal } from './EditarFotoPerfilModal'
+import { useNavVisivel } from './useNavVisivel'
+import { itemAtivoDaRota } from './navTrail'
 import {
   SIDEBAR_NAV,
   SIDEBAR_SISTEMA,
@@ -22,10 +17,11 @@ import {
 } from './sidebarConfig'
 
 export function Sidebar() {
-  const { profile } = useAuth()
-  const isAdmin = profile?.role === 'admin'
-  const { can, permissoes } = usePermissoes()
+  const { profile, signOut, refreshProfile } = useAuth()
+  const { nodeVisivel } = useNavVisivel()
   const { theme, toggle: toggleTheme } = useTheme()
+  const [editFotoOpen, setEditFotoOpen] = useState(false)
+  const ativoTo = itemAtivoDaRota(useLocation().pathname)
 
   // Estado de expandir/recolher por pasta (todas abertas por padrão).
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -41,50 +37,10 @@ export function Sidebar() {
     return o
   })
 
-  // Permissões por módulo (admins veem tudo), pra gating dos itens de Execução.
-  const [allowedModulos, setAllowedModulos] = useState<Set<Modulo>>(() => new Set())
-  useEffect(() => {
-    if (!profile) return
-    if (isAdmin) {
-      setAllowedModulos(new Set<Modulo>(['trafego', 'webdesign', 'social_media', 'admin']))
-      return
-    }
-    const perms = loadCargoPermissoes()
-    const cargos = cargosDoProfile(profile)
-    const list = new Set<Modulo>()
-    for (const c of cargos) {
-      for (const m of perms[c] ?? []) list.add(m)
-    }
-    setAllowedModulos(list)
-  }, [profile, isAdmin])
-
-  // Papel-first: se o papel do usuário carrega acessos operacionais, ele manda;
-  // senão cai no modelo antigo por cargo (cargoPermissoes).
-  const MODULOS_OPERACIONAIS: Modulo[] = ['trafego', 'webdesign', 'social_media']
-  const papelDefineModulos = MODULOS_OPERACIONAIS.some((m) => permissoes.includes(moduloLabel[m]))
-  function canAccessModulo(m: Modulo) {
-    if (isAdmin) return true
-    if (papelDefineModulos) return permissoes.includes(moduloLabel[m])
-    return allowedModulos.has(m)
-  }
-
-  function itemVisivel(it: NavItemDef): boolean {
-    if (it.adminOnly && !isAdmin) return false
-    if (it.perm && !can(it.perm)) return false
-    if (it.modulo && !canAccessModulo(it.modulo)) return false
-    if (it.cargosPermitidos && it.cargosPermitidos.length > 0) {
-      if (!isAdmin && !temAlgumCargo(profile, it.cargosPermitidos)) return false
-    }
-    return true
-  }
-  function nodeVisivel(n: NavNode): boolean {
-    return n.kind === 'item' ? itemVisivel(n) : n.children.some(nodeVisivel)
-  }
-
   function renderNodes(nodes: NavNode[], depth: number) {
     return nodes.filter(nodeVisivel).map((n) =>
       n.kind === 'item' ? (
-        <NavLinkItem key={n.to} item={n} depth={depth} />
+        <NavLinkItem key={n.to} item={n} depth={depth} ativo={n.to === ativoTo} />
       ) : (
         <FolderNode
           key={n.key}
@@ -100,7 +56,7 @@ export function Sidebar() {
 
   return (
     <aside className="theme-dark fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-border/80 bg-bg-soft/95 backdrop-blur-sm">
-      <div className="flex h-16 shrink-0 items-center border-b border-border/80 bg-black px-5">
+      <div className="flex h-14 shrink-0 items-center border-b border-border/80 bg-black px-5">
         <div className="flex items-baseline">
           <span className="text-2xl font-serif font-semibold tracking-tight text-zinc-100">domus</span>
           <span className="text-2xl font-serif font-semibold tracking-tight text-brand-400">.agn</span>
@@ -112,23 +68,53 @@ export function Sidebar() {
       {/* Sistema — fixo no rodapé, fora de Operacional. */}
       <div className="shrink-0 border-t border-border/80 p-2">{renderNodes(SIDEBAR_SISTEMA, 0)}</div>
 
-      <div className="shrink-0 border-t border-border/80 p-3">
-        <div className="flex items-center justify-between gap-2 text-xs text-muted">
-          <div className="flex items-center gap-2">
-            <Settings2 size={14} />
-            v0.1.0
-          </div>
+      {/* Usuário + tema + sair (rodapé, como no padrão de apps de gestão). */}
+      <div className="shrink-0 border-t border-border/80 p-2">
+        <div className="flex items-center gap-1">
+          {profile ? (
+            <button
+              onClick={() => setEditFotoOpen(true)}
+              className="group flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-bg-elev"
+              title="Trocar foto de perfil"
+            >
+              <span className="relative shrink-0">
+                <Avatar name={profile.nome} url={profile.avatar_url} size="md" />
+                <span className="absolute inset-0 grid place-items-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Camera size={10} className="text-white" />
+                </span>
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-zinc-100">{profile.nome}</span>
+                <span className="block truncate text-[10px] text-muted">{userRoleLabel[profile.role]} · v0.1.0</span>
+              </span>
+            </button>
+          ) : (
+            <span className="flex-1 px-2 text-[10px] text-muted">v0.1.0</span>
+          )}
           <button
             type="button"
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
             title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-bg-elev text-zinc-300 transition-colors hover:bg-bg-soft hover:text-brand-300"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-bg-elev hover:text-brand-300"
           >
-            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={signOut}
+            aria-label="Sair"
+            title="Sair"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-red-500/10 hover:text-red-300"
+          >
+            <LogOut size={14} />
           </button>
         </div>
       </div>
+
+      {profile && (
+        <EditarFotoPerfilModal open={editFotoOpen} onClose={() => setEditFotoOpen(false)} profile={profile} onSaved={refreshProfile} />
+      )}
     </aside>
   )
 }
@@ -167,35 +153,30 @@ function FolderNode({
   )
 }
 
-function NavLinkItem({ item, depth }: { item: NavItemDef; depth: number }) {
+function NavLinkItem({ item, depth, ativo }: { item: NavItemDef; depth: number; ativo: boolean }) {
   const Icon = item.icon
+  // Ativo = só o item mais específico da rota (ver itemAtivoDaRota).
   return (
-    <NavLink
+    <Link
       to={item.to}
-      end={item.end}
+      aria-current={ativo ? 'page' : undefined}
       style={{ paddingLeft: 12 + depth * 12 }}
-      className={({ isActive }) =>
-        cn(
-          'group relative flex items-center gap-2 rounded-lg py-2 pr-3 text-sm',
-          'transition-all duration-200 ease-out',
-          isActive
-            ? 'bg-brand-500/15 text-brand-200 shadow-[inset_2px_0_0_0_#7c3aed]'
-            : 'text-zinc-300 hover:bg-bg-elev hover:text-zinc-100 hover:translate-x-0.5',
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <Icon
-            size={16}
-            className={cn(
-              'shrink-0 transition-transform duration-200',
-              isActive ? 'text-brand-400' : 'group-hover:scale-110 group-hover:text-zinc-100',
-            )}
-          />
-          <span>{item.label}</span>
-        </>
+      className={cn(
+        'group relative flex items-center gap-2 rounded-lg py-2 pr-3 text-sm',
+        'transition-all duration-200 ease-out',
+        ativo
+          ? 'bg-brand-500/15 text-brand-200 shadow-[inset_2px_0_0_0_#7c3aed]'
+          : 'text-zinc-300 hover:bg-bg-elev hover:text-zinc-100 hover:translate-x-0.5',
       )}
-    </NavLink>
+    >
+      <Icon
+        size={16}
+        className={cn(
+          'shrink-0 transition-transform duration-200',
+          ativo ? 'text-brand-400' : 'group-hover:scale-110 group-hover:text-zinc-100',
+        )}
+      />
+      <span>{item.label}</span>
+    </Link>
   )
 }

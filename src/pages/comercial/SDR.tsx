@@ -13,7 +13,6 @@ import {
   type Column,
   type Tone,
 } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
 import { SLABadge } from '@/components/comercial/SLABadge'
 import { useComercial } from './store'
@@ -140,7 +139,6 @@ export default function SDR() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'SDR']} />
       <PageHeader title="SDR" description="Qualificação de leads e agendamento de reuniões" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">

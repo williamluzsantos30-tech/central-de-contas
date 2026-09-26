@@ -7,7 +7,6 @@
 import { useMemo, useState } from 'react'
 import { DollarSign, Megaphone, Plus } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, OutlineButton, Modal, Input, Select, type Tone } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { fmtBRL } from '@/components/comercial/LeadsTable'
 import { WeekNavigator } from '@/components/comercial/WeekNavigator'
 import { MetaFormModal } from '@/components/comercial/MetaFormModal'
@@ -161,7 +160,6 @@ export default function MarketingFunnelPanel({ modo = 'marketing' }: { modo?: 'm
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', ehMetas ? 'Metas' : 'Marketing']} />
       <PageHeader
         title={ehMetas ? 'Metas' : 'Marketing'}
         description={ehMetas ? 'Metas do funil — realizado vs. meta, edite direto no card' : 'Funil de aquisição — investimento, custo por etapa e retorno'}

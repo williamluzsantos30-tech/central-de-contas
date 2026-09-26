@@ -6,7 +6,6 @@
 import { useMemo, useState } from 'react'
 import { Inbox, Target, Handshake, DollarSign, TrendingUp, Clock } from 'lucide-react'
 import { PageHeader, KPICard, Select } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { fmtBRL } from '@/components/comercial/LeadsTable'
 import { FunnelChart, type FunnelEtapa } from '@/components/comercial/FunnelChart'
 import { BottleneckAlert, type Gargalo } from '@/components/comercial/BottleneckAlert'
@@ -169,7 +168,6 @@ export default function VisaoExecutivaComercial() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Visão Executiva']} />
       <PageHeader
         title="Visão Executiva — Comercial"
         description="Funil de vendas, conversão por etapa e gargalos"

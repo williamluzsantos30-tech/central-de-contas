@@ -115,7 +115,6 @@ export default function Flags() {
 
   return (
     <div>
-      <nav className="mb-1 text-[11px] text-muted">Flags</nav>
       <PageHeader
         title="Gestão de Flags"
         description="Controle de performance e disciplina operacional"

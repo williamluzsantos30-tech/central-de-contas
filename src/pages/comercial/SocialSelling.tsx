@@ -17,7 +17,6 @@ import {
   type Column,
   type Tone,
 } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
 import { ContactAttemptForm } from '@/components/comercial/ContactAttemptForm'
 import { AttemptHistoryCard, histAbordagensSocial } from '@/components/comercial/AttemptHistoryCard'
@@ -133,7 +132,6 @@ export default function SocialSelling() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Social Selling']} />
       <PageHeader
         title="Social Selling"
         description="Captação e prospecção ativa de leads"

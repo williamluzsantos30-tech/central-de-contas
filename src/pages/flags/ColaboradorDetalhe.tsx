@@ -35,12 +35,6 @@ export default function ColaboradorDetalhe() {
 
   return (
     <div>
-      <nav className="mb-3 flex items-center gap-1.5 text-[11px] text-muted">
-        <Link to="/flags" className="hover:text-zinc-200">Flags</Link>
-        <span>›</span>
-        <span className="text-zinc-400">{colab.id}</span>
-      </nav>
-
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
           <Link to="/flags" className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted hover:text-zinc-100">

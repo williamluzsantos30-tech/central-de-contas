@@ -107,7 +107,6 @@ export default function Renovacoes() {
 
   return (
     <div>
-      <nav className="mb-1 text-[11px] text-muted">Renovações</nav>
       <PageHeader
         title="Renovações de Contrato"
         description="Acompanhe vencimentos e gerencie protocolos de renovação"

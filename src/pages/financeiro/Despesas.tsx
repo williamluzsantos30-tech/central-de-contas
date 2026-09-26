@@ -6,7 +6,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus, Wallet, Lock, Repeat, AlertTriangle } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, FilterBar, FilterPill } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { DespesasTable } from '@/components/financeiro/DespesasTable'
 import { DespesaFormModal } from '@/components/financeiro/DespesaFormModal'
 import { useFinanceiro } from './store'
@@ -60,7 +59,6 @@ export default function Despesas() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'Despesas']} />
       <PageHeader
         title="Despesas"
         description="Lançamento e controle de custos da operação"

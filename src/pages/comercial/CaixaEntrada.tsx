@@ -8,7 +8,6 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Inbox, PhoneCall, Plug, Radio, AlertOctagon, ChevronDown } from 'lucide-react'
 import { PageHeader, KPICard, PrimaryButton, Badge, type Column, type Tone } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { LeadsTable, ContatoEmpresa, StatusBadge, fmtData } from '@/components/comercial/LeadsTable'
 import { SLABadge } from '@/components/comercial/SLABadge'
 import { useComercial } from './store'
@@ -143,7 +142,6 @@ export default function CaixaEntrada() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Caixa de Entrada']} />
       <PageHeader
         title="Caixa de Entrada"
         description="Leads recebidos via CRM e prospecção ativa, aguardando contato do SDR"

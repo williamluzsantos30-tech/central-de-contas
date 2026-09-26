@@ -7,7 +7,6 @@ import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, HandCoins, Trophy, Percent, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PageHeader, FilterPill, Badge, DataTable, type Column, type Tone } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { MarginKPICard } from '@/components/financeiro/MarginKPICard'
 import { useComercial } from '@/pages/comercial/store'
 import { useFinanceiro } from './store'
@@ -40,7 +39,6 @@ export default function Comissionamento() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'Comissionamento']} />
       <PageHeader
         title="Comissionamento"
         description="Comissões da equipe comercial sobre os fechamentos"

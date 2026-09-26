@@ -56,7 +56,6 @@ export type NavItem = {
   to: string
   label: string
   icon: IconCmp
-  end?: boolean
   adminOnly?: boolean
   /** Permissão de papel exigida (usePermissoes). */
   perm?: string

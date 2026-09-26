@@ -11,7 +11,6 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, FlaskConical } from 'lucide-react'
 import { PageHeader, KPICard, Select, OutlineButton } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { fmtBRL } from '@/components/comercial/LeadsTable'
 import { CreativeRankingTable } from '@/components/comercial/CreativeRankingTable'
 import { ClassificationDistributionChart } from '@/components/comercial/ClassificationDistributionChart'
@@ -48,7 +47,6 @@ export default function FunilTrafego() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'Funil Tráfego']} />
       <PageHeader
         title="Funil Tráfego"
         description="Performance de criativos Meta Ads e qualidade dos leads gerados"

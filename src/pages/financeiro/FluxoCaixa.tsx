@@ -5,7 +5,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, ArrowDownToLine, ArrowUpFromLine, Scale, Landmark, Clock } from 'lucide-react'
 import { PageHeader, FilterPill } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { MarginKPICard } from '@/components/financeiro/MarginKPICard'
 import { FluxoCaixaTable } from '@/components/financeiro/FluxoCaixaTable'
 import { FluxoCaixaChart, type FluxoPonto } from '@/components/financeiro/FluxoCaixaChart'
@@ -44,7 +43,6 @@ export default function FluxoCaixa() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Financeiro', 'Fluxo de Caixa']} />
       <PageHeader
         title="Fluxo de Caixa"
         description="Regime de caixa — entradas e saídas efetivas por período"

@@ -18,7 +18,6 @@ import {
   Textarea,
   Badge,
 } from '@/components/ds'
-import { Breadcrumb } from '@/components/comercial/Breadcrumb'
 import { ContactAttemptForm } from '@/components/comercial/ContactAttemptForm'
 import { AttemptHistoryCard, histTentativasSdr } from '@/components/comercial/AttemptHistoryCard'
 import { LeadCard } from '@/components/comercial/LeadCard'
@@ -68,7 +67,6 @@ export default function CadastrarLeadQualificado() {
   if (!lead) {
     return (
       <div>
-        <Breadcrumb trilha={['Comercial', 'SDR', 'Cadastrar lead qualificado']} />
         <div className="rounded-lg border border-border bg-bg-card p-8 text-center text-sm text-muted">
           Lead não encontrado.
           <div className="mt-3">
@@ -117,7 +115,6 @@ export default function CadastrarLeadQualificado() {
 
   return (
     <div>
-      <Breadcrumb trilha={['Comercial', 'SDR', 'Cadastrar lead qualificado']} />
       <PageHeader
         title="Cadastrar lead qualificado"
         description="SDR · envia direto para o Briefing pré-call"

@@ -316,7 +316,6 @@ export default function Configuracoes() {
 
   return (
     <div>
-      <nav className="mb-1 text-[11px] text-muted">Configurações</nav>
       <PageHeader
         title="Configurações"
         description="Configure metas, equipe operacional e parâmetros do sistema"
