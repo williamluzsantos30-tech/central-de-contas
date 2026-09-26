@@ -22,7 +22,6 @@ import { Avatar } from '@/components/ui/Avatar'
 import { KPICard } from '@/components/ds'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { CompactMonthCalendar } from '@/components/social/CompactMonthCalendar'
 import { TodayTomorrowPanel } from '@/components/social/TodayTomorrowPanel'
 import { loadInstagramCache } from '@/components/social/mockInstagram'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
@@ -374,16 +373,6 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
 
       {/* Destaque máximo: demandas de postagem dos próximos 2 dias. */}
       <TodayTomorrowPanel
-        items={items}
-        planejamentos={planejamentos}
-        clientes={filtered}
-        onChanged={load}
-        igNonce={igNonce}
-      />
-
-      {/* Calendário mensal colapsável com chips por dia. Escopado aos clientes
-          desta operação (filtered) — liga item → planejamento → cliente. */}
-      <CompactMonthCalendar
         items={items}
         planejamentos={planejamentos}
         clientes={filtered}
