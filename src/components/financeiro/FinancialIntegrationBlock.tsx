@@ -5,7 +5,7 @@
  * Omie, Bling, Webhook genérico); por ora usa o webhook mockado
  * (receiveWebhookDespesa) pra injetar uma despesa de teste na tela de Despesas.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Wallet, Copy, Check, RefreshCw, Zap, FlaskConical, Plus, Trash2, CheckCircle2 } from 'lucide-react'
 import { PrimaryButton, OutlineButton, Input, Select, Badge } from '@/components/ds'
 import { useFinanceiro } from '@/pages/financeiro/store'
@@ -25,9 +25,11 @@ import {
 
 const ACCOUNT_ID = 'acc_movmed_demo'
 
-export function FinancialIntegrationBlock() {
+export function FinancialIntegrationBlock({ onStatusChange }: { onStatusChange?: (conectado: boolean) => void } = {}) {
   const { receberDespesaExterna } = useFinanceiro()
   const [cfg, setCfg] = useState<FinIntegracaoConfig>(INTEGRACAO_FIN_INICIAL)
+  // Avisa quem mostra o status (lista do painel de Integrações).
+  useEffect(() => onStatusChange?.(cfg.status === 'conectado'), [cfg.status, onStatusChange])
   const [copiado, setCopiado] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 

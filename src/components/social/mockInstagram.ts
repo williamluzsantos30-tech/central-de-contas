@@ -213,11 +213,15 @@ export function getAllInstagramConnections(): { clienteId: string; state: Client
 }
 
 // ── Config de agência ────────────────────────────────────────────────────────
+/** Evento (mesma aba) quando a conexão de agência muda — ex.: status no painel de Integrações. */
+export const EVENTO_AGENCIA_INSTAGRAM = 'instagram-agency-config'
+
 export function getAgencyConfig(): AgencyInstagramConfig {
   return agencyCache ?? readJSON<AgencyInstagramConfig>(AGENCY_KEY, { conectado: false })
 }
 export function setAgencyConfig(cfg: AgencyInstagramConfig) {
   agencyCache = cfg
+  window.dispatchEvent(new Event(EVENTO_AGENCIA_INSTAGRAM))
   if (modoBanco) {
     void supabase.from('instagram_config').upsert({ id: 'default', conectado: cfg.conectado, business_manager: cfg.businessManager ?? null, conectado_em: cfg.conectadoEm ?? null }).then(({ error }) => {
       if (error) console.warn('[instagram] setAgencyConfig', error.message)

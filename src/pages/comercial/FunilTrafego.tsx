@@ -145,7 +145,7 @@ function StatusMeta({ estado }: { estado: ReturnType<typeof useEstadoCriativosMe
         </OutlineButton>
       ) : (
         <Link
-          to="/configuracoes?aba=integracoes"
+          to="/configuracoes?aba=integracoes&integracao=meta-ads"
           className="rounded-md border border-orange-500/40 px-2.5 py-1 text-[11px] font-medium text-orange-100 hover:bg-orange-500/15"
         >
           Conectar em Configurações › Integrações
