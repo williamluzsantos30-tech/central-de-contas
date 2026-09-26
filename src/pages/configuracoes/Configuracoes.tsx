@@ -57,7 +57,6 @@ import {
 import { IntegracoesTab } from './IntegracoesTab'
 import { useComercial } from '@/pages/comercial/store'
 import { useFinanceiro } from '@/pages/financeiro/store'
-import { BASES_COMISSAO } from '@/pages/financeiro/comissaoCalculator'
 import type { MetaMarketingValores, MetasMarketing } from '@/pages/comercial/mockComercialConfig'
 import { MetasComerciaisSection } from '@/components/comercial/MetasComerciaisSection'
 import { TaxasConversaoIdealBloco } from '@/components/comercial/TaxasConversaoIdealBloco'
@@ -110,7 +109,7 @@ export default function Configuracoes() {
   // ?aba=integracoes abre direto na aba (links de outras telas, ex.: Funil Tráfego).
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('aba') || 'geral')
   const { slaConfig, setSlaConfig, metasMarketing, setMetasMarketing } = useComercial()
-  const { metasFinanceiras, setMetasFinanceiras, comissaoConfig, setComissaoConfig } = useFinanceiro()
+  const { metasFinanceiras, setMetasFinanceiras } = useFinanceiro()
   const [params, setParams] = useState<Params>(PARAMS_INICIAIS)
   // Squads (+ metas, migration 087), papéis e membros vêm do banco — fonte
   // única. Guardamos as linhas cruas e mapeamos pros shapes dos componentes.
@@ -405,31 +404,6 @@ export default function Configuracoes() {
               <SlaInput label="Meta de Margem Líquida (%)" value={metasFinanceiras.margemLiquidaAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, margemLiquidaAlvo: v })} />
               <SlaInput label="Meta de LTV:CAC (x)" value={metasFinanceiras.ltvCacAlvo} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, ltvCacAlvo: v })} />
               <SlaInput label="Payback alvo (meses)" value={metasFinanceiras.paybackAlvoMeses} onChange={(v) => setMetasFinanceiras({ ...metasFinanceiras, paybackAlvoMeses: v })} />
-            </div>
-          </section>
-
-          {/* Comissionamento */}
-          <section className="rounded-lg border border-border bg-bg-card p-5">
-            <div className="mb-1 flex items-center gap-2">
-              <DollarSign size={14} className="text-brand-300" />
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Comissionamento</p>
-            </div>
-            <p className="mb-4 text-[11px] text-muted">
-              Regra usada na tela de Comissionamento: sobre qual valor do fechamento incide a comissão e o
-              percentual de cada papel do funil.
-            </p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted">Base de cálculo</label>
-                <Select value={comissaoConfig.base} onChange={(e) => setComissaoConfig({ ...comissaoConfig, base: e.target.value as typeof comissaoConfig.base })}>
-                  {BASES_COMISSAO.map((b) => (
-                    <option key={b.key} value={b.key}>{b.label}</option>
-                  ))}
-                </Select>
-              </div>
-              <SlaInput label="Closer (%)" value={comissaoConfig.pctCloser} onChange={(v) => setComissaoConfig({ ...comissaoConfig, pctCloser: v })} />
-              <SlaInput label="SDR (%)" value={comissaoConfig.pctSdr} onChange={(v) => setComissaoConfig({ ...comissaoConfig, pctSdr: v })} />
-              <SlaInput label="Social Selling (%)" value={comissaoConfig.pctSocial} onChange={(v) => setComissaoConfig({ ...comissaoConfig, pctSocial: v })} />
             </div>
           </section>
 

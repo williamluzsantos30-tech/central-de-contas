@@ -19,7 +19,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MOCK_DESPESAS, type Despesa } from './mockDespesas'
-import { COMISSAO_CONFIG_INICIAL, type ComissaoConfig } from './comissaoCalculator'
 
 /** Metas financeiras usadas pra colorir os KPIs do DRE e do LTV:CAC. */
 export interface MetasFinanceiras {
@@ -61,8 +60,6 @@ interface FinanceiroCtx {
   receberDespesaExterna: (d: Despesa) => void
   metasFinanceiras: MetasFinanceiras
   setMetasFinanceiras: (m: MetasFinanceiras) => void
-  comissaoConfig: ComissaoConfig
-  setComissaoConfig: (c: ComissaoConfig) => void
 }
 
 const Ctx = createContext<FinanceiroCtx | null>(null)
@@ -128,7 +125,6 @@ function rowToDespesa(r: DespesaRow): Despesa {
 export function FinanceiroProvider({ children }: { children: ReactNode }) {
   const [despesas, setDespesas] = useState<Despesa[]>(MOCK_DESPESAS)
   const [metasFinanceiras, setMetasFinanceirasState] = useState<MetasFinanceiras>(METAS_FINANCEIRAS_INICIAL)
-  const [comissaoConfig, setComissaoConfigState] = useState<ComissaoConfig>(COMISSAO_CONFIG_INICIAL)
   const [carregando, setCarregando] = useState(true)
   // true quando as tabelas existem (persiste); false = fallback mock em memória.
   const modoBanco = useRef(false)
@@ -145,7 +141,7 @@ export function FinanceiroProvider({ children }: { children: ReactNode }) {
           // Banco fresco → bootstrap do mock (upsert = idempotente).
           await Promise.all([
             supabase.from('despesas_financeiras').upsert(MOCK_DESPESAS.map(despesaToRow)),
-            supabase.from('financeiro_config').upsert({ id: 'default', metas: METAS_FINANCEIRAS_INICIAL, comissao: COMISSAO_CONFIG_INICIAL }),
+            supabase.from('financeiro_config').upsert({ id: 'default', metas: METAS_FINANCEIRAS_INICIAL }),
           ])
           // estado já está com o mock (init) — nada a trocar
         } else {
@@ -153,7 +149,6 @@ export function FinanceiroProvider({ children }: { children: ReactNode }) {
           if (cancel) return
           setDespesas(((dRes.data as DespesaRow[]) ?? []).map(rowToDespesa))
           setMetasFinanceirasState({ ...METAS_FINANCEIRAS_INICIAL, ...((cfg.metas as Partial<MetasFinanceiras>) ?? {}) })
-          setComissaoConfigState({ ...COMISSAO_CONFIG_INICIAL, ...((cfg.comissao as Partial<ComissaoConfig>) ?? {}) })
         }
       } catch {
         modoBanco.current = false // migration 089 não rodada → mock em memória
@@ -221,18 +216,9 @@ export function FinanceiroProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const setComissaoConfig = useCallback((c: ComissaoConfig) => {
-    setComissaoConfigState(c)
-    if (modoBanco.current) {
-      void supabase.from('financeiro_config').upsert({ id: 'default', comissao: c }).then(({ error }) => {
-        if (error) console.warn('[financeiro] setComissaoConfig', error.message)
-      })
-    }
-  }, [])
-
   const value = useMemo<FinanceiroCtx>(
-    () => ({ despesas, carregando, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras, setMetasFinanceiras, comissaoConfig, setComissaoConfig }),
-    [despesas, carregando, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras, setMetasFinanceiras, comissaoConfig, setComissaoConfig],
+    () => ({ despesas, carregando, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras, setMetasFinanceiras }),
+    [despesas, carregando, salvarDespesa, criarDespesa, excluirDespesa, receberDespesaExterna, metasFinanceiras, setMetasFinanceiras],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -2,8 +2,8 @@
  * Módulo FINANCEIRO — entidade Despesa (base do sistema financeiro).
  *
  * Toda despesa da empresa é lançada e categorizada aqui. É a fonte de dados
- * que os próximos módulos financeiros (DRE, Margens, LTV:CAC, DRE por Setor,
- * Comissionamento, Fluxo de Caixa) vão consumir — por isso os cálculos ficam
+ * que os módulos financeiros (DRE, Margens, LTV:CAC, DRE por Setor, Fluxo de
+ * Caixa) consomem — por isso os cálculos ficam
  * numa função reutilizável (`calculateExpensesSummary`, em ./despesasCalculator).
  *
  * PERSISTÊNCIA: por enquanto MOCK em memória (via DespesasProvider), com
