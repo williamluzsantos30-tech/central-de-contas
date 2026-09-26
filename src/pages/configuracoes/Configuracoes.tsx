@@ -26,10 +26,12 @@ import {
   Plus,
   BarChart3,
   Plug,
+  Trophy,
 } from 'lucide-react'
 import { PageHeader, PrimaryButton, OutlineButton, Badge, FormField, Input, Select } from '@/components/ds'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { lerFaixasPerformance, salvarFaixasPerformance } from '@/lib/metasPerformance'
 import type { PapelOperacional, Profile } from '@/types/database'
 import {
   agregadoMetas,
@@ -431,6 +433,9 @@ export default function Configuracoes() {
             </div>
           </section>
 
+          {/* Metas de Performance (faixas de cor do score da equipe) */}
+          <MetasPerformanceSection />
+
           {/* Metas Mensais */}
           <section className="rounded-lg border border-border bg-bg-card p-5">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -756,6 +761,40 @@ function MetasMarketingSection({
             })}
           </tbody>
         </table>
+      </div>
+    </section>
+  )
+}
+
+/** Faixas de cor do score em Operacional › Performance da Equipe. */
+function MetasPerformanceSection() {
+  const [faixas, setFaixas] = useState(lerFaixasPerformance)
+  const mudar = (campo: 'verde' | 'laranja', v: number) => setFaixas(salvarFaixasPerformance({ ...faixas, [campo]: v }))
+  return (
+    <section className="rounded-lg border border-border bg-bg-card p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <Trophy size={14} className="text-brand-300" />
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Metas de Performance</p>
+      </div>
+      <p className="mb-4 text-[11px] text-muted">
+        Faixas que colorem o score individual em Performance da Equipe:{' '}
+        <span className="text-green-300">verde</span> a partir de {faixas.verde}%,{' '}
+        {faixas.laranja < faixas.verde ? (
+          <>
+            <span className="text-orange-300">laranja</span> de {faixas.laranja}% a {faixas.verde - 1}%,{' '}
+            <span className="text-red-300">vermelho</span> abaixo de {faixas.laranja}%.
+          </>
+        ) : (
+          <>
+            <span className="text-red-300">vermelho</span> abaixo de {faixas.verde}%{' '}
+            <span className="text-orange-300">(sem faixa laranja: ela precisa começar abaixo do verde)</span>.
+          </>
+        )}{' '}
+        Salvo neste navegador.
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <SlaInput label="Verde a partir de (%)" value={faixas.verde} onChange={(v) => mudar('verde', v)} />
+        <SlaInput label="Laranja a partir de (%)" value={faixas.laranja} onChange={(v) => mudar('laranja', v)} />
       </div>
     </section>
   )

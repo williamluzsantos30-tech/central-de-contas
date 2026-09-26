@@ -12,7 +12,8 @@ import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { ResumoClientesKpi } from '@/components/clientes/ResumoClientesKpi'
 import { situacaoCliente } from '@/pages/Clientes'
 import { supabase } from '@/lib/supabase'
-import { temAlgumCargo } from '@/lib/cargos'
+import { temAlgumCargo, temCargo } from '@/lib/cargos'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import {
   cn,
   formatCurrency,
@@ -73,14 +74,11 @@ export default function ClientesTrafego() {
         // A criação/edição do vínculo é feita só no modal da página Clientes.
         .not('gestor_id', 'is', null)
         .order('nome'),
-      // Filtro "Todos gestores" só lista cargo gestor_trafego
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .eq('cargo', 'gestor_trafego')
-        .order('nome'),
+      // Filtro "Todos gestores": quem é Gestor de Tráfego pelo papel
+      // (Equipe Operacional) ou pelo cargo legado.
+      buscarProfilesComPapel((sel) =>
+        supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome'),
+      ),
       // Tarefas não concluídas com prazo <= hoje (atrasadas + de hoje).
       supabase
         .from('tarefas')
@@ -89,7 +87,7 @@ export default function ClientesTrafego() {
         .neq('status', 'concluida'),
     ])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setGestores((gRes.data as Profile[]) ?? [])
+    setGestores(gRes.data.filter((p) => temCargo(p, 'gestor_trafego')))
     setTarefas((tRes.data as Tarefa[]) ?? [])
     setLoading(false)
   }

@@ -65,6 +65,13 @@ import { FilterBar, FilterPill } from '@/components/ds'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { CodigoCulturaModal } from '@/components/operacional/CodigoCulturaModal'
 import { supabase } from '@/lib/supabase'
+import {
+  calculaScoreSquads,
+  SCORE_SQUAD_MAX,
+  SCORE_SQUAD_MIN,
+  type EventoMovimento,
+  type ScoreSquad,
+} from '@/lib/scoreSquads'
 import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import { temCargo } from '@/lib/cargos'
 import { cn } from '@/lib/utils'
@@ -108,24 +115,6 @@ const MES_CURTO = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET'
 function labelMesCurto(mesISO: string): string {
   const [y, m] = mesISO.split('-').map(Number)
   return `${MES_CURTO[m - 1]}/${String(y).slice(-2)}`
-}
-
-/**
- * MRR reconstruido de um squad num mes: soma verba_mensal dos clientes
- * que ja tinham iniciado ate o fim do mes e ainda nao estavam arquivados
- * naquele momento (data_inicio <= fimMes E arquivado_em nulo ou > fimMes).
- * Base pro NRR (mrrInicio) e pra comparacao mes-a-mes.
- */
-function mrrSquadNoMes(lista: Cliente[], mesISO: string): number {
-  const [y, m] = mesISO.split('-').map(Number)
-  const fimMes = new Date(y, m, 0, 23, 59, 59)
-  return lista.reduce((s, c) => {
-    if (!c.data_inicio) return s
-    const ini = new Date(c.data_inicio)
-    if (isNaN(ini.getTime()) || ini > fimMes) return s
-    if (c.arquivado_em && new Date(c.arquivado_em) <= fimMes) return s
-    return s + (c.verba_mensal ?? 0)
-  }, 0)
 }
 
 /** ISO datetime → "dd/mm/aaaa às HH:MM". */
@@ -187,21 +176,6 @@ function formatDataCurta(iso: string): string {
 }
 
 type TipoMov = 'expansao' | 'perda' | 'churn'
-
-// Evento manual de expansao/perda/churn — usado pra construir o
-// Resultado do Negocio a partir do log real, nao mais placeholder.
-interface EventoMovimento {
-  tipo: 'expansao' | 'perda' | 'churn'
-  cliente_id: string
-  criado_em: string
-  meta: {
-    valor?: number
-    valor_perdido?: number
-    data?: string
-    motivo?: string
-    recorrente?: boolean
-  } | null
-}
 
 // Evento de mudanca de jornada (auto-log do trigger). Usado pra medir
 // quanto tempo o cliente levou pra SAIR do onboarding.
@@ -1690,36 +1664,6 @@ function MovimentacoesModal({
   )
 }
 
-// ==============================================================
-// Score e Saúde por Squad
-// ==============================================================
-//
-// Formula do score (0-8, com penalizacoes negativas em cima):
-//   +2 se NRR >= 100% (retencao meta atingida)
-//   +2 se zero churn no mes selecionado
-//   +2 se zero clientes em atencao
-//   +2 se MRR do squad > media geral (squad puxando resultado)
-//   -2 se ha perda de MRR no mes (churn > 0)
-//   -1 se squad nao tem indicacoes registradas (v2 — placeholder 0)
-//
-// Score final vai de -3 (critico) a +8 (saudavel).
-// Classificacao: <=0 Critico, 1-4 Atencao, 5+ Saudavel.
-
-interface ScoreSquad {
-  nome: string
-  clientes: Cliente[]
-  mrr: number
-  mrrMes: number // MRR reconstruido do mes (base do NRR e da comparacao MoM)
-  nrr: number
-  churnsCount: number
-  emRiscoCount: number
-  revChurn: number
-  indicacoes: number
-  score: number
-  badges: { label: string; positive: boolean }[]
-  classificacao: 'critico' | 'atencao' | 'saudavel'
-}
-
 // Comparacao mes-a-mes de um squad. temAnterior=false quando nao ha base
 // do mes anterior (ou MRR anterior = 0) — nesse caso a UI mostra "—".
 interface ComparacaoMoM {
@@ -1731,131 +1675,6 @@ interface ComparacaoMoM {
   mesAntLabel: string
 }
 
-function calculaScoreSquads(
-  clientes: Cliente[],
-  mesISO: string,
-  mrrMedioSquad: number,
-  squadsAtivos: string[],
-  incluirSemSquad: boolean,
-  indicacoesPorSquad: Map<string, number>,
-  eventosMov: EventoMovimento[],
-): ScoreSquad[] {
-  const [y, m] = mesISO.split('-').map(Number)
-  const inicioMes = new Date(y, m - 1, 1)
-  const fimMes = new Date(y, m, 0, 23, 59, 59)
-
-  const byNome = new Map<string, Cliente[]>()
-  for (const c of clientes) {
-    const nome = c.squad ?? '(sem squad)'
-    if (!byNome.has(nome)) byNome.set(nome, [])
-    byNome.get(nome)!.push(c)
-  }
-
-  // Um card por squad ATIVO cadastrado (mesmo sem clientes) + "(sem squad)"
-  // quando há clientes sem squad. Squads inativos não entram. A fonte é a
-  // lista central (useSquads), nunca nomes hardcoded.
-  const nomesAlvo = [...squadsAtivos]
-  if (incluirSemSquad && byNome.has('(sem squad)')) nomesAlvo.push('(sem squad)')
-
-  const resultados: ScoreSquad[] = []
-  for (const nome of Array.from(new Set(nomesAlvo))) {
-    const lista = byNome.get(nome) ?? []
-    const ativos = lista.filter((c) => c.status === 'ativo' && !c.arquivado_em)
-    const emRisco = lista.filter((c) => c.status === 'atencao' && !c.arquivado_em)
-    const churnsNoMes = lista.filter((c) => {
-      if (!c.arquivado_em) return false
-      const d = new Date(c.arquivado_em)
-      return d >= inicioMes && d <= fimMes
-    })
-
-    const mrr = ativos.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
-    const revChurn = churnsNoMes.reduce((s, c) => s + (c.verba_mensal ?? 0), 0)
-
-    // NRR com expansao — pode passar de 100%. Puxa os eventos de movimento
-    // comercial DAQUELE squad no mes (prioriza meta.data, cai pra criado_em).
-    const squadClienteIds = new Set(lista.map((c) => c.id))
-    const eventosDoMes = eventosMov.filter((ev) => {
-      if (!squadClienteIds.has(ev.cliente_id)) return false
-      const d = new Date(ev.meta?.data ?? ev.criado_em)
-      return d >= inicioMes && d <= fimMes
-    })
-    const expansao = eventosDoMes
-      .filter((ev) => ev.tipo === 'expansao')
-      .reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
-    const reducao = eventosDoMes
-      .filter((ev) => ev.tipo === 'perda')
-      .reduce((s, ev) => s + (ev.meta?.valor ?? 0), 0)
-    const churnsEv = eventosDoMes.filter((ev) => ev.tipo === 'churn')
-    // Churn perdido = soma dos eventos tipo 'churn'; sem eventos, cai pro
-    // rev churn reconstruido de arquivado_em (retrocompativel).
-    const churnPerdido =
-      churnsEv.length > 0
-        ? churnsEv.reduce((s, ev) => s + (ev.meta?.valor_perdido ?? 0), 0)
-        : revChurn
-
-    // mrrInicio = MRR do mes reconstruido. NRR = (inicio + exp - red - churn)
-    // / inicio; se inicio=0, NRR=1 (evita divisao por zero).
-    const mrrMes = mrrSquadNoMes(lista, mesISO)
-    const nrr = mrrMes > 0 ? (mrrMes + expansao - reducao - churnPerdido) / mrrMes : 1
-
-    // Score components
-    let score = 0
-    const badges: { label: string; positive: boolean }[] = []
-
-    if (nrr >= 0.95) {
-      // Meta atingida — NRR acima de 95%
-      score += 2
-      badges.push({ label: '+2 NRR', positive: true })
-    }
-    if (churnsNoMes.length === 0) {
-      score += 2
-      badges.push({ label: '+2 Zero churn', positive: true })
-    } else {
-      score -= 2
-      badges.push({ label: '-2 Perda MRR', positive: false })
-    }
-    if (emRisco.length === 0) {
-      score += 2
-      badges.push({ label: '+2 Zero risco', positive: true })
-    }
-    if (mrr > mrrMedioSquad) {
-      score += 2
-      badges.push({ label: '+2 MRR acima da média', positive: true })
-    }
-    // Indicações — valor real do squad (atual_indicacoes na tabela squads,
-    // editável no Painel de Metas). Com indicação = +1; sem = -1.
-    const indicacoes = indicacoesPorSquad.get(nome) ?? 0
-    if (indicacoes > 0) {
-      score += 1
-      badges.push({ label: `+1 Indicações`, positive: true })
-    } else {
-      score -= 1
-      badges.push({ label: '-1 Sem indic.', positive: false })
-    }
-
-    const classificacao: 'critico' | 'atencao' | 'saudavel' =
-      score <= 0 ? 'critico' : score <= 4 ? 'atencao' : 'saudavel'
-
-    resultados.push({
-      nome,
-      clientes: lista,
-      mrr,
-      mrrMes,
-      nrr,
-      churnsCount: churnsNoMes.length,
-      emRiscoCount: emRisco.length,
-      revChurn,
-      indicacoes,
-      score,
-      badges,
-      classificacao,
-    })
-  }
-  // Ordena: saudavel primeiro, depois atencao, depois critico
-  const ordem = { saudavel: 0, atencao: 1, critico: 2 }
-  resultados.sort((a, b) => ordem[a.classificacao] - ordem[b.classificacao])
-  return resultados
-}
 
 function ScoreSaudeSquads({
   clientes,
@@ -1959,8 +1778,11 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
         ? 'Atenção'
         : 'Crítico'
 
-  // Progress bar — score varia de -3 a +8, normaliza pra 0-100
-  const scoreNorm = Math.max(0, Math.min(100, ((squad.score + 3) / 11) * 100))
+  // Progress bar — score varia de SCORE_SQUAD_MIN (-3) a SCORE_SQUAD_MAX (+9), normaliza pra 0-100
+  const scoreNorm = Math.max(
+    0,
+    Math.min(100, ((squad.score - SCORE_SQUAD_MIN) / (SCORE_SQUAD_MAX - SCORE_SQUAD_MIN)) * 100),
+  )
 
   // Pill neutro reutilizado quando nao ha base do mes anterior.
   const pillNeutro = 'border-border bg-bg-elev text-muted'
@@ -2030,7 +1852,7 @@ function SquadCard({ squad, comparacao }: { squad: ScoreSquad; comparacao: Compa
             {squad.score > 0 ? '+' : ''}
             {squad.score}
           </span>
-          <span className="mt-1 text-[9px] uppercase tracking-wider opacity-60">de 8</span>
+          <span className="mt-1 text-[9px] uppercase tracking-wider opacity-60">de 9</span>
           <span className="text-[10px] font-semibold uppercase tracking-wide">{classLabel}</span>
         </div>
       </div>

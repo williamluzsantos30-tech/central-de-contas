@@ -19,24 +19,30 @@ export interface TarefasDoDia {
   hoje: Tarefa[]
 }
 
+/** Base do KPI: clientes ativos, sem churn e FORA de onboarding. */
+function baseDaOperacao(clientes: Cliente[]): (clienteId: string) => boolean {
+  const baseAtiva = clientes.filter((c) => !c.arquivado_em && c.status !== 'churn')
+  const baseIds = new Set(baseAtiva.map((c) => c.id))
+  const onboardingIds = new Set(
+    baseAtiva.filter((c) => c.jornada === 'onboarding').map((c) => c.id),
+  )
+  return (clienteId) => baseIds.has(clienteId) && !onboardingIds.has(clienteId)
+}
+
 export function getTarefasDoDia(
   tarefas: Tarefa[],
   clientes: Cliente[],
   hojeISO: string,
 ): TarefasDoDia {
   // Mesma base do KPI: clientes ativos, sem churn, e onboarding é excluído.
-  const baseAtiva = clientes.filter((c) => !c.arquivado_em && c.status !== 'churn')
-  const baseIds = new Set(baseAtiva.map((c) => c.id))
-  const onboardingIds = new Set(
-    baseAtiva.filter((c) => c.jornada === 'onboarding').map((c) => c.id),
-  )
+  const naBase = baseDaOperacao(clientes)
 
   const atrasadas: Tarefa[] = []
   const hoje: Tarefa[] = []
   for (const t of tarefas) {
     if (t.status === 'concluida') continue
     if (!t.data_vencimento) continue
-    if (!baseIds.has(t.cliente_id) || onboardingIds.has(t.cliente_id)) continue
+    if (!naBase(t.cliente_id)) continue
     const venc = t.data_vencimento.slice(0, 10)
     if (venc < hojeISO) atrasadas.push(t)
     else if (venc === hojeISO) hoje.push(t)
@@ -51,6 +57,43 @@ export function getTarefasDoDia(
         : 0,
   )
   return { atrasadas, hoje }
+}
+
+export interface PrazoTarefas {
+  /** Concluídas até o vencimento. */
+  noPrazo: number
+  /** Concluídas depois do vencimento OU vencidas e não concluídas (atrasadas). */
+  foraDoPrazo: number
+  /** Não concluídas e ainda dentro do prazo (não contam no %). */
+  pendentes: number
+}
+
+/**
+ * Pontualidade das tarefas com vencimento em [desdeISO, hojeISO] — mesma base
+ * e mesma regra de "atrasada" do KPI acima (prazo < hoje e não concluída),
+ * mais as concluídas depois do prazo (data_conclusao > data_vencimento).
+ * Usado na Performance da Equipe (Gestor de Tráfego: % tarefas no prazo).
+ */
+export function classificarPrazoTarefas(
+  tarefas: Tarefa[],
+  clientes: Cliente[],
+  hojeISO: string,
+  desdeISO: string | null,
+): PrazoTarefas {
+  const naBase = baseDaOperacao(clientes)
+  const r: PrazoTarefas = { noPrazo: 0, foraDoPrazo: 0, pendentes: 0 }
+  for (const t of tarefas) {
+    if (!t.data_vencimento || !naBase(t.cliente_id)) continue
+    const venc = t.data_vencimento.slice(0, 10)
+    if (venc > hojeISO || (desdeISO && venc < desdeISO)) continue
+    if (t.status === 'concluida') {
+      const concl = t.data_conclusao?.slice(0, 10)
+      if (concl && concl > venc) r.foraDoPrazo++
+      else r.noPrazo++
+    } else if (venc < hojeISO) r.foraDoPrazo++
+    else r.pendentes++
+  }
+  return r
 }
 
 /** Nº de tarefas atrasadas por cliente — pro indicador da tabela de clientes. */

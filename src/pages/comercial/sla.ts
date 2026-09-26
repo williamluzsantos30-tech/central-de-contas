@@ -53,12 +53,37 @@ export function proximoContatoVencido(lead: Lead): boolean {
   return Date.parse(lead.proximoContato) <= Date.now()
 }
 
+/** Data ("YYYY-MM-DD") ou data-hora ISO → ms (data pura = 00:00 local). */
+function instante(iso: string): number {
+  return Date.parse(iso.length <= 10 ? `${iso}T00:00:00` : iso)
+}
+
+/**
+ * SLA do PRIMEIRO CONTATO (já ocorrido) de um lead: tempo entre a entrada na
+ * Caixa e o SDR assumir/contatar (1ª tentativa ou envio ao SDR, o que vier
+ * antes) vs. o limite `caixaPrimeiroContatoHoras` — o mesmo SLA que o
+ * calculateLeadSLA aplica ao vivo na Caixa de Entrada. Usado na Performance
+ * da Equipe (SDR). Sem contato ainda → não aplicável.
+ */
+export function slaPrimeiroContato(
+  lead: Lead,
+  cfg: SlaConfigComercial,
+): { aplicavel: boolean; noPrazo: boolean; decorridoMs: number; limiteMs: number } {
+  const entrada = lead.dataEntrada ?? lead.dataCaptacao
+  const contatos = [lead.tentativasContato?.[0]?.data, lead.dataEnvioSDR].filter((x): x is string => !!x)
+  if (!entrada || contatos.length === 0) return { aplicavel: false, noPrazo: false, decorridoMs: 0, limiteMs: 0 }
+  const primeiro = Math.min(...contatos.map(instante))
+  const decorridoMs = Math.max(0, primeiro - instante(entrada))
+  const limiteMs = cfg.caixaPrimeiroContatoHoras * HORA_MS
+  return { aplicavel: true, noPrazo: decorridoMs <= limiteMs, decorridoMs, limiteMs }
+}
+
 export function calculateLeadSLA(lead: Lead, cfg: SlaConfigComercial): SlaResultado {
   const { entrada, horas } = baseDaEtapa(lead, cfg)
   if (!entrada || !horas) {
     return { aplicavel: false, status: 'no_prazo', decorridoMs: 0, limiteMs: 0, label: '—' }
   }
-  const inicio = Date.parse(entrada.length <= 10 ? `${entrada}T00:00:00` : entrada)
+  const inicio = instante(entrada)
   const decorridoMs = Math.max(0, Date.now() - inicio)
   const limiteMs = horas * HORA_MS
   const ratio = limiteMs > 0 ? decorridoMs / limiteMs : 0

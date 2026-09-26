@@ -106,6 +106,22 @@ export function getPostsForDateRange(
   return result
 }
 
+/**
+ * Pontualidade de um post (Performance da Equipe — Social Media):
+ *   - 'no_prazo'  publicado até o dia da postagem (prazo)
+ *   - 'fora'      publicado depois do prazo, ou 'atrasado' (não publicado e prazo passou)
+ *   - 'pendente'  agendado (prazo ainda não chegou) — não conta no %
+ */
+export function prazoDoPost(post: PostView): 'no_prazo' | 'fora' | 'pendente' {
+  if (post.estado === 'agendado') return 'pendente'
+  if (post.estado === 'atrasado') return 'fora'
+  const publicado = post.item.publicado_em ? parseLocalDate(post.item.publicado_em.slice(0, 10)) : null
+  if (!publicado) return 'no_prazo'
+  const prazo = new Date(post.prazoDate)
+  prazo.setHours(23, 59, 59, 999)
+  return publicado <= prazo ? 'no_prazo' : 'fora'
+}
+
 /** Nome curto pro chip do calendário: primeiro nome (ou iniciais). */
 export function nomeCurtoCliente(nome: string): string {
   const limpo = nome.trim()
