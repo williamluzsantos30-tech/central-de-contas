@@ -6,6 +6,7 @@ import { Badge, DataTable, FilterBar, FilterPill, badgeTone, type Column, type R
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
+import { baixarCsv } from '@/lib/csv'
 import { temAlgumCargo } from '@/lib/cargos'
 import {
   cn,
@@ -148,8 +149,10 @@ export default function Clientes({ filtroOperacao }: { filtroOperacao?: 'trafego
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => alert('Exportação em breve')}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300"
+              onClick={() => exportarClientes(filtered)}
+              disabled={loading || filtered.length === 0}
+              title="Exporta os clientes filtrados (CSV pro Excel)"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-soft px-3 py-2 text-xs font-medium text-zinc-200 hover:border-brand-500/40 hover:text-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download size={12} /> Exportar
             </button>
@@ -277,6 +280,34 @@ const SEMAFORO: Record<NonNullable<Cliente['semaforo']>, { label: string; dot: s
   laranja: { label: 'Risco', dot: 'bg-orange-500', ordem: 1 },
   amarelo: { label: 'Atenção', dot: 'bg-yellow-500', ordem: 2 },
   verde: { label: 'Estável', dot: 'bg-green-500', ordem: 3 },
+}
+
+/** CSV dos clientes na tela (respeita filtros e busca). */
+function exportarClientes(lista: Cliente[]) {
+  // Data LOCAL no nome (toISOString é UTC: depois das 21h viraria o dia seguinte).
+  const d = new Date()
+  const hoje = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  baixarCsv(
+    `clientes-${hoje}.csv`,
+    ['Cliente', 'Tipo', 'Nicho', 'Squad', 'Account Manager', 'Social Media', 'Gestor de Tráfego', 'Ticket mensal (R$)', 'LT (meses)', 'Status', 'Jornada', 'NPS', 'Semáforo', 'Início', 'Última atualização'],
+    lista.map((c) => [
+      c.nome,
+      c.tipo ? tipoClienteLabel[c.tipo] : '',
+      c.nicho,
+      c.squad,
+      c.account_manager?.nome,
+      c.social_media?.nome,
+      c.gestor?.nome,
+      c.verba_mensal ?? 0,
+      mesesCasa(c.data_inicio),
+      situacaoCliente(c).label,
+      c.jornada ? jornadaClienteLabel[c.jornada] : '',
+      c.nps,
+      SEMAFORO[c.semaforo ?? 'verde'].label,
+      c.data_inicio?.slice(0, 10),
+      c.updated_at?.slice(0, 10),
+    ]),
+  )
 }
 
 /** Linha tingida só pra cliente em risco (semáforo vermelho/laranja). */

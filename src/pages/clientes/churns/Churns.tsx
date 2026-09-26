@@ -105,15 +105,21 @@ const PERIODOS: Pico[] = [
 ]
 
 export default function Churns() {
-  const d = useChurnsData()
   // Fonte única de squads (tabela central) — filtro lista só squads ativos.
   const { squads: squadsReais } = useSquads()
 
-  // Filtros — visuais por enquanto (agregados são globais). Wire p/ API depois.
+  // Squad/AM/Gestor escopam tudo; Período escopa KPIs, gráficos e tabela
+  // (a tendência continua mostrando 12 meses).
   const [fPeriodo, setFPeriodo] = useState('')
   const [fSquad, setFSquad] = useState('')
   const [fAM, setFAM] = useState('')
   const [fGestor, setFGestor] = useState('')
+  const d = useChurnsData({
+    periodoMeses: fPeriodo ? Number(fPeriodo.replace('m', '')) : null,
+    squad: fSquad,
+    amId: fAM,
+    gestorId: fGestor,
+  })
 
   return (
     <div>
@@ -134,14 +140,22 @@ export default function Churns() {
       ) : (
         <>
           {d.vazio && (
-            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] px-4 py-3 text-[12px] text-sky-200">
-              <UserMinus size={14} className="text-sky-300" />
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/40 bg-blue-500/[0.06] px-4 py-3 text-[12px] text-blue-200">
+              <UserMinus size={14} className="text-blue-300" />
               <span>
                 Nenhum churn registrado ainda. Ao registrar um churn na Ficha do cliente
                 (<strong>Registrar Perda → Churn</strong>), ele aparece aqui automaticamente.
               </span>
             </div>
           )}
+
+          {/* Filtros */}
+          <FilterBar className="mb-4">
+            <FilterPill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
+            <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsReais.map((s) => ({ value: s.nome, label: s.nome }))} />
+            <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={d.opcoes.ams} />
+            <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={d.opcoes.gestores} />
+          </FilterBar>
 
           {/* KPIs — valores neutros (a página já é de perdas); a cor fica na variação vs. mês anterior */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -153,13 +167,6 @@ export default function Churns() {
             <KPICard icon={<Ticket size={13} />} label="Ticket Médio Churn" value={formatBRL(d.kpis.ticketMedioChurn)} sub={`Ativos: ${formatBRL(d.kpis.ticketMedioAtivo)}`} />
           </div>
 
-          {/* Filtros */}
-          <FilterBar className="mt-4">
-            <FilterPill value={fPeriodo} onChange={setFPeriodo} options={PERIODOS} />
-            <FilterPill value={fSquad} onChange={setFSquad} placeholder="Todos os Squads" options={squadsReais.map((s) => ({ value: s.nome, label: s.nome }))} />
-            <FilterPill value={fAM} onChange={setFAM} placeholder="Todos os AMs" options={[]} />
-            <FilterPill value={fGestor} onChange={setFGestor} placeholder="Todos os Gestores" options={[]} />
-          </FilterBar>
 
           {/* Grid de gráficos */}
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -22,11 +22,16 @@ import { useFlags } from './store'
 import { RegisterFlagModal, dataBR } from './components'
 import { derivar, derivarKpis, type Colaborador } from './mockFlags'
 
+/**
+ * Período = "quem recebeu flag no período". Não esconde flag antiga ainda
+ * ativa das contagens (vermelha nunca expira; amarela expira em 60d) — só
+ * restringe QUEM aparece. "Todo o período" mostra toda a equipe.
+ */
 const PERIODOS = [
-  { value: '90', label: 'Últimos 90 dias' },
-  { value: '30', label: 'Últimos 30 dias' },
-  { value: '180', label: 'Últimos 180 dias' },
   { value: '', label: 'Todo o período' },
+  { value: '30', label: 'Flag nos últimos 30 dias' },
+  { value: '90', label: 'Flag nos últimos 90 dias' },
+  { value: '180', label: 'Flag nos últimos 180 dias' },
 ]
 
 export default function Flags() {
@@ -35,16 +40,21 @@ export default function Flags() {
   const [fSquad, setFSquad] = useState('')
   const [fCargo, setFCargo] = useState('')
   const [fStatus, setFStatus] = useState('')
-  const [fPeriodo, setFPeriodo] = useState('90')
+  const [fPeriodo, setFPeriodo] = useState('')
 
   // Só membros ATIVOS aparecem na operação de flags.
   const ativos = useMemo(() => colaboradores.filter((c) => c.ativo), [colaboradores])
 
-  // Squad/Cargo escopam KPIs + tabela; Status só a tabela; Período é visual.
-  const base = useMemo(
-    () => ativos.filter((c) => (!fSquad || c.squad === fSquad) && (!fCargo || c.cargo === fCargo)),
-    [ativos, fSquad, fCargo],
-  )
+  // Squad/Cargo/Período escopam KPIs + tabela; Status só a tabela.
+  const base = useMemo(() => {
+    const desde = fPeriodo ? Date.now() - Number(fPeriodo) * 86_400_000 : null
+    return ativos.filter(
+      (c) =>
+        (!fSquad || c.squad === fSquad) &&
+        (!fCargo || c.cargo === fCargo) &&
+        (desde == null || c.flags.some((f) => new Date(f.criadaEm).getTime() >= desde)),
+    )
+  }, [ativos, fSquad, fCargo, fPeriodo])
   const kpis = useMemo(() => derivarKpis(base), [base])
   const linhas = useMemo(
     () => base.filter((c) => !fStatus || derivar(c).statusRisco === fStatus),
