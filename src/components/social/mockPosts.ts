@@ -41,6 +41,8 @@ export interface PostPublicacao {
   agendadoPara?: string
   publicadoEm?: string
   idPostInstagram?: string
+  /** Quando a arte foi enviada da Produção Social Media pro Calendário (aprovação). */
+  enviadoAoCalendarioEm?: string
 }
 
 /** Limite de caracteres da legenda no Instagram. */
@@ -88,6 +90,15 @@ export function setPostMedia(
   legendaFinal?: string,
 ): PostPublicacao {
   return patch(itemId, { midiaFinal, legendaFinal })
+}
+
+/** Produção → Calendário: grava mídia/legenda do post e a data do envio. */
+export function marcarEnviadoAoCalendario(
+  itemId: string,
+  midiaFinal?: MidiaFinal,
+  legendaFinal?: string,
+): PostPublicacao {
+  return patch(itemId, { midiaFinal, legendaFinal, enviadoAoCalendarioEm: new Date().toISOString() })
 }
 
 // ── Agendamento via API ──────────────────────────────────────────────────────

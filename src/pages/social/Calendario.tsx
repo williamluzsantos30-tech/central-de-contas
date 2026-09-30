@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -77,16 +77,20 @@ interface ItemComCliente extends ItemSocialMedia {
 
 export default function CalendarioPostagens() {
   const { profile } = useAuth()
+  // ?data=YYYY-MM-DD&cliente=<id> — vindo de "Ver no Calendário" (Produção Social Media).
+  const [params] = useSearchParams()
+  const dataParam = params.get('data')
+  const diaInicial = dataParam ? new Date(`${dataParam}T12:00:00`) : null
   const [items, setItems] = useState<ItemComCliente[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
-  const [cursor, setCursor] = useState<Date>(new Date())
-  const [filtroCliente, setFiltroCliente] = useState('')
+  const [cursor, setCursor] = useState<Date>(diaInicial ?? new Date())
+  const [filtroCliente, setFiltroCliente] = useState(params.get('cliente') ?? '')
   const [filtroStatus, setFiltroStatus] = useState<'' | StatusSocialMedia>('')
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(diaInicial)
   const [atrasadasModalOpen, setAtrasadasModalOpen] = useState(false)
   const [escopo, setEscopo] = useState<'meus' | 'todos'>(
-    temCargo(profile, 'social_media') ? 'meus' : 'todos',
+    dataParam || !temCargo(profile, 'social_media') ? 'todos' : 'meus',
   )
 
   async function load() {

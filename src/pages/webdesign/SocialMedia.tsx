@@ -32,6 +32,19 @@ import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
 import { formatDateBR, isDateOverdue } from '@/lib/dates'
+import {
+  AcaoCalendario,
+  carregarEquipeSocial,
+  compararUrgencia,
+  COR_SLA,
+  DeletePlanejamentoModal,
+  EQUIPE_VAZIA,
+  ResponsavelArte,
+  rotuloSla,
+  SLA_PLANEJAMENTO_DIAS,
+  slaDoPlanejamento,
+  type EquipeSocial,
+} from './socialMedia/producaoSocial'
 import { differenceInDays, format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -146,7 +159,7 @@ export default function SocialMedia() {
   const [planejamentos, setPlanejamentos] = useState<PlanejamentoSocialMedia[]>([])
   const [items, setItems] = useState<ItemSocialMedia[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
+  const [equipe, setEquipe] = useState<EquipeSocial>(EQUIPE_VAZIA)
   const [q, setQ] = useState('')
   const [fCliente, setFCliente] = useState('')
   const [fResponsavel, setFResponsavel] = useState('')
@@ -159,20 +172,15 @@ export default function SocialMedia() {
     // Esteira de produção mostra SÓ planejamentos aprovados pelo cliente.
     // Enquanto está no Planejamento Mensal sem aprovação, não polui a esteira
     // — assim o designer só vê o que pode/deve trabalhar.
-    const [pRes, cRes, rRes] = await Promise.all([
+    const [pRes, cRes, eq] = await Promise.all([
       supabase
         .from('producoes_social_media')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .not('aprovado_em', 'is', null)
         .order('aprovado_em', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
-      supabase
-        .from('profiles')
-        .select('id, nome, avatar_url')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-        .order('nome'),
+      // Responsáveis: Criativos/Social Media pelo papel da Equipe Operacional.
+      carregarEquipeSocial(),
     ])
     const planejamentosAprovados = (pRes.data as PlanejamentoSocialMedia[]) ?? []
     const idsAprovados = planejamentosAprovados.map((p) => p.id)
@@ -187,7 +195,7 @@ export default function SocialMedia() {
     setPlanejamentos(planejamentosAprovados)
     setItems((iRes.data as ItemSocialMedia[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setResponsaveisLista((rRes.data as Profile[]) ?? [])
+    setEquipe(eq)
     if (!silent) setLoading(false)
   }
 
@@ -292,6 +300,9 @@ export default function SocialMedia() {
       const completed = its.length > 0 && its.every((i) => i.status === 'conclusao')
       ;(completed ? c : a).push(p)
     }
+    // Mais urgente primeiro: SLA estourado → em alerta → no prazo.
+    const sla = new Map(a.map((p) => [p.id, slaDoPlanejamento(p, itemsByPlan.get(p.id) ?? [])]))
+    a.sort((x, y) => compararUrgencia(sla.get(x.id)!, sla.get(y.id)!))
     return { ativos: a, concluidos: c }
   }, [filtered, itemsByPlan])
 
@@ -335,7 +346,7 @@ export default function SocialMedia() {
           >
             <option value="">Todos responsáveis</option>
             <option value="__sem__">Sem responsável</option>
-            {responsaveisLista.map((r) => (
+            {equipe.opcoes.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nome}
               </option>
@@ -371,6 +382,7 @@ export default function SocialMedia() {
             <PlanejamentoCard
               key={p.id}
               planejamento={p}
+              equipe={equipe}
               items={itemsByPlan.get(p.id) ?? []}
               clientes={clientes}
               expanded={expandedPlans.has(p.id)}
@@ -423,6 +435,7 @@ export default function SocialMedia() {
                     <PlanejamentoCard
                       key={p.id}
                       planejamento={p}
+                      equipe={equipe}
                       items={itemsByPlan.get(p.id) ?? []}
                       clientes={clientes}
                       expanded={expandedPlans.has(p.id)}
@@ -464,6 +477,7 @@ export default function SocialMedia() {
 
 function PlanejamentoCard({
   planejamento,
+  equipe,
   items,
   clientes,
   expanded,
@@ -473,6 +487,7 @@ function PlanejamentoCard({
   onChanged,
 }: {
   planejamento: PlanejamentoSocialMedia
+  equipe: EquipeSocial
   items: ItemSocialMedia[]
   clientes: Cliente[]
   expanded: boolean
@@ -484,22 +499,13 @@ function PlanejamentoCard({
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState(planejamento.titulo)
   const [editingResp, setEditingResp] = useState(false)
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false)
+  const responsaveis = equipe.opcoes
+  const respPlano = planejamento.responsavel_id ? equipe.porId.get(planejamento.responsavel_id) ?? planejamento.responsavel ?? null : null
 
   useEffect(() => {
     setTitleValue(planejamento.titulo)
   }, [planejamento.titulo])
-
-  useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [])
 
   async function commitTitle() {
     const novo = titleValue.trim()
@@ -540,42 +546,18 @@ function PlanejamentoCard({
 
   const progressPct = items.length === 0 ? 0 : Math.round((counts.conclusao / items.length) * 100)
 
-  // SLA: prazo maximo de 16 dias a partir de quando o cliente APROVOU o
-  // planejamento. Antes contava desde created_at (criacao no sistema) e
-  // penalizava planejamentos que ficavam parados esperando aprovacao do
-  // cliente — SLA "estourava" sem o time de producao ter culpa.
-  // Regra:
-  //   aprovado_em preenchido → conta dias desde aprovacao
-  //   aprovado_em null       → SLA nao comecou; mostra "aguardando aprovacao"
-  const SLA_DIAS = 16
-  const aprovadoEm = planejamento.aprovado_em
-  const allDone = items.length > 0 && counts.conclusao === items.length
-  const startMs = aprovadoEm ? new Date(aprovadoEm).getTime() : null
-  const diasUsados = startMs
-    ? Math.max(0, Math.floor((Date.now() - startMs) / (1000 * 60 * 60 * 24)))
-    : 0
-  const slaEstourado = !allDone && !!startMs && diasUsados > SLA_DIAS
-  const slaPct = startMs ? Math.min(100, Math.round((diasUsados / SLA_DIAS) * 100)) : 0
-  const slaBarColor = allDone
-    ? 'bg-emerald-500/70'
-    : !startMs
-    ? 'bg-zinc-500/50'
-    : slaEstourado
-    ? 'bg-red-500/70'
-    : diasUsados >= 12
-    ? 'bg-amber-500/70'
-    : 'bg-sky-500/70'
-  const slaLabel = allDone
-    ? `SLA cumprido em ${diasUsados}d`
-    : !startMs
-    ? 'Aguardando aprovação do cliente'
-    : slaEstourado
-    ? `SLA estourado · +${diasUsados - SLA_DIAS}d`
-    : `${diasUsados}/${SLA_DIAS} dias`
+  // SLA: 16 dias a partir da APROVAÇÃO do planejamento pelo cliente (sem
+  // aprovação o SLA não começou). Verde < 70% · laranja 70–100% · vermelho
+  // estourado — ver socialMedia/producaoSocial.ts.
+  const sla = slaDoPlanejamento(planejamento, items)
+  const slaEstourado = sla.nivel === 'estourado'
+  const slaPct = sla.nivel === 'aguardando' ? 0 : sla.pct
+  const slaBarColor = COR_SLA[sla.nivel].barra
+  const slaLabel = rotuloSla(sla)
 
   async function excluir() {
-    if (!confirm(`Excluir o planejamento "${planejamento.titulo}" e todos os items?`)) return
     await supabase.from('producoes_social_media').delete().eq('id', planejamento.id)
+    setConfirmarExclusao(false)
     onChanged()
   }
 
@@ -603,7 +585,9 @@ function PlanejamentoCard({
         'rounded-xl border bg-bg-card overflow-hidden transition-all',
         expanded
           ? 'border-brand-500/50 shadow-lg shadow-brand-500/5'
-          : 'border-border hover:border-brand-500/30',
+          : slaEstourado
+            ? 'border-red-500/40 hover:border-red-500/60'
+            : 'border-border hover:border-brand-500/30',
       )}
     >
       <div
@@ -703,15 +687,15 @@ function PlanejamentoCard({
                 onClick={() => setEditingResp(true)}
                 className="grid h-6 w-6 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
                 title={
-                  planejamento.responsavel?.nome
-                    ? `Responsável: ${planejamento.responsavel.nome}`
+                  respPlano
+                    ? `Responsável pelo planejamento: ${respPlano.nome}`
                     : 'Clique para adicionar responsável'
                 }
               >
-                {planejamento.responsavel ? (
+                {respPlano ? (
                   <Avatar
-                    name={planejamento.responsavel.nome}
-                    url={planejamento.responsavel.avatar_url}
+                    name={respPlano.nome}
+                    url={respPlano.avatar_url}
                     size="sm"
                   />
                 ) : (
@@ -740,17 +724,11 @@ function PlanejamentoCard({
               slaEstourado ? 'text-red-400 font-semibold' : 'text-muted',
             )}
           >
-            SLA · prazo máximo 16 dias
+            SLA · prazo máximo {SLA_PLANEJAMENTO_DIAS} dias da aprovação
           </span>
           <span
-            className={cn(
-              'text-[11px] font-semibold',
-              allDone
-                ? 'text-emerald-400'
-                : slaEstourado
-                ? 'text-red-400'
-                : 'text-zinc-200',
-            )}
+            className={cn('text-[11px] font-semibold tabular-nums', COR_SLA[sla.nivel].texto)}
+            title={sla.prazo ? `Prazo: ${sla.prazo.toLocaleDateString('pt-BR')}` : undefined}
           >
             {slaLabel}
           </span>
@@ -767,7 +745,7 @@ function PlanejamentoCard({
               <span className="text-[11px] text-muted italic">Sem observações.</span>
             )}
             <button
-              onClick={excluir}
+              onClick={() => setConfirmarExclusao(true)}
               className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:underline"
             >
               <Trash2 size={10} /> Excluir planejamento
@@ -810,6 +788,8 @@ function PlanejamentoCard({
                 <ItemRow
                   key={it.id}
                   item={it}
+                  clienteId={planejamento.cliente_id}
+                  equipe={equipe}
                   expanded={expandedItemId === it.id}
                   onToggle={() => onItemToggle(it.id)}
                   onChanged={onChanged}
@@ -825,6 +805,14 @@ function PlanejamentoCard({
           </div>
         </div>
       )}
+
+      <DeletePlanejamentoModal
+        open={confirmarExclusao}
+        planejamento={planejamento}
+        nArtes={items.length}
+        onCancel={() => setConfirmarExclusao(false)}
+        onConfirm={excluir}
+      />
     </div>
   )
 }
@@ -1335,13 +1323,18 @@ function PlanejamentoEditor({
    Linha de item (copy) — acordeão nível 2
    ========================================================= */
 
+/** Linha de uma ARTE: formato, título, prazo de produção, status, responsável e ação de Calendário. */
 function ItemRow({
   item,
+  clienteId,
+  equipe,
   expanded,
   onToggle,
   onChanged,
 }: {
   item: ItemSocialMedia
+  clienteId: string | null
+  equipe: EquipeSocial
   expanded: boolean
   onToggle: () => void
   onChanged: () => void
@@ -1349,23 +1342,10 @@ function ItemRow({
   const [editingTitulo, setEditingTitulo] = useState(false)
   const [tituloValue, setTituloValue] = useState(item.titulo)
   const [editingFormato, setEditingFormato] = useState(false)
-  const [editingResp, setEditingResp] = useState(false)
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
 
   useEffect(() => {
     setTituloValue(item.titulo)
   }, [item.titulo])
-
-  useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [])
 
   async function updateField(field: string, val: unknown) {
     await supabase.from('producoes_social_media_items').update({ [field]: val }).eq('id', item.id)
@@ -1503,8 +1483,11 @@ function ItemRow({
           )}
         </div>
 
+        <AcaoCalendario arte={item} clienteId={clienteId} onChanged={onChanged} />
+
         <PrazoInlineItem item={item} onUpdated={onChanged} />
 
+        {/* Status sempre editável na mão — inclusive Em Aprovação. */}
         <Select
           value={item.status}
           onChange={(e) => mudarStatus(e.target.value as StatusSocialMedia)}
@@ -1518,45 +1501,11 @@ function ItemRow({
           ))}
         </Select>
 
-        <div onClick={(e) => e.stopPropagation()}>
-          {editingResp ? (
-            <select
-              autoFocus
-              value={item.responsavel_id ?? ''}
-              onChange={async (e) => {
-                await updateField('responsavel_id', e.target.value || null)
-                setEditingResp(false)
-              }}
-              onBlur={() => setEditingResp(false)}
-              className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
-            >
-              <option value="">—</option>
-              {responsaveis.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <button
-              onClick={() => setEditingResp(true)}
-              className="grid h-6 w-6 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
-              title="Clique para mudar o responsável"
-            >
-              {item.responsavel ? (
-                <Avatar
-                  name={item.responsavel.nome}
-                  url={item.responsavel.avatar_url}
-                  size="sm"
-                />
-              ) : (
-                <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
-                  <User size={10} />
-                </span>
-              )}
-            </button>
-          )}
-        </div>
+        <ResponsavelArte
+          responsavelId={item.responsavel_id}
+          equipe={equipe}
+          onEscolher={(id) => void updateField('responsavel_id', id)}
+        />
       </div>
 
       {expanded && (

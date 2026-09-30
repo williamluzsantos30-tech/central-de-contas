@@ -715,7 +715,7 @@ const producoes_social_media: Row[] = [
       'Trabalharemos com um funil de Conexão → Objeções → Autoridade. O foco do mês é desmistificar tratamentos estéticos e mostrar casos reais com aprovação.',
     cadencia: '3 posts/semana — Ter, Qui e Sáb',
     data_envio_aprovacao: daysISO(2),
-    aprovado_em: null,
+    aprovado_em: daysISO(-13) + 'T10:00:00Z',
     created_at: daysISO(-7) + 'T10:00:00Z',
     updated_at: daysISO(-2) + 'T11:00:00Z',
   },
@@ -737,7 +737,7 @@ const producoes_social_media: Row[] = [
       'O mês foca em educar o público sobre cefaleia primária. Posts intercalam entre conteúdo educacional e demonstração de autoridade clínica.',
     cadencia: '2 posts/semana — Seg e Qui',
     data_envio_aprovacao: daysISO(5),
-    aprovado_em: null,
+    aprovado_em: daysISO(-20) + 'T10:00:00Z',
     created_at: daysISO(-5) + 'T09:00:00Z',
     updated_at: daysISO(-1) + 'T15:00:00Z',
   },
@@ -780,7 +780,7 @@ const producoes_social_media_items: Row[] = [
   { id: uid(), producao_id: prod1Id, formato: 'estatico', titulo: 'Agende sua consulta — primeira avaliação humanizada', ideia_conteudo: 'CTA do mês. Post estático com link da bio e fala calorosa pra o paciente.', status: 'conclusao', responsavel_id: pAmanda, prazo: daysISO(-2), copy_texto: 'CTA final do mês.', copy_arquivo_url: null, fotos: [], observacoes: 'Já programado.', ordem: 12, publicado_url: 'https://instagram.com/p/DEMO_DR_DANIEL_CTA/', publicado_em: daysISO(-2) + 'T18:30:00Z', publicado_por: pAmanda, created_at: nowISO(), updated_at: nowISO() },
 
   // Planejamento Dra. Fernanda — 6 items
-  { id: uid(), producao_id: prod2Id, formato: 'carrossel', titulo: '5 mitos sobre botox que você ainda acredita', status: 'design_finalizado', responsavel_id: pAmanda, prazo: daysISO(2), copy_texto: 'Carrossel 6 slides, desmitificando crenças comuns.', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 1, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), producao_id: prod2Id, formato: 'carrossel', titulo: '5 mitos sobre botox que você ainda acredita', status: 'design_finalizado', responsavel_id: pAmanda, artes_prontas: ['https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?w=600', 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=600'], legenda: '5 mitos sobre botox que ainda circulam por aí 👇 Salve pra consultar depois!', prazo: daysISO(2), copy_texto: 'Carrossel 6 slides, desmitificando crenças comuns.', copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 1, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), producao_id: prod2Id, formato: 'estatico', titulo: 'Antes e depois — preenchimento labial', status: 'alteracao', responsavel_id: pAmanda, prazo: daysISO(2), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: 'Cliente pediu trocar a modelo do before/after.', ordem: 2, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), producao_id: prod2Id, formato: 'reel', titulo: 'Um dia na clínica com a Dra. Fernanda', status: 'design', responsavel_id: pAmanda, prazo: daysISO(2), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 3, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), producao_id: prod2Id, formato: 'estatico', titulo: 'Skinbooster — o que é e pra quem é indicado', status: 'pendente', responsavel_id: null, prazo: daysISO(5), copy_texto: null, copy_arquivo_url: null, fotos: [], observacoes: null, ordem: 4, created_at: nowISO(), updated_at: nowISO() },
@@ -1058,7 +1058,8 @@ const PERSISTED_TABLES: Tables[] = [
 // Bump pra invalidar caches antigos sem esses campos.
 // v4 — contratos (contrato_tipo/inicio/fim/status) nos clientes da demo (Renovações).
 // v5 — ids fixos nas LPs + projetos_webdesign_fluxo (esteira de Landing Page).
-const STORAGE_KEY = 'movmed-mockdb-v5'
+// v6 — planejamentos de Social Media aprovados em datas que cobrem os 3 estados de SLA.
+const STORAGE_KEY = 'movmed-mockdb-v6'
 
 function hydrateFromStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
