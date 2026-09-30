@@ -6,12 +6,16 @@
  * (sem I/O, sem React) pra ser testável e idêntica entre domus e Central.
  *
  * MAPEAMENTO:
- *   CATEGORIA        -> formato + is_backlog (Carrossel|Reels|Estático|Backlog)
- *   DATA             -> prazo (data de postagem)
- *   TÍTULO/TEMA      -> titulo
- *   CONTEÚDO/ROTEIRO -> ideia_conteudo (roteiro)
- *   LEGENDA          -> legenda
- *   LINK DO DRIVE    -> link_drive_video (destacado em Reels)
+ *   CATEGORIA              -> formato + is_backlog (Carrossel|Reels|Estático|Backlog)
+ *   DATA                   -> prazo (data de postagem)
+ *   TÍTULO/TEMA            -> titulo
+ *   CONTEÚDO/ROTEIRO/COPY  -> copy_texto (Copy da arte: texto dos slides / roteiro)
+ *   IDEIA                  -> ideia_conteudo (descrição curta no planejamento/PDF)
+ *   LEGENDA                -> legenda
+ *   LINK DO DRIVE          -> link_drive_video (destacado em Reels)
+ *
+ *   (Até 30/09/2026 o CONTEÚDO ia pra ideia_conteudo — a copy caía na
+ *   descrição do planejamento e não na Copy que o designer usa.)
  *
  * REGRAS:
  *   1. Se a CATEGORIA já veio no bloco, classifica sozinho (não pergunta).
@@ -42,8 +46,10 @@ export interface ItemParseado {
   formato: FormatoSocialMedia
   isBacklog: boolean
   titulo: string
-  /** ROTEIRO / conteúdo principal -> ideia_conteudo */
-  conteudo: string | null
+  /** CONTEÚDO / ROTEIRO / COPY -> copy_texto (Copy da arte) */
+  copy: string | null
+  /** IDEIA -> ideia_conteudo (descrição no planejamento) */
+  ideia: string | null
   legenda: string | null
   /** LINK DO DRIVE -> link_drive_video */
   linkDrive: string | null
@@ -65,7 +71,7 @@ export interface ResultadoImport {
   rejeitados: BlocoRejeitado[]
 }
 
-type Campo = 'categoria' | 'data' | 'titulo' | 'conteudo' | 'legenda' | 'link'
+type Campo = 'categoria' | 'data' | 'titulo' | 'copy' | 'ideia' | 'legenda' | 'link'
 
 /** Remove acentos + upper + colapsa espaços — pra casar rótulos/categorias. */
 function norm(s: string): string {
@@ -85,7 +91,22 @@ function campoDeLabel(labelNorm: string): Campo | null {
   if (L === 'CATEGORIA' || L === 'CATEGORIA DO CONTEUDO') return 'categoria'
   if (L.startsWith('DATA')) return 'data'
   if (['TITULO', 'TEMA', 'TITULO/TEMA', 'TEMA/TITULO'].includes(L)) return 'titulo'
-  if (['CONTEUDO', 'ROTEIRO', 'CONTEUDO/ROTEIRO', 'ROTEIRO/CONTEUDO'].includes(L)) return 'conteudo'
+  if (
+    [
+      'CONTEUDO',
+      'ROTEIRO',
+      'CONTEUDO/ROTEIRO',
+      'ROTEIRO/CONTEUDO',
+      'COPY',
+      'COPY/ROTEIRO',
+      'ROTEIRO/COPY',
+      'COPY DO POST',
+      'COPY DA ARTE',
+      'TEXTO DOS SLIDES',
+    ].includes(L)
+  )
+    return 'copy'
+  if (['IDEIA', 'IDEIA DO CONTEUDO'].includes(L)) return 'ideia'
   if (L === 'LEGENDA') return 'legenda'
   if (L.startsWith('LINK') || L === 'DRIVE' || L === 'ARQUIVO') return 'link'
   return null
@@ -171,9 +192,10 @@ function montaItem(
   const dataRes = parseData(campos.data ?? '')
   if (dataRes.pendente && !cat.isBacklog) pendencias.push('DATA')
 
-  // Conteúdo / roteiro
-  const conteudoRes = valorOuNull(campos.conteudo)
-  if (conteudoRes.pendente) pendencias.push('CONTEÚDO/ROTEIRO')
+  // Copy (conteúdo / roteiro) e ideia
+  const copyRes = valorOuNull(campos.copy)
+  if (copyRes.pendente) pendencias.push('CONTEÚDO/ROTEIRO')
+  const ideiaRes = valorOuNull(campos.ideia)
 
   // Legenda
   const legendaRes = valorOuNull(campos.legenda)
@@ -189,7 +211,8 @@ function montaItem(
     formato: cat.formato,
     isBacklog: cat.isBacklog,
     titulo,
-    conteudo: conteudoRes.valor,
+    copy: copyRes.valor,
+    ideia: ideiaRes.valor,
     legenda: legendaRes.valor,
     linkDrive: linkRes.valor,
     data: dataRes.iso,

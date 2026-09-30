@@ -27,12 +27,14 @@ LINK DO DRIVE: https://drive.google.com/xxxxx
 CATEGORIA: Carrossel
 DATA: 24/09/2026
 TÍTULO: Passo a passo do fluxo de caixa
-CONTEÚDO: Slide 1: capa / Slide 2: ...
+IDEIA: Didático, pra salvar e consultar depois
+COPY: L1: capa
+L2: ...
 LEGENDA: PENDENTE
 
 CATEGORIA: Backlog
 TÍTULO: Depoimento cliente X
-CONTEÚDO: Reserva pra semana sem gravação`
+IDEIA: Reserva pra semana sem gravação`
 
 const catInfo: Record<CategoriaImport, { label: string; cls: string }> = {
   carrossel: { label: 'Carrossel', cls: 'border-brand-500/50 bg-brand-500/15 text-brand-200' },
@@ -45,6 +47,7 @@ type NovoItem = {
   producao_id: string
   formato: FormatoSocialMedia
   titulo: string
+  copy_texto: string | null
   ideia_conteudo: string | null
   legenda: string | null
   link_drive_video: string | null
@@ -131,7 +134,7 @@ export function ImportarConteudosModal({
       // colado repetiu blocos. Posts com qualquer campo diferente são mantidos.
       const vistos = new Set<string>()
       const unicos = itens.filter((it) => {
-        const k = [it.categoria, it.titulo, it.conteudo ?? '', it.legenda ?? '', it.linkDrive ?? '', it.data ?? ''].join('|')
+        const k = [it.categoria, it.titulo, it.copy ?? '', it.ideia ?? '', it.legenda ?? '', it.linkDrive ?? '', it.data ?? ''].join('|')
         if (vistos.has(k)) return false
         vistos.add(k)
         return true
@@ -142,7 +145,8 @@ export function ImportarConteudosModal({
       // data + título), pra reimportar o mesmo conteúdo não triplicar.
       const chaveItem = (formato: string, prazo: string | null | undefined, titulo: string) =>
         `${formato}|${(prazo ?? '').slice(0, 10)}|${titulo.trim().toLowerCase()}`
-      const existentes = new Set<string>()
+      type Existente = { id: string; copy_texto: string | null; ideia_conteudo: string | null }
+      const existentes = new Map<string, Existente>()
       const { data: planosCliente } = await supabase
         .from('producoes_social_media')
         .select('id')
@@ -151,18 +155,39 @@ export function ImportarConteudosModal({
       if (planoIds.length > 0) {
         const { data: itensExist } = await supabase
           .from('producoes_social_media_items')
-          .select('titulo, formato, prazo')
+          .select('id, titulo, formato, prazo, copy_texto, ideia_conteudo')
           .in('producao_id', planoIds)
         for (const i of itensExist ?? []) {
-          existentes.add(chaveItem(i.formato as string, i.prazo as string, (i.titulo as string) ?? ''))
+          existentes.set(chaveItem(i.formato as string, i.prazo as string, (i.titulo as string) ?? ''), i as Existente)
         }
       }
       const novos = unicos.filter((it) => !existentes.has(chaveItem(it.formato, it.data, it.titulo)))
       const jaExistiam = unicos.length - novos.length
 
+      // Reimportar CORRIGE a copy dos que já existiam: antes o CONTEÚDO ia pra
+      // ideia_conteudo (descrição) em vez de copy_texto. Se o item existente
+      // está sem copy, grava a copy e tira da descrição o texto que tinha
+      // caído lá por engano. Não mexe em copy já preenchida.
+      const mesmoTexto = (a: string | null, b: string | null) => (a ?? '').replace(/\s+/g, ' ').trim() === (b ?? '').replace(/\s+/g, ' ').trim()
+      let corrigidos = 0
+      for (const it of unicos) {
+        const ex = existentes.get(chaveItem(it.formato, it.data, it.titulo))
+        if (!ex || !it.copy || ex.copy_texto?.trim()) continue
+        const patch: Record<string, string | null> = { copy_texto: it.copy }
+        if (mesmoTexto(ex.ideia_conteudo, it.copy)) patch.ideia_conteudo = it.ideia
+        const { error: upErr } = await supabase.from('producoes_social_media_items').update(patch).eq('id', ex.id)
+        if (!upErr) corrigidos++
+      }
+      const resumoExistentes =
+        jaExistiam > 0 ? ` · ${jaExistiam} já existiam${corrigidos > 0 ? ` (${corrigidos} com a copy corrigida)` : ''}` : ''
+
       if (novos.length === 0) {
+        if (corrigidos > 0) onImported()
         setSucesso(
-          `Nada novo pra importar — ${jaExistiam} item(ns) já existiam` +
+          (corrigidos > 0
+            ? `${corrigidos} ${corrigidos === 1 ? 'conteúdo teve a copy corrigida' : 'conteúdos tiveram a copy corrigida'} (foi pro campo Copy)`
+            : 'Nada novo pra importar') +
+            ` — ${jaExistiam} item(ns) já existiam` +
             (duplicados > 0 ? ` · ${duplicados} repetido(s) no texto` : ''),
         )
         setImporting(false)
@@ -182,7 +207,8 @@ export function ImportarConteudosModal({
           producao_id: planoId,
           formato: it.formato,
           titulo: it.titulo,
-          ideia_conteudo: it.conteudo,
+          copy_texto: it.copy,
+          ideia_conteudo: it.ideia,
           legenda: it.legenda,
           link_drive_video: it.linkDrive,
           prazo: it.data,
@@ -206,7 +232,7 @@ export function ImportarConteudosModal({
       onImported()
       setSucesso(
         `${inseridos} ${inseridos === 1 ? 'conteúdo importado' : 'conteúdos importados'}` +
-          (jaExistiam > 0 ? ` · ${jaExistiam} já existiam` : '') +
+          resumoExistentes +
           (duplicados > 0 ? ` · ${duplicados} repetido(s) no texto` : ''),
       )
     } catch (e) {
@@ -257,9 +283,15 @@ export function ImportarConteudosModal({
           </p>
           <p>
             Rótulos: <code>CATEGORIA</code> · <code>DATA</code> · <code>TÍTULO/TEMA</code> ·{' '}
-            <code>CONTEÚDO/ROTEIRO</code> · <code>LEGENDA</code> · <code>LINK DO DRIVE</code>. Categorias
-            aceitas: <strong>Carrossel · Reels · Estático · Backlog</strong>. Campo{' '}
-            <code>PENDENTE</code> cria o item e sinaliza a pendência.
+            <code>CONTEÚDO/ROTEIRO/COPY</code> · <code>IDEIA</code> · <code>LEGENDA</code> ·{' '}
+            <code>LINK DO DRIVE</code>. Categorias aceitas: <strong>Carrossel · Reels · Estático · Backlog</strong>.
+            Campo <code>PENDENTE</code> cria o item e sinaliza a pendência.
+          </p>
+          <p className="mt-1">
+            <strong className="text-zinc-300">CONTEÚDO/ROTEIRO/COPY</strong> vai pro campo <strong>Copy</strong> da arte
+            (texto dos slides / roteiro — o que o designer usa). <strong className="text-zinc-300">IDEIA</strong> é a
+            descrição curta que aparece no planejamento e no PDF. Colar de novo um conteúdo que já existe corrige a
+            copy dele (não duplica).
           </p>
         </div>
 
@@ -367,13 +399,25 @@ function ItemPreview({ item }: { item: ItemParseado }) {
         <span className="truncate text-sm font-medium text-zinc-100">{item.titulo}</span>
       </div>
 
-      {item.conteudo && (
+      {item.ideia && (
         <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[11px] text-muted">
-          {item.conteudo}
+          <span className="font-semibold text-zinc-400">Ideia: </span>
+          {item.ideia}
+        </p>
+      )}
+      {item.copy && (
+        <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[11px] text-muted">
+          <span className="font-semibold text-pink-300">Copy: </span>
+          {item.copy}
         </p>
       )}
 
       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px]">
+        {item.copy && (
+          <span className="inline-flex items-center gap-1 text-pink-300">
+            <CheckCircle2 size={10} /> copy
+          </span>
+        )}
         {item.legenda && (
           <span className="inline-flex items-center gap-1 text-emerald-300/90">
             <CheckCircle2 size={10} /> legenda
