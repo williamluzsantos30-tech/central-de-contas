@@ -99,7 +99,12 @@ export default function ClienteDetalhe() {
   const [otimizacoes, setOtimizacoes] = useState<Otimizacao[]>([])
   const [comentariosCount, setComentariosCount] = useState<Map<string, number>>(new Map())
   const [tab, setTab] = useState<Tab>('visao')
-  const [socialTab, setSocialTab] = useState<SocialTab>('painel')
+  // ?social=calendario&data=YYYY-MM-DD — "Ver no Calendário" da Produção
+  // Social Media abre direto no calendário deste cliente, no dia da postagem.
+  const socialParam = searchParams.get('social') as SocialTab | null
+  const [socialTab, setSocialTab] = useState<SocialTab>(
+    socialParam && ['painel', 'setup', 'planejamento', 'calendario', 'metricas', 'ideias'].includes(socialParam) ? socialParam : 'painel',
+  )
   // Vindo de um contexto operacional (?aba=…), abre já na aba Operacional;
   // senão mantém o padrão "Ficha".
   const [topView, setTopView] = useState<TopView>(
@@ -422,6 +427,7 @@ export default function ClienteDetalhe() {
               items={itemsSocial}
               planejamentos={planejamentos}
               onChanged={load}
+              diaInicial={searchParams.get('data')}
             />
           )}
 

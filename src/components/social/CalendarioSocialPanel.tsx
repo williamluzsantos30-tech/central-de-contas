@@ -38,6 +38,8 @@ interface Props {
   items: ItemSocialMedia[]
   planejamentos: PlanejamentoSocialMedia[]
   onChanged: () => void
+  /** YYYY-MM-DD: abre nesse mês com o dia selecionado (link "Ver no Calendário"). */
+  diaInicial?: string | null
 }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -57,13 +59,15 @@ const formatoMeta: Record<
  * (Rotina diária). Mostra os posts programados num grid 7×N e
  * permite clicar num dia pra ver os detalhes.
  */
-export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged }: Props) {
+export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged, diaInicial }: Props) {
+  const dia = diaInicial && /^\d{4}-\d{2}-\d{2}$/.test(diaInicial) ? diaInicial : null
   const [mesISO, setMesISO] = useState<string>(() => {
+    if (dia) return `${dia.slice(0, 7)}-01`
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
   })
   const [filtroFormato, setFiltroFormato] = useState<FormatoSocialMedia | 'todos'>('todos')
-  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
+  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(dia)
   const [compartilharAberto, setCompartilharAberto] = useState(false)
   const [tokenAtual, setTokenAtual] = useState<string | null>(
     cliente.calendario_publico_token ?? null,
@@ -85,17 +89,24 @@ export function CalendarioSocialPanel({ cliente, items, planejamentos, onChanged
   /** Gera (ou regenera) o token público. Invalida qualquer link anterior. */
   async function gerarToken() {
     setGerandoToken(true)
-    const { data, error } = await supabase.rpc('gerar_token_calendario_publico', {
-      p_cliente_id: cliente.id,
-    })
-    setGerandoToken(false)
-    if (error) {
-      alert(`Erro ao gerar link: ${error.message}`)
-      return
+    // try/finally: se a chamada falhar de vez (sem a função no banco, rede),
+    // o botão não pode ficar preso em "Gerando...".
+    try {
+      const { data, error } = await supabase.rpc('gerar_token_calendario_publico', {
+        p_cliente_id: cliente.id,
+      })
+      if (error || !data) {
+        alert(`Erro ao gerar link: ${error?.message ?? 'resposta vazia do servidor'}`)
+        return
+      }
+      setTokenAtual(data as string)
+      setCopiado(false)
+      onChanged()
+    } catch (e) {
+      alert(`Erro ao gerar link: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGerandoToken(false)
     }
-    setTokenAtual(data as string)
-    setCopiado(false)
-    onChanged()
   }
 
   async function copiarLink() {

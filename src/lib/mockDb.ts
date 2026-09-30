@@ -1428,8 +1428,25 @@ const mockAuth = {
   },
 }
 
+/**
+ * RPCs do banco no modo demo. Só a geração do link público do calendário é
+ * simulada; as demais devolvem erro (em vez de quebrar a chamada).
+ */
+async function mockRpc(fn: string, args: Record<string, any> = {}) {
+  if (fn === 'gerar_token_calendario_publico') {
+    const cliente = db.clientes.find((c) => c.id === args.p_cliente_id)
+    if (!cliente) return { data: null, error: { message: 'Cliente não encontrado' } }
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+    cliente.calendario_publico_token = token
+    persistIfTracked('clientes')
+    return { data: token, error: null }
+  }
+  return { data: null, error: { message: `Função ${fn} não disponível no modo demo` } }
+}
+
 export const mockClient = {
   from: (table: Tables) => new Q(table),
+  rpc: mockRpc,
   auth: mockAuth,
 }
 

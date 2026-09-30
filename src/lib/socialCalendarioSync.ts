@@ -62,10 +62,17 @@ export function podeEnviarAoCalendario(arte: ItemSocialMedia): { ok: boolean; mo
   return { ok: true }
 }
 
-/** Link do Calendário de Postagens aberto no mês/dia da postagem e no cliente. */
+/**
+ * Calendário DO CLIENTE (Social › Cliente › Calendário — o mesmo que gera o
+ * link público pro cliente aprovar), aberto no mês/dia da postagem. Sem
+ * cliente, cai no Calendário de Postagens geral.
+ */
 export function linkNoCalendario(arte: Pick<ItemSocialMedia, 'prazo'>, clienteId?: string | null): string {
-  const q = new URLSearchParams()
-  if (arte.prazo) q.set('data', arte.prazo.slice(0, 10))
-  if (clienteId) q.set('cliente', clienteId)
-  return `/social/calendario?${q.toString()}`
+  const data = arte.prazo?.slice(0, 10)
+  if (clienteId) {
+    const q = new URLSearchParams({ aba: 'operacional-social', social: 'calendario' })
+    if (data) q.set('data', data)
+    return `/social/clientes/${clienteId}?${q.toString()}`
+  }
+  return data ? `/social/calendario?data=${data}` : '/social/calendario'
 }
