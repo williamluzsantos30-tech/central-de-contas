@@ -5,7 +5,6 @@ import Login from '@/pages/Login'
 import Clientes from '@/pages/Clientes'
 import ClienteDetalhe from '@/pages/ClienteDetalhe'
 import MinhasTarefas from '@/pages/MinhasTarefas'
-import PerformanceEquipe from '@/pages/operacional/PerformanceEquipe'
 import Auditoria from '@/pages/sistema/Auditoria'
 import MetricasSocialMedia from '@/pages/social/Metricas'
 import ClientesTrafego from '@/pages/trafego/ClientesTrafego'
@@ -99,14 +98,6 @@ export default function App() {
             {/* Dashboard removido — raiz abre a lista de clientes. */}
             <Route path="/" element={<Navigate to="/clientes" replace />} />
             <Route path="/operacional/visao" element={<VisaoExecutiva />} />
-            <Route
-              path="/operacional/performance"
-              element={
-                <AdminOnly>
-                  <PerformanceEquipe />
-                </AdminOnly>
-              }
-            />
             <Route
               path="/auditoria"
               element={

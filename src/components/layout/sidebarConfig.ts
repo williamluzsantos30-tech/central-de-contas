@@ -44,7 +44,6 @@ import {
   Layers,
   Scale,
   TrafficCone,
-  Trophy,
   LineChart,
 } from 'lucide-react'
 import { PERM } from '@/hooks/usePermissoes'
@@ -100,7 +99,6 @@ export const SIDEBAR_NAV: NavNode[] = [
           { kind: 'item', to: '/clientes/renovacoes', label: 'Renovações', icon: FileClock },
           { kind: 'item', to: '/central-operacional', label: 'Central Operacional', icon: BookOpen },
           { kind: 'item', to: '/flags', label: 'Flags (Performance)', icon: Flag },
-          { kind: 'item', to: '/operacional/performance', label: 'Performance da Equipe', icon: Trophy, adminOnly: true },
         ],
       },
       {

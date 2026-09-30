@@ -1,7 +1,7 @@
 /**
  * Score de Saúde por Squad — usado no Resumo Geral (Visão Executiva, bloco
- * "Score e Saúde por Squad") e na Performance da Equipe (score do Account
- * Manager). Movido da Visão Executiva sem alteração da fórmula (26/09/2026).
+ * "Score e Saúde por Squad"). Movido da Visão Executiva sem alteração da
+ * fórmula (26/09/2026).
  */
 import type { Cliente } from '@/types/database'
 
@@ -192,21 +192,6 @@ export function calculaScoreSquads(
   return resultados
 }
 
-// ── Normalização 0–100% (Performance da Equipe) ──────────────────────────────
 /** Limites reais da fórmula acima: -2 (churn) -1 (sem indicação) = -3; 2+2+2+2+1 = 9. */
 export const SCORE_SQUAD_MIN = -3
 export const SCORE_SQUAD_MAX = 9
-
-/**
- * Score de squad (-3…9) → % (0–100), por FAIXA de classificação, pra casar
- * com as faixas de cor padrão da Performance (vermelho < 40 ≤ laranja < 70 ≤ verde):
- *   Crítico  (-3…0) →  0–39%   linear: (s + 3) / 3 × 39
- *   Atenção  ( 1…4) → 40–69%   linear: 40 + (s − 1) / 3 × 29
- *   Saudável ( 5…9) → 70–100%  linear: 70 + (s − 5) / 4 × 30
- */
-export function scoreSquadPercentual(score: number): number {
-  const s = Math.max(SCORE_SQUAD_MIN, Math.min(SCORE_SQUAD_MAX, score))
-  if (s <= 0) return Math.round(((s + 3) / 3) * 39)
-  if (s <= 4) return Math.round(40 + ((s - 1) / 3) * 29)
-  return Math.round(70 + ((s - 5) / 4) * 30)
-}

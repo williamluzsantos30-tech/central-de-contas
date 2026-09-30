@@ -59,43 +59,6 @@ export function getTarefasDoDia(
   return { atrasadas, hoje }
 }
 
-export interface PrazoTarefas {
-  /** Concluídas até o vencimento. */
-  noPrazo: number
-  /** Concluídas depois do vencimento OU vencidas e não concluídas (atrasadas). */
-  foraDoPrazo: number
-  /** Não concluídas e ainda dentro do prazo (não contam no %). */
-  pendentes: number
-}
-
-/**
- * Pontualidade das tarefas com vencimento em [desdeISO, hojeISO] — mesma base
- * e mesma regra de "atrasada" do KPI acima (prazo < hoje e não concluída),
- * mais as concluídas depois do prazo (data_conclusao > data_vencimento).
- * Usado na Performance da Equipe (Gestor de Tráfego: % tarefas no prazo).
- */
-export function classificarPrazoTarefas(
-  tarefas: Tarefa[],
-  clientes: Cliente[],
-  hojeISO: string,
-  desdeISO: string | null,
-): PrazoTarefas {
-  const naBase = baseDaOperacao(clientes)
-  const r: PrazoTarefas = { noPrazo: 0, foraDoPrazo: 0, pendentes: 0 }
-  for (const t of tarefas) {
-    if (!t.data_vencimento || !naBase(t.cliente_id)) continue
-    const venc = t.data_vencimento.slice(0, 10)
-    if (venc > hojeISO || (desdeISO && venc < desdeISO)) continue
-    if (t.status === 'concluida') {
-      const concl = t.data_conclusao?.slice(0, 10)
-      if (concl && concl > venc) r.foraDoPrazo++
-      else r.noPrazo++
-    } else if (venc < hojeISO) r.foraDoPrazo++
-    else r.pendentes++
-  }
-  return r
-}
-
 /** Nº de tarefas atrasadas por cliente — pro indicador da tabela de clientes. */
 export function contarAtrasadasPorCliente(atrasadas: Tarefa[]): Map<string, number> {
   const m = new Map<string, number>()
