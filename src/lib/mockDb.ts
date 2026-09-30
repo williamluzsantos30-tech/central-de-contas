@@ -26,6 +26,7 @@ type Tables =
   | 'cliente_ideias_social'
   | 'edicoes_video'
   | 'projetos_webdesign_fluxo'
+  | 'criativos_webdesign_fluxo'
 
 let counter = 0
 const uid = () => `m-${(++counter).toString().padStart(5, '0')}`
@@ -544,7 +545,7 @@ const projetos_webdesign: Row[] = [
 
 const criativos_webdesign: Row[] = [
   {
-    id: uid(),
+    id: 'cr-1',
     cliente_id: c1,
     titulo: 'Rejuvenescimento facial 35-55',
     formato: 'feed_estatico',
@@ -559,11 +560,11 @@ const criativos_webdesign: Row[] = [
     copy_texto:
       'Headline: Recupere o brilho da sua pele.\nCTA: Quero avaliação',
     observacoes: 'Primeiro draft indo pra cliente.',
-    created_at: daysISO(-4) + 'T09:00:00Z',
+    created_at: daysISO(-1) + 'T09:00:00Z',
     updated_at: daysISO(-1) + 'T14:00:00Z',
   },
   {
-    id: uid(),
+    id: 'cr-2',
     cliente_id: c2,
     titulo: 'Catarata: 15 minutos de cirurgia',
     formato: 'story',
@@ -583,14 +584,14 @@ const criativos_webdesign: Row[] = [
     updated_at: daysISO(-1) + 'T10:00:00Z',
   },
   {
-    id: uid(),
+    id: 'cr-3',
     cliente_id: c4,
     titulo: 'Cefaleia crônica: 70% nunca foi ao neuro',
     formato: 'carrossel',
     status: 'aprovacao_design',
     responsavel_id: pBruno,
     prazo: daysISO(1),
-    url_criativo: null,
+    url_criativo: 'https://images.unsplash.com/photo-1559757175-5700dde675bc?w=800',
     briefing: 'Carrossel educativo sobre cefaleia crônica. 8 cards. Tom informativo + CTA final.',
     briefing_pdf_url: 'https://drive.google.com/file/d/demo-briefing-carrossel/view',
     identidade_visual_url: null,
@@ -601,18 +602,18 @@ const criativos_webdesign: Row[] = [
     copy_texto:
       'Card 1: Você sabia que 70% das pessoas com cefaleia nunca foram ao neuro?\n...',
     observacoes: 'Enviado para aprovação do neurologista responsável.',
-    created_at: daysISO(-8) + 'T14:00:00Z',
+    created_at: daysISO(-3) + 'T14:00:00Z',
     updated_at: daysISO(-2) + 'T09:00:00Z',
   },
   {
-    id: uid(),
+    id: 'cr-4',
     cliente_id: c3,
     titulo: 'Joelho: volte a correr sem dor',
     formato: 'carrossel',
     status: 'alteracao',
     responsavel_id: pAmanda,
     prazo: daysISO(-1),
-    url_criativo: null,
+    url_criativo: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800',
     briefing: 'Vídeo do médico explicando dor no joelho. Formato 1:1.',
     briefing_pdf_url: null,
     identidade_visual_url: null,
@@ -623,7 +624,7 @@ const criativos_webdesign: Row[] = [
     updated_at: daysISO(-1) + 'T17:00:00Z',
   },
   {
-    id: uid(),
+    id: 'cr-5',
     cliente_id: c1,
     titulo: 'Story Black Friday botox',
     formato: 'story',
@@ -641,7 +642,7 @@ const criativos_webdesign: Row[] = [
     updated_at: daysISO(-5) + 'T18:00:00Z',
   },
   {
-    id: uid(),
+    id: 'cr-6',
     cliente_id: c4,
     titulo: 'Criativo institucional esclerose múltipla',
     formato: 'feed_estatico',
@@ -1009,6 +1010,23 @@ const projetos_webdesign_fluxo: Row[] = [
   }) },
 ]
 
+// Fluxo dos criativos (migration 097): histórico de etapas + decisões da
+// Aprovação do Design.
+const tsCr = (dias: number) => daysISO(-dias) + 'T15:00:00Z'
+const criativos_webdesign_fluxo: Row[] = [
+  { criativo_id: 'cr-3', updated_at: nowISO(), dados: { historico: [{ etapa: 'design', data: tsCr(3) }, { etapa: 'design_finalizado', data: tsCr(2) }, { etapa: 'aprovacao_design', data: tsCr(1) }], decisoes: [], reprovacao: null } },
+  { criativo_id: 'cr-4', updated_at: nowISO(), dados: {
+    historico: [{ etapa: 'design', data: tsCr(9) }, { etapa: 'design_finalizado', data: tsCr(6) }, { etapa: 'aprovacao_design', data: tsCr(5) }, { etapa: 'alteracao', data: tsCr(2) }],
+    decisoes: [{ id: 'd1', status: 'reprovado', por: 'Cliente', data: tsCr(2), motivo: 'Trocar a foto por uma do próprio consultório e aumentar o CTA.' }],
+    reprovacao: { motivo: 'Trocar a foto por uma do próprio consultório e aumentar o CTA.', data: tsCr(2) },
+  } },
+  { criativo_id: 'cr-5', updated_at: nowISO(), dados: {
+    historico: [{ etapa: 'design', data: tsCr(13) }, { etapa: 'design_finalizado', data: tsCr(12) }, { etapa: 'aprovacao_design', data: tsCr(11) }, { etapa: 'conclusao', data: tsCr(10) }],
+    decisoes: [{ id: 'd2', status: 'aprovado', por: 'Cliente', data: tsCr(10) }],
+    reprovacao: null,
+  } },
+]
+
 const db: Record<Tables, Row[]> = {
   profiles,
   squads,
@@ -1031,6 +1049,7 @@ const db: Record<Tables, Row[]> = {
   cliente_ideias_social,
   edicoes_video,
   projetos_webdesign_fluxo,
+  criativos_webdesign_fluxo,
 }
 
 // ---------- Persistência em localStorage (demo) ----------
@@ -1052,6 +1071,7 @@ const PERSISTED_TABLES: Tables[] = [
   'producoes_social_media_items',
   'edicoes_video',
   'projetos_webdesign_fluxo',
+  'criativos_webdesign_fluxo',
 ]
 // v3 — adicionou modulos, jornada_social, social_media_id em cliente,
 // cliente_perfil_setup, métricas social, ideias, items.publicado_*, etc.
@@ -1059,7 +1079,8 @@ const PERSISTED_TABLES: Tables[] = [
 // v4 — contratos (contrato_tipo/inicio/fim/status) nos clientes da demo (Renovações).
 // v5 — ids fixos nas LPs + projetos_webdesign_fluxo (esteira de Landing Page).
 // v6 — planejamentos de Social Media aprovados em datas que cobrem os 3 estados de SLA.
-const STORAGE_KEY = 'movmed-mockdb-v6'
+// v7 — ids fixos nos criativos + criativos_webdesign_fluxo (Aprovação do Design).
+const STORAGE_KEY = 'movmed-mockdb-v7'
 
 function hydrateFromStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return

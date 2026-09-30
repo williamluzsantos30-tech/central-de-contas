@@ -7,11 +7,9 @@ import {
   Palette,
   Sparkles,
   X,
-  Check,
   ChevronDown,
   ChevronRight,
   Calendar,
-  User,
   Upload,
   Trash2,
   Pencil,
@@ -23,14 +21,29 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Textarea } from '@/components/ui/Textarea'
-import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { differenceInDays, format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
 import { isDateOverdue } from '@/lib/dates'
+import { useAuth } from '@/contexts/AuthContext'
 import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
+import { carregarEquipeSocial, EQUIPE_VAZIA, ResponsavelArte, type EquipeSocial } from './socialMedia/producaoSocial'
+import {
+  aprovarDesign,
+  COR_SLA_CRIATIVO,
+  fluxoCriativoVazio,
+  registrarEtapa,
+  reenviarParaAprovacao,
+  reprovarDesign,
+  rotuloSlaCriativo,
+  SLA_CRIATIVO_DIAS_UTEIS,
+  slaDoCriativo,
+  storeFluxoCriativo,
+  type FluxoCriativo,
+} from './criativos/fluxoCriativo'
+import { DeleteConfirmModal, DesignApprovalModal, EsteiraCriativo, HistoricoCriativo } from './criativos/ComponentesCriativo'
 import {
   cn,
   statusCriativoWebdesignLabel,
@@ -56,23 +69,8 @@ function prazoLabel(dateISO: string | null | undefined, overdue: boolean): strin
   }
 }
 
-/** Conta quantos dias úteis passaram desde `start` até hoje. */
-function diasUteisDesde(start: Date): number {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const cur = new Date(start)
-  cur.setHours(0, 0, 0, 0)
-  let days = 0
-  while (cur < today) {
-    cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) days++
-  }
-  return days
-}
 import type {
   Cliente,
-  Profile,
   CriativoWebdesign,
   StatusCriativoWebdesign,
   FormatoCriativo,
@@ -108,7 +106,8 @@ async function uploadArquivo(file: File, folder = 'criativos/misc'): Promise<str
 export default function CriativosWebdesign() {
   const [criativos, setCriativos] = useState<CriativoWebdesign[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
+  const [equipe, setEquipe] = useState<EquipeSocial>(EQUIPE_VAZIA)
+  const [fluxos, setFluxos] = useState<Map<string, FluxoCriativo>>(new Map())
   const [q, setQ] = useState('')
   const [fFormato, setFFormato] = useState('')
   const [fCliente, setFCliente] = useState('')
@@ -116,28 +115,46 @@ export default function CriativosWebdesign() {
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { profile } = useAuth()
+  // Aprovação do Design no nível da página: o card remonta ao mudar de seção.
+  const [aprovacaoId, setAprovacaoId] = useState<string | null>(null)
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [pRes, cRes, rRes] = await Promise.all([
+    const [pRes, cRes, eq, fl] = await Promise.all([
       supabase
         .from('criativos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
-      supabase
-        .from('profiles')
-        .select('id, nome, avatar_url')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-        .order('nome'),
+      // Responsáveis: setor Criativos pelo papel da Equipe Operacional.
+      carregarEquipeSocial(),
+      storeFluxoCriativo.carregar(),
     ])
     setCriativos((pRes.data as CriativoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setResponsaveisLista((rRes.data as Profile[]) ?? [])
+    setEquipe(eq)
+    setFluxos(fl)
     if (!silent) setLoading(false)
   }
+
+  function atualizarFluxo(id: string, f: FluxoCriativo): Promise<void> {
+    setFluxos((m) => new Map(m).set(id, f))
+    return storeFluxoCriativo.salvar(id, f)
+  }
+
+  /** Etapa + fluxo juntos: tela na hora, fluxo gravado, depois status no banco e recarga. */
+  async function aplicarEtapa(c: CriativoWebdesign, status: StatusCriativoWebdesign, f: FluxoCriativo) {
+    if (status !== c.status) setCriativos((cs) => cs.map((x) => (x.id === c.id ? { ...x, status } : x)))
+    await atualizarFluxo(c.id, f)
+    if (status !== c.status) {
+      await supabase.from('criativos_webdesign').update({ status }).eq('id', c.id)
+      load(true)
+    }
+  }
+
+  const criativoAprov = aprovacaoId ? criativos.find((c) => c.id === aprovacaoId) ?? null : null
+  const fluxoAprov = aprovacaoId ? fluxos.get(aprovacaoId) ?? fluxoCriativoVazio() : fluxoCriativoVazio()
 
   useEffect(() => {
     load()
@@ -255,7 +272,7 @@ export default function CriativosWebdesign() {
           >
             <option value="">Todos responsáveis</option>
             <option value="__sem__">Sem responsável</option>
-            {responsaveisLista.map((r) => (
+            {equipe.opcoes.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nome}
               </option>
@@ -313,6 +330,10 @@ export default function CriativosWebdesign() {
                         key={p.id}
                         criativo={p}
                         clientes={clientes}
+                        equipe={equipe}
+                        fluxo={fluxos.get(p.id) ?? fluxoCriativoVazio()}
+                        onEtapa={(s, f) => aplicarEtapa(p, s, f)}
+                        onAprovacao={() => setAprovacaoId(p.id)}
                         expanded={expandedId === p.id}
                         onToggle={() =>
                           setExpandedId((id) => (id === p.id ? null : p.id))
@@ -332,6 +353,35 @@ export default function CriativosWebdesign() {
         </div>
       )}
 
+      {!loading && storeFluxoCriativo.noBanco() === false && (
+        <p className="mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-[11px] text-zinc-200">
+          Aprovações e histórico dos criativos estão sendo salvos <strong>só neste navegador</strong>. Rode a migration 097
+          (<code>criativos_webdesign_fluxo</code>) no Supabase pra compartilhar com a equipe.
+        </p>
+      )}
+
+      {criativoAprov && (
+        <DesignApprovalModal
+          open
+          onClose={() => setAprovacaoId(null)}
+          criativo={criativoAprov}
+          arquivoUrl={stripBlobUrl(criativoAprov.url_criativo)}
+          fluxo={fluxoAprov}
+          meuNome={profile?.nome ?? ''}
+          onMoverParaAprovacao={() => void aplicarEtapa(criativoAprov, 'aprovacao_design', registrarEtapa(fluxoAprov, 'aprovacao_design'))}
+          onAprovar={(por) => {
+            const r = aprovarDesign(fluxoAprov, por, stripBlobUrl(criativoAprov.url_criativo) || null)
+            setAprovacaoId(null)
+            void aplicarEtapa(criativoAprov, r.status, r.fluxo)
+          }}
+          onReprovar={(por, motivo) => {
+            const r = reprovarDesign(fluxoAprov, por, motivo, stripBlobUrl(criativoAprov.url_criativo) || null)
+            setAprovacaoId(null)
+            void aplicarEtapa(criativoAprov, r.status, r.fluxo)
+          }}
+        />
+      )}
+
       <NovoCriativoModal
         open={novoModalOpen}
         onClose={() => setNovoModalOpen(false)}
@@ -349,6 +399,10 @@ function CriativoAccordion({
   onToggle,
   onChanged,
   onDeleted,
+  equipe,
+  fluxo,
+  onEtapa,
+  onAprovacao,
 }: {
   criativo: CriativoWebdesign
   clientes: Cliente[]
@@ -356,52 +410,30 @@ function CriativoAccordion({
   onToggle: () => void
   onChanged: () => void
   onDeleted: () => void
+  equipe: EquipeSocial
+  fluxo: FluxoCriativo
+  onEtapa: (s: StatusCriativoWebdesign, f: FluxoCriativo) => Promise<void>
+  onAprovacao: () => void
 }) {
   const [editingTitulo, setEditingTitulo] = useState(false)
   const [tituloValue, setTituloValue] = useState(criativo.titulo ?? '')
   const [editingFormato, setEditingFormato] = useState(false)
-  const [editingResp, setEditingResp] = useState(false)
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
 
   useEffect(() => {
     setTituloValue(criativo.titulo ?? '')
   }, [criativo.titulo])
-
-  useEffect(() => {
-    // Só designers podem ser responsáveis por criativos de webdesign.
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [])
 
   async function updateField(field: string, val: string | null) {
     await supabase.from('criativos_webdesign').update({ [field]: val }).eq('id', criativo.id)
     onChanged()
   }
 
-  // SLA: prazo máximo 5 dias úteis desde a criação
-  const SLA_DIAS_UTEIS = 5
-  const diasUsados = diasUteisDesde(new Date(criativo.created_at))
-  const concluido = criativo.status === 'conclusao'
-  const slaEstourado = !concluido && diasUsados > SLA_DIAS_UTEIS
-  const slaPct = Math.min(100, Math.round((diasUsados / SLA_DIAS_UTEIS) * 100))
-  const slaBarColor = concluido
-    ? 'bg-emerald-500/70'
-    : slaEstourado
-    ? 'bg-red-500/70'
-    : diasUsados >= 4
-    ? 'bg-amber-500/70'
-    : 'bg-sky-500/70'
-  const slaLabelTxt = concluido
-    ? `SLA cumprido em ${diasUsados}d`
-    : slaEstourado
-    ? `SLA estourado · ${diasUsados - SLA_DIAS_UTEIS}d`
-    : `${diasUsados}/${SLA_DIAS_UTEIS} dias úteis`
+  // SLA: 5 dias úteis desde a criação. Verde < 70% · laranja 70–100% · vermelho estourado.
+  const sla = slaDoCriativo(criativo)
+  const slaEstourado = sla.nivel === 'estourado'
+  const slaPct = sla.pct
+  const slaBarColor = COR_SLA_CRIATIVO[sla.nivel].barra
+  const slaLabelTxt = rotuloSlaCriativo(sla)
 
   async function commitTitulo() {
     const novo = tituloValue.trim()
@@ -420,7 +452,9 @@ function CriativoAccordion({
         'rounded-xl border bg-bg-card overflow-hidden transition-all',
         expanded
           ? 'border-brand-500/50 shadow-lg shadow-brand-500/5'
-          : 'border-border hover:border-brand-500/30',
+          : slaEstourado
+            ? 'border-red-500/40 hover:border-red-500/60'
+            : 'border-border hover:border-brand-500/30',
       )}
     >
       <div
@@ -513,6 +547,14 @@ function CriativoAccordion({
                 {criativo.cliente?.nicho && <span>· {criativo.cliente.nicho}</span>}
                 {criativo.cliente?.squad && <span>· Squad {criativo.cliente.squad}</span>}
               </div>
+              {criativo.status === 'alteracao' && (
+                <p
+                  className="mt-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-md border border-orange-500/40 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300"
+                  title={fluxo.reprovacao?.motivo}
+                >
+                  🔄 Em ajuste — reprovado{fluxo.reprovacao ? `: ${fluxo.reprovacao.motivo}` : ''}
+                </p>
+              )}
             </div>
           </div>
 
@@ -554,49 +596,11 @@ function CriativoAccordion({
 
             <PrazoInline criativo={criativo} onUpdated={onChanged} />
 
-            <div onClick={(e) => e.stopPropagation()}>
-              {editingResp ? (
-                <select
-                  autoFocus
-                  value={criativo.responsavel_id ?? ''}
-                  onChange={async (e) => {
-                    await updateField('responsavel_id', e.target.value || null)
-                    setEditingResp(false)
-                  }}
-                  onBlur={() => setEditingResp(false)}
-                  className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
-                >
-                  <option value="">—</option>
-                  {responsaveis.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.nome}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <button
-                  onClick={() => setEditingResp(true)}
-                  className="grid h-6 w-6 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
-                  title={
-                    criativo.responsavel?.nome
-                      ? `Responsável: ${criativo.responsavel.nome}`
-                      : 'Clique para adicionar responsável'
-                  }
-                >
-                  {criativo.responsavel ? (
-                    <Avatar
-                      name={criativo.responsavel.nome}
-                      url={criativo.responsavel.avatar_url}
-                      size="sm"
-                    />
-                  ) : (
-                    <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
-                      <User size={10} />
-                    </span>
-                  )}
-                </button>
-              )}
-            </div>
+            <ResponsavelArte
+              responsavelId={criativo.responsavel_id}
+              equipe={equipe}
+              onEscolher={(id) => void updateField('responsavel_id', id)}
+            />
           </div>
         </div>
       </div>
@@ -613,17 +617,11 @@ function CriativoAccordion({
               slaEstourado ? 'text-red-400 font-semibold' : 'text-muted',
             )}
           >
-            SLA · prazo máximo 5 dias úteis
+            SLA · prazo máximo {SLA_CRIATIVO_DIAS_UTEIS} dias úteis
           </span>
           <span
-            className={cn(
-              'text-[11px] font-semibold',
-              concluido
-                ? 'text-emerald-400'
-                : slaEstourado
-                ? 'text-red-400'
-                : 'text-zinc-200',
-            )}
+            className={cn('text-[11px] font-semibold tabular-nums', COR_SLA_CRIATIVO[sla.nivel].texto)}
+            title={`Prazo: ${sla.prazo.toLocaleDateString('pt-BR')}`}
           >
             {slaLabelTxt}
           </span>
@@ -639,6 +637,9 @@ function CriativoAccordion({
             key={criativo.id}
             criativo={criativo}
             clientes={clientes}
+            fluxo={fluxo}
+            onEtapa={onEtapa}
+            onAprovacao={onAprovacao}
             onSaved={onChanged}
             onDeleted={onDeleted}
           />
@@ -650,14 +651,21 @@ function CriativoAccordion({
 
 function CriativoEditor({
   criativo,
+  fluxo,
+  onEtapa,
+  onAprovacao,
   onSaved,
   onDeleted,
 }: {
   criativo: CriativoWebdesign
   clientes: Cliente[]
+  fluxo: FluxoCriativo
+  onEtapa: (s: StatusCriativoWebdesign, f: FluxoCriativo) => Promise<void>
+  onAprovacao: () => void
   onSaved: () => void
   onDeleted: () => void
 }) {
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false)
   // Ao carregar, blob: URLs viram string vazia — assim o user reupload o arquivo
   // e o save substitui o lixo do banco.
   const initialForm = useMemo(() => {
@@ -668,7 +676,6 @@ function CriativoEditor({
     const identidadeVisualUrls =
       idsArr.length > 0 ? idsArr : idsLegacySingle ? [idsLegacySingle] : []
     return {
-      status: criativo.status,
       url_criativo: stripBlobUrl(criativo.url_criativo),
       identidade_visual_urls: identidadeVisualUrls,
       fotos: stripBlobUrls(criativo.fotos),
@@ -750,8 +757,8 @@ function CriativoEditor({
     // Diff vs baseline — só manda campos que VOCÊ mexeu.
     // Evita pisar em alterações de outras pessoas (lost-update).
     const base = baselineRef.current
+    // Etapa/status não passa por aqui: a esteira grava na hora (com o histórico).
     const payload: Record<string, unknown> = {}
-    if (form.status !== base.status) payload.status = form.status
     if (form.url_criativo !== base.url_criativo)
       payload.url_criativo = form.url_criativo || null
     if (
@@ -796,15 +803,27 @@ function CriativoEditor({
   }, [form])
 
   async function excluir() {
-    if (!confirm('Excluir este criativo?')) return
     await supabase.from('criativos_webdesign').delete().eq('id', criativo.id)
+    setConfirmarExclusao(false)
     onDeleted()
   }
 
   return (
     <div className="space-y-5">
-      <Section title="Esteira de produção" subtitle="Clique em uma etapa para movimentar o criativo">
-        <Stepper status={form.status} onChange={(s) => setForm({ ...form, status: s })} />
+      <Section
+        title="Esteira de produção"
+        subtitle="Clique numa etapa pra mover o criativo. Na Aprovação do Design: aprovado vai pra Conclusão, reprovado vai pra Alteração."
+      >
+        <EsteiraCriativo
+          status={criativo.status}
+          fluxo={fluxo}
+          onMover={(s) => s !== criativo.status && void onEtapa(s, registrarEtapa(fluxo, s))}
+          onAprovacao={onAprovacao}
+          onReenviar={() => {
+            const r = reenviarParaAprovacao(fluxo)
+            void onEtapa(r.status, r.fluxo)
+          }}
+        />
       </Section>
 
       <Field label="Arquivo final do criativo">
@@ -913,11 +932,11 @@ function CriativoEditor({
 
       <Section
         title="Copy do criativo"
-        subtitle="Texto da copy (recebido automaticamente da Criação aprovada) e/ou arquivo"
+        subtitle="Cole a copy do criativo manualmente, ou anexe um arquivo"
         icon={Sparkles}
       >
-        {/* Texto da copy — vem preenchido quando o criativo foi criado via
-            aprovação de uma Copy Criativos em Criações */}
+        {/* Criativos antigos criados a partir de uma Criação aprovada mantêm a
+            indicação; não há recebimento automático nesta tela. */}
         <div className="mb-3">
           <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">
             Texto da copy {criativo.criacao_origem_id && '(vindo da Criação aprovada)'}
@@ -925,7 +944,7 @@ function CriativoEditor({
           <Textarea
             value={form.copy_texto}
             onChange={(e) => setForm({ ...form, copy_texto: e.target.value })}
-            placeholder="Cole aqui a copy do criativo OU recebida automaticamente da Criação."
+            placeholder="Cole aqui a copy do criativo."
             className="min-h-[200px] font-mono text-[13px] leading-relaxed"
           />
         </div>
@@ -969,8 +988,14 @@ function CriativoEditor({
         />
       </Section>
 
+      <Section title="Histórico de aprovações" subtitle="Decisões da Aprovação do Design (quem, quando e o motivo quando reprovado)">
+        <HistoricoCriativo fluxo={fluxo} />
+      </Section>
+
+      <DeleteConfirmModal open={confirmarExclusao} onCancel={() => setConfirmarExclusao(false)} onConfirm={excluir} />
+
       <div className="flex items-center justify-between border-t border-border pt-4">
-        <Button variant="danger" size="sm" onClick={excluir}>
+        <Button variant="danger" size="sm" onClick={() => setConfirmarExclusao(true)}>
           <Trash2 size={12} /> Excluir
         </Button>
         <span
@@ -1135,59 +1160,6 @@ function PrazoInline({
       <Calendar size={10} />
       {criativo.prazo ? prazoLabel(criativo.prazo, !!overdue) : 'Definir prazo'}
     </button>
-  )
-}
-
-function Stepper({
-  status,
-  onChange,
-}: {
-  status: StatusCriativoWebdesign
-  onChange: (s: StatusCriativoWebdesign) => void
-}) {
-  const idx = ESTEIRA_CRIATIVOS.indexOf(status)
-  return (
-    <div>
-      <div className="flex items-center">
-        {ESTEIRA_CRIATIVOS.map((s, i) => {
-          const done = i < idx
-          const current = i === idx
-          return (
-            <div key={s} className="flex items-center flex-1">
-              <button
-                onClick={() => onChange(s)}
-                className={cn(
-                  'grid h-8 w-8 place-items-center rounded-full border text-[11px] font-semibold transition-colors shrink-0',
-                  done && 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
-                  current && 'bg-brand-500 border-brand-500 text-white shadow-lg shadow-brand-500/30',
-                  !done && !current && 'bg-bg-soft border-border text-muted hover:text-zinc-200',
-                )}
-                title={statusCriativoWebdesignLabel[s]}
-              >
-                {done ? <Check size={12} /> : i + 1}
-              </button>
-              {i < ESTEIRA_CRIATIVOS.length - 1 && (
-                <div className={cn('h-0.5 flex-1', done ? 'bg-emerald-500/40' : 'bg-border')} />
-              )}
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-2 grid grid-cols-6 gap-1 text-[10px] uppercase tracking-wider">
-        {ESTEIRA_CRIATIVOS.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => onChange(s)}
-            className={cn(
-              'text-center truncate hover:text-zinc-200',
-              i === idx ? 'text-brand-300 font-semibold' : 'text-muted',
-            )}
-          >
-            {statusCriativoWebdesignLabel[s]}
-          </button>
-        ))}
-      </div>
-    </div>
   )
 }
 
