@@ -8,7 +8,6 @@ import {
   Palette,
   Sparkles,
   X,
-  Check,
   ChevronDown,
   ChevronRight,
   Calendar,
@@ -28,8 +27,44 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
-import { isDateOverdue } from '@/lib/dates'
+import { formatDateBR, isDateOverdue } from '@/lib/dates'
+import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
+import { useAuth } from '@/contexts/AuthContext'
+import { useComercial } from '@/pages/comercial/store'
+import { registrarCanaisLP } from '@/pages/comercial/marketingCalculator'
+import type { Lead } from '@/pages/comercial/mockLeads'
 import { IdentidadeVisualEditor } from '@/components/webdesign/IdentidadeVisualEditor'
+import {
+  APROVACAO_DE,
+  aprovar,
+  carregarFluxos,
+  chaveDaUrl,
+  etapaAtual,
+  fluxoNoBanco,
+  fluxoVazio,
+  moverPara,
+  nomeCanalLP,
+  pausar,
+  registrarEvento,
+  reprovar,
+  responsavelDaEtapa,
+  retomar,
+  salvarFluxo,
+  slaDoProjeto,
+  SLA_LP_DIAS_UTEIS,
+  type EtapaLP,
+  type FluxoLP,
+} from './landingPage/fluxoLP'
+import { EsteiraLP } from './landingPage/EsteiraLP'
+import { ApprovalModal, PauseProjectModal } from './landingPage/ModaisLP'
+import { HistoricoLP, MarketingLinkCard, OrigemBadge, SLAEscalationActions, UrlPreviewField } from './landingPage/BlocosLP'
+
+/** Leads do Comercial cuja origem cita a URL da LP. */
+function leadsDaUrl(leads: Lead[], url: string | null): number {
+  const k = url ? chaveDaUrl(url) : ''
+  if (!k) return 0
+  return leads.filter((l) => (l.canalOriginal ?? l.origem ?? '').toLowerCase().includes(k)).length
+}
 import {
   cn,
   relativeDueLabel,
@@ -46,21 +81,6 @@ import type {
   StatusProjetoWebdesign,
   TipoProjetoWebdesign,
 } from '@/types/database'
-
-/** Conta quantos dias úteis passaram desde `start` até hoje. */
-function diasUteisDesde(start: Date): number {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const cur = new Date(start)
-  cur.setHours(0, 0, 0, 0)
-  let days = 0
-  while (cur < today) {
-    cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) days++
-  }
-  return days
-}
 
 const statusDot: Record<StatusProjetoWebdesign, string> = {
   copy: 'bg-sky-500',
@@ -101,32 +121,66 @@ export default function ProjetosWebdesign() {
   const [fTipo, setFTipo] = useState('')
   const [fCliente, setFCliente] = useState('')
   const [fResponsavel, setFResponsavel] = useState('')
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
+  const [equipe, setEquipe] = useState<Map<string, Profile>>(new Map())
+  const [fluxos, setFluxos] = useState<Map<string, FluxoLP>>(new Map())
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { leads } = useComercial()
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const [pRes, cRes, rRes] = await Promise.all([
+    const [pRes, cRes, eqRes, fl] = await Promise.all([
       supabase
         .from('projetos_webdesign')
         .select('*, cliente:clientes(*), responsavel:profiles(*)')
         .order('updated_at', { ascending: false }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
-      supabase
-        .from('profiles')
-        .select('id, nome, avatar_url')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-        .order('nome'),
+      // Responsáveis por etapa: equipe toda (a função vem do papel da Equipe Operacional).
+      buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome')),
+      carregarFluxos(),
     ])
     setProjetos((pRes.data as ProjetoWebdesign[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setResponsaveis((rRes.data as Profile[]) ?? [])
+    setEquipe(new Map(eqRes.data.map((p) => [p.id, p])))
+    setFluxos(fl)
     if (!silent) setLoading(false)
   }
+
+  /** Grava o fluxo de um projeto (estado + banco/navegador) e atualiza os canais de LP do Marketing. */
+  function atualizarFluxo(projetoId: string, f: FluxoLP): Promise<void> {
+    setFluxos((m) => {
+      const n = new Map(m)
+      n.set(projetoId, f)
+      registrarCanaisLP(
+        [...n.values()].filter((x) => x.marketing?.url).map((x) => ({ canal: x.marketing!.canal, chaves: [chaveDaUrl(x.marketing!.url)] })),
+      )
+      return n
+    })
+    return salvarFluxo(projetoId, f)
+  }
+
+  /** Troca a etapa na tela antes do banco responder (o recarregamento confirma). */
+  function statusLocal(projetoId: string, status: StatusProjetoWebdesign) {
+    setProjetos((ps) => ps.map((p) => (p.id === projetoId ? { ...p, status } : p)))
+  }
+
+  /** Etapa + fluxo juntos: tela, fluxo gravado e só então o status no banco e a recarga. */
+  async function aplicarEtapa(p: ProjetoWebdesign, status: StatusProjetoWebdesign, novo: FluxoLP) {
+    if (status !== p.status) statusLocal(p.id, status)
+    await atualizarFluxo(p.id, novo)
+    if (status !== p.status) {
+      await supabase.from('projetos_webdesign').update({ status }).eq('id', p.id)
+      load(true)
+    }
+  }
+
+  // Painel de aprovação no nível da página: o projeto muda de seção ao mudar
+  // de etapa (o card remonta) e o painel precisa continuar aberto.
+  const { profile } = useAuth()
+  const [aprovacao, setAprovacao] = useState<{ id: string; etapa: EtapaLP } | null>(null)
+  const projAprov = aprovacao ? projetos.find((p) => p.id === aprovacao.id) ?? null : null
+  const fluxoAprov = aprovacao ? fluxos.get(aprovacao.id) ?? fluxoVazio() : fluxoVazio()
 
   useEffect(() => {
     load()
@@ -180,12 +234,21 @@ export default function ProjetosWebdesign() {
       if (fTipo && p.tipo !== fTipo) return false
       if (fCliente && p.cliente_id !== fCliente) return false
       if (fResponsavel) {
-        if (fResponsavel === '__sem__' && p.responsavel_id) return false
-        if (fResponsavel !== '__sem__' && p.responsavel_id !== fResponsavel) return false
+        // Responsável da etapa atual; "qualquer etapa" também conta pra achar a pessoa.
+        const f = fluxos.get(p.id) ?? fluxoVazio()
+        const atual = responsavelDaEtapa(p, f, etapaAtual(p, f))
+        if (fResponsavel === '__sem__' && atual) return false
+        if (
+          fResponsavel !== '__sem__' &&
+          atual !== fResponsavel &&
+          p.responsavel_id !== fResponsavel &&
+          !Object.values(f.etapas).some((e) => e?.responsavelId === fResponsavel)
+        )
+          return false
       }
       return true
     })
-  }, [projetos, q, fTipo, fCliente, fResponsavel])
+  }, [projetos, q, fTipo, fCliente, fResponsavel, fluxos])
 
   const byStatus = useMemo(() => {
     const m = new Map<StatusProjetoWebdesign, ProjetoWebdesign[]>()
@@ -246,7 +309,7 @@ export default function ProjetosWebdesign() {
           >
             <option value="">Todos responsáveis</option>
             <option value="__sem__">Sem responsável</option>
-            {responsaveis.map((r) => (
+            {[...equipe.values()].map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nome}
               </option>
@@ -254,6 +317,13 @@ export default function ProjetosWebdesign() {
           </Select>
         </CardBody>
       </Card>
+
+      {!loading && fluxoNoBanco() === false && (
+        <p className="mb-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-[11px] text-zinc-200">
+          Responsáveis por etapa, aprovações, pausas e escalações estão sendo salvos <strong>só neste navegador</strong>. Rode a
+          migration 096 (<code>projetos_webdesign_fluxo</code>) no Supabase pra compartilhar com a equipe.
+        </p>
+      )}
 
       {loading ? (
         <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
@@ -304,6 +374,12 @@ export default function ProjetosWebdesign() {
                         key={p.id}
                         projeto={p}
                         clientes={clientes}
+                        fluxo={fluxos.get(p.id) ?? fluxoVazio()}
+                        onFluxo={(f) => atualizarFluxo(p.id, f)}
+                        onEtapa={(s, f) => aplicarEtapa(p, s, f)}
+                        onAprovacao={(etapa) => setAprovacao({ id: p.id, etapa })}
+                        equipe={equipe}
+                        leadsGerados={leadsDaUrl(leads, fluxos.get(p.id)?.marketing?.url ?? null)}
                         expanded={expandedId === p.id}
                         onToggle={() =>
                           setExpandedId((id) => (id === p.id ? null : p.id))
@@ -323,6 +399,33 @@ export default function ProjetosWebdesign() {
         </div>
       )}
 
+      {aprovacao && projAprov && (
+        <ApprovalModal
+          open
+          onClose={() => setAprovacao(null)}
+          projeto={projAprov}
+          fluxo={fluxoAprov}
+          etapa={aprovacao.etapa}
+          atual={etapaAtual(projAprov, fluxoAprov)}
+          meuNome={profile?.nome ?? ''}
+          onMoverParaAprovacao={() => {
+            if (projAprov.status === 'pausado') return
+            void aplicarEtapa(projAprov, aprovacao.etapa, moverPara(fluxoAprov, etapaAtual(projAprov, fluxoAprov), aprovacao.etapa))
+          }}
+          onDesignUrl={(url) => void atualizarFluxo(projAprov.id, { ...fluxoAprov, designUrl: url })}
+          onAprovar={(por) => {
+            const r = aprovar(fluxoAprov, APROVACAO_DE[aprovacao.etapa]!, por)
+            setAprovacao(null)
+            void aplicarEtapa(projAprov, r.status, r.fluxo)
+          }}
+          onReprovar={(por, motivo) => {
+            const r = reprovar(fluxoAprov, APROVACAO_DE[aprovacao.etapa]!, por, motivo)
+            setAprovacao(null)
+            void aplicarEtapa(projAprov, r.status, r.fluxo)
+          }}
+        />
+      )}
+
       <NovoProjetoModal
         open={novoModalOpen}
         onClose={() => setNovoModalOpen(false)}
@@ -340,6 +443,12 @@ export default function ProjetosWebdesign() {
 function ProjetoAccordion({
   projeto,
   clientes,
+  fluxo,
+  onFluxo,
+  onEtapa,
+  onAprovacao,
+  equipe,
+  leadsGerados,
   expanded,
   onToggle,
   onChanged,
@@ -347,56 +456,77 @@ function ProjetoAccordion({
 }: {
   projeto: ProjetoWebdesign
   clientes: Cliente[]
+  fluxo: FluxoLP
+  onFluxo: (f: FluxoLP) => Promise<void>
+  onEtapa: (s: StatusProjetoWebdesign, f: FluxoLP) => Promise<void>
+  onAprovacao: (etapa: EtapaLP) => void
+  equipe: Map<string, Profile>
+  leadsGerados: number
   expanded: boolean
   onToggle: () => void
   onChanged: () => void
   onDeleted: () => void
 }) {
+  const { profile } = useAuth()
   const [editingTitulo, setEditingTitulo] = useState(false)
   const [tituloValue, setTituloValue] = useState(projeto.titulo ?? '')
   const [editingTipo, setEditingTipo] = useState(false)
   const [editingResp, setEditingResp] = useState(false)
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
 
   useEffect(() => {
     setTituloValue(projeto.titulo ?? '')
   }, [projeto.titulo])
-
-  useEffect(() => {
-    // Só designers podem ser responsáveis por landing pages.
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-  }, [])
 
   async function updateField(field: string, val: string | null) {
     await supabase.from('projetos_webdesign').update({ [field]: val }).eq('id', projeto.id)
     onChanged()
   }
 
-  // SLA: prazo máximo 10 dias úteis desde a criação do projeto
-  const SLA_DIAS_UTEIS = 10
-  const diasUsados = diasUteisDesde(new Date(projeto.created_at))
-  const concluido = projeto.status === 'conclusao'
-  const slaEstourado = !concluido && diasUsados > SLA_DIAS_UTEIS
-  const slaPct = Math.min(100, Math.round((diasUsados / SLA_DIAS_UTEIS) * 100))
+  // SLA: 10 dias úteis a partir do início (criação do projeto)
+  const atual = etapaAtual(projeto, fluxo)
+  const respAtualId = responsavelDaEtapa(projeto, fluxo, atual)
+  const respAtual = respAtualId ? equipe.get(respAtualId) ?? projeto.responsavel ?? null : null
+  const sla = slaDoProjeto(projeto, fluxo)
+  const { concluido, diasUsados } = sla
+  const slaEstourado = sla.estourado
+  const slaPct = sla.pct
   const slaBarColor = concluido
     ? 'bg-emerald-500/70'
+    : sla.pausado
+    ? 'bg-zinc-500/50'
     : slaEstourado
     ? 'bg-red-500/70'
-    : diasUsados >= SLA_DIAS_UTEIS - 2
+    : diasUsados >= SLA_LP_DIAS_UTEIS - 2
     ? 'bg-amber-500/70'
     : 'bg-sky-500/70'
   const slaLabelTxt = concluido
     ? `SLA cumprido em ${diasUsados}d`
+    : sla.pausado
+    ? `Pausado · ${diasUsados}/${SLA_LP_DIAS_UTEIS} dias úteis`
     : slaEstourado
-    ? `SLA estourado · ${diasUsados - SLA_DIAS_UTEIS}d`
-    : `${diasUsados}/${SLA_DIAS_UTEIS} dias úteis`
+    ? `SLA estourado · ${sla.diasEstourado}d`
+    : `${diasUsados}/${SLA_LP_DIAS_UTEIS} dias úteis`
+  const ultimaNotificacao = [...fluxo.eventos].reverse().find((e) => e.tipo === 'notificacao')?.em ?? null
+
+  function atribuirEtapaAtual(id: string | null) {
+    onFluxo({ ...fluxo, etapas: { ...fluxo.etapas, [atual]: { ...(fluxo.etapas[atual] ?? {}), responsavelId: id } } })
+    void updateField('responsavel_id', id)
+  }
+
+  function notificar() {
+    if (!respAtual) return
+    // Simulado: não há canal de notificação no domus ainda — fica registrado no histórico.
+    onFluxo(registrarEvento(fluxo, 'notificacao', `Notificação enviada pra ${respAtual.nome} (SLA estourado · ${statusProjetoWebdesignLabel[atual]})`))
+  }
+
+  function alternarEscalado() {
+    const quem = profile?.nome ?? 'Alguém'
+    onFluxo(
+      fluxo.escalado
+        ? registrarEvento({ ...fluxo, escalado: null }, 'desescalado', `Escalação removida por ${quem}`)
+        : registrarEvento({ ...fluxo, escalado: { em: new Date().toISOString(), por: quem } }, 'escalado', `Escalado pro Head por ${quem}`),
+    )
+  }
 
   async function commitTitulo() {
     const novo = tituloValue.trim()
@@ -510,6 +640,31 @@ function ProjetoAccordion({
                 {projeto.cliente?.nicho && <span>· {projeto.cliente.nicho}</span>}
                 {projeto.cliente?.squad && <span>· Squad {projeto.cliente.squad}</span>}
               </div>
+              {/* Situação: pausa, revisão, escalação, Marketing */}
+              {(projeto.status === 'pausado' || fluxo.emRevisao || fluxo.escalado || fluxo.marketing) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {fluxo.escalado && (
+                    <span className="rounded-md border border-red-500/50 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-300" title={`Escalado por ${fluxo.escalado.por}`}>
+                      ⬆ Escalado
+                    </span>
+                  )}
+                  {projeto.status === 'pausado' && (
+                    <span className="max-w-[22rem] truncate rounded-md border border-yellow-500/40 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] font-medium text-yellow-300" title={fluxo.pausa?.motivo}>
+                      ⏸ Pausado{fluxo.pausa ? ` — ${fluxo.pausa.motivo}` : ''}
+                    </span>
+                  )}
+                  {fluxo.emRevisao && projeto.status !== 'pausado' && (
+                    <span className="rounded-md border border-orange-500/40 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
+                      🔄 {fluxo.emRevisao === 'copy' ? 'Copy' : 'Design'} em revisão — reprovado
+                    </span>
+                  )}
+                  {fluxo.marketing && (
+                    <span className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+                      🎯 {fluxo.marketing.canal} · {leadsGerados} lead{leadsGerados === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -556,21 +711,21 @@ function ProjetoAccordion({
 
             <PrazoInline projeto={projeto} onUpdated={onChanged} />
 
-            {/* Responsável editável inline */}
+            {/* Responsável da ETAPA ATUAL, editável inline */}
             <div onClick={(e) => e.stopPropagation()}>
               {editingResp ? (
                 <select
                   autoFocus
-                  value={projeto.responsavel_id ?? ''}
-                  onChange={async (e) => {
-                    await updateField('responsavel_id', e.target.value || null)
+                  value={respAtualId ?? ''}
+                  onChange={(e) => {
+                    atribuirEtapaAtual(e.target.value || null)
                     setEditingResp(false)
                   }}
                   onBlur={() => setEditingResp(false)}
                   className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
                 >
-                  <option value="">—</option>
-                  {responsaveis.map((r) => (
+                  <option value="">Sem responsável</option>
+                  {[...equipe.values()].map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.nome}
                     </option>
@@ -581,17 +736,13 @@ function ProjetoAccordion({
                   onClick={() => setEditingResp(true)}
                   className="grid h-6 w-6 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
                   title={
-                    projeto.responsavel?.nome
-                      ? `Responsável: ${projeto.responsavel.nome}`
-                      : 'Clique para adicionar responsável'
+                    respAtual
+                      ? `Responsável por ${statusProjetoWebdesignLabel[atual]}: ${respAtual.nome}`
+                      : `Sem responsável em ${statusProjetoWebdesignLabel[atual]} — clique pra atribuir`
                   }
                 >
-                  {projeto.responsavel ? (
-                    <Avatar
-                      name={projeto.responsavel.nome}
-                      url={projeto.responsavel.avatar_url}
-                      size="sm"
-                    />
+                  {respAtual ? (
+                    <Avatar name={respAtual.nome} url={respAtual.avatar_url} size="sm" />
                   ) : (
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-border text-muted">
                       <User size={10} />
@@ -612,27 +763,38 @@ function ProjetoAccordion({
             style={{ width: `${slaPct}%` }}
           />
         </div>
-        <div className="flex items-center justify-between gap-3 bg-bg-soft/30 px-4 py-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-bg-soft/30 px-4 py-1.5">
           <span
             className={cn(
               'text-[10px] uppercase tracking-wider',
               slaEstourado ? 'text-red-400 font-semibold' : 'text-muted',
             )}
           >
-            SLA · prazo máximo {SLA_DIAS_UTEIS} dias úteis
+            SLA · prazo máximo {SLA_LP_DIAS_UTEIS} dias úteis
           </span>
-          <span
-            className={cn(
-              'text-[11px] font-semibold',
-              concluido
-                ? 'text-emerald-400'
-                : slaEstourado
-                ? 'text-red-400'
-                : 'text-zinc-200',
+          <div className="flex flex-wrap items-center gap-2">
+            {slaEstourado && (
+              <SLAEscalationActions
+                responsavelNome={respAtual?.nome ?? null}
+                escalado={!!fluxo.escalado}
+                ultimaNotificacao={ultimaNotificacao}
+                onNotificar={notificar}
+                onEscalar={alternarEscalado}
+              />
             )}
-          >
-            {slaLabelTxt}
-          </span>
+            <span
+              className={cn(
+                'text-[11px] font-semibold',
+                concluido
+                  ? 'text-emerald-400'
+                  : slaEstourado
+                  ? 'text-red-400'
+                  : 'text-zinc-200',
+              )}
+            >
+              {slaLabelTxt}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -644,6 +806,13 @@ function ProjetoAccordion({
             key={projeto.id}
             projeto={projeto}
             clientes={clientes}
+            fluxo={fluxo}
+            onFluxo={onFluxo}
+            onEtapa={onEtapa}
+            onAprovacao={onAprovacao}
+            equipe={equipe}
+            meuNome={profile?.nome ?? ''}
+            leadsGerados={leadsGerados}
             onSaved={onChanged}
             onDeleted={onDeleted}
           />
@@ -659,14 +828,50 @@ function ProjetoAccordion({
 
 function ProjetoEditor({
   projeto,
+  fluxo,
+  onFluxo,
+  onEtapa,
+  onAprovacao,
+  equipe,
+  meuNome,
+  leadsGerados,
   onSaved,
   onDeleted,
 }: {
   projeto: ProjetoWebdesign
   clientes: Cliente[]
+  fluxo: FluxoLP
+  onFluxo: (f: FluxoLP) => Promise<void>
+  /** Troca a etapa junto com o fluxo (página: grava o fluxo antes de recarregar). */
+  onEtapa: (s: StatusProjetoWebdesign, f: FluxoLP) => Promise<void>
+  onAprovacao: (etapa: EtapaLP) => void
+  equipe: Map<string, Profile>
+  meuNome: string
+  leadsGerados: number
   onSaved: () => void
   onDeleted: () => void
 }) {
+  const atual = etapaAtual(projeto, fluxo)
+  const [pausando, setPausando] = useState(false)
+
+  function mover(para: EtapaLP) {
+    if (projeto.status === 'pausado' || para === atual) return
+    void onEtapa(para, moverPara(fluxo, atual, para))
+  }
+
+  function definirResponsavel(etapa: EtapaLP, id: string | null) {
+    onFluxo({ ...fluxo, etapas: { ...fluxo.etapas, [etapa]: { ...(fluxo.etapas[etapa] ?? {}), responsavelId: id } } })
+    if (etapa === atual) {
+      void supabase.from('projetos_webdesign').update({ responsavel_id: id }).eq('id', projeto.id).then(() => onSaved())
+    }
+  }
+
+  function vincularMarketing() {
+    const url = (form.url_producao || projeto.url_producao || '').trim()
+    if (!url) return
+    const canal = nomeCanalLP(projeto.titulo || projeto.cliente?.nome || 'Landing Page')
+    onFluxo(registrarEvento({ ...fluxo, marketing: { canal, url, vinculadoEm: new Date().toISOString() } }, 'marketing', `Vinculada ao Marketing como «${canal}»`))
+  }
   const initialForm = useMemo(() => {
     const idsArr = stripBlobUrls(projeto.identidade_visual_urls ?? [])
     const idsLegacySingle = stripBlobUrl(projeto.identidade_visual_url)
@@ -679,7 +884,6 @@ function ProjetoEditor({
     const copyArquivos =
       copyArqArr.length > 0 ? copyArqArr : copyArqLegacy ? [copyArqLegacy] : []
     return {
-      status: projeto.status,
       url_producao: stripBlobUrl(projeto.url_producao),
       briefing: projeto.briefing ?? '',
       briefing_pdf_url: stripBlobUrl(projeto.briefing_pdf_url),
@@ -775,8 +979,8 @@ function ProjetoEditor({
   async function save() {
     // Diff vs baseline — só envia o que VOCÊ mexeu (não pisa em uploads de outros)
     const base = baselineRef.current
+    // Status/etapa não passa por aqui: a esteira grava na hora (junto com o fluxo).
     const payload: Record<string, unknown> = {}
-    if (form.status !== base.status) payload.status = form.status
     if (form.url_producao !== base.url_producao)
       payload.url_producao = form.url_producao || null
     if (form.briefing !== base.briefing) payload.briefing = form.briefing || null
@@ -834,17 +1038,44 @@ function ProjetoEditor({
 
   return (
     <div className="space-y-5">
-      <Section title="Esteira de produção" subtitle="Clique em uma etapa para movimentar o projeto">
-        <Stepper status={form.status} onChange={(s) => setForm({ ...form, status: s })} />
+      <Section
+        title="Esteira de produção"
+        subtitle="Clique numa etapa pra mover o projeto; nas aprovações, abre o painel de Aprovar/Reprovar"
+      >
+        <EsteiraLP
+          projeto={projeto}
+          fluxo={fluxo}
+          equipe={equipe}
+          onMover={mover}
+          onAprovacao={onAprovacao}
+          onResponsavel={definirResponsavel}
+          onPausar={() => setPausando(true)}
+          onRetomar={() => {
+            const r = retomar(fluxo)
+            void onEtapa(r.status, r.fluxo)
+          }}
+        />
       </Section>
 
-      <Field label="URL de produção">
-        <Input
-          value={form.url_producao}
-          onChange={(e) => setForm({ ...form, url_producao: e.target.value })}
-          placeholder="https://..."
+      <UrlPreviewField
+        value={form.url_producao}
+        onChange={(v) => setForm({ ...form, url_producao: v })}
+        statusUrl={fluxo.statusUrl}
+        verificadaEm={fluxo.urlVerificadaEm}
+        onStatus={(s, verificado) =>
+          onFluxo({ ...fluxo, statusUrl: s, urlVerificadaEm: verificado ? new Date().toISOString() : fluxo.urlVerificadaEm })
+        }
+      />
+
+      {atual === 'conclusao' && projeto.status !== 'pausado' && (form.url_producao.trim() || fluxo.marketing) && (
+        <MarketingLinkCard
+          fluxo={fluxo}
+          url={fluxo.marketing?.url ?? form.url_producao.trim()}
+          leads={leadsGerados}
+          onVincular={vincularMarketing}
+          onDesvincular={() => onFluxo(registrarEvento({ ...fluxo, marketing: null }, 'marketing', 'Desvinculada do Marketing'))}
         />
-      </Field>
+      )}
 
       <Section
         title="Briefing"
@@ -894,6 +1125,7 @@ function ProjetoEditor({
         title="Identidade visual"
         subtitle="Logo, paleta, manual de marca — pode anexar vários arquivos"
         icon={Palette}
+        badge={<OrigemBadge origem="cliente" />}
       >
         <IdentidadeVisualEditor
           urls={form.identidade_visual_urls}
@@ -908,6 +1140,7 @@ function ProjetoEditor({
         title="Fotos do projeto"
         subtitle="Faça upload de várias imagens ou cole URLs"
         icon={ImageIcon}
+        badge={<OrigemBadge origem="time" />}
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1069,6 +1302,19 @@ function ProjetoEditor({
           className="min-h-[70px]"
         />
       </Section>
+
+      <Section title="Histórico do projeto" subtitle="Aprovações, reprovações, pausas, avisos e escalações">
+        <HistoricoLP fluxo={fluxo} />
+      </Section>
+
+      <PauseProjectModal
+        open={pausando}
+        onClose={() => setPausando(false)}
+        onConfirm={(motivo) => {
+          setPausando(false)
+          void onEtapa('pausado', pausar(fluxo, atual, motivo, meuNome))
+        }}
+      />
 
       <div className="flex items-center justify-between border-t border-border pt-4">
         <Button variant="danger" size="sm" onClick={excluir}>
@@ -1246,77 +1492,12 @@ function PrazoInline({
       title={projeto.prazo ? 'Clique para editar prazo' : 'Clique para definir prazo'}
     >
       <Calendar size={10} />
-      {projeto.prazo ? relativeDueLabel(projeto.prazo) : 'Definir prazo'}
+      {projeto.prazo
+        ? projeto.status === 'conclusao'
+          ? `Prazo ${formatDateBR(projeto.prazo)}`
+          : relativeDueLabel(projeto.prazo)
+        : 'Definir prazo'}
     </button>
-  )
-}
-
-function Stepper({
-  status,
-  onChange,
-}: {
-  status: StatusProjetoWebdesign
-  onChange: (s: StatusProjetoWebdesign) => void
-}) {
-  const idx = ESTEIRA_WEBDESIGN.indexOf(status)
-  const isOff = status === 'pausado'
-  return (
-    <div>
-      <div className="flex items-center">
-        {ESTEIRA_WEBDESIGN.map((s, i) => {
-          const done = !isOff && i < idx
-          const current = !isOff && i === idx
-          return (
-            <div key={s} className="flex items-center flex-1">
-              <button
-                onClick={() => onChange(s)}
-                className={cn(
-                  'grid h-8 w-8 place-items-center rounded-full border text-[11px] font-semibold transition-colors shrink-0',
-                  done && 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
-                  current && 'bg-brand-500 border-brand-500 text-white shadow-lg shadow-brand-500/30',
-                  !done && !current && 'bg-bg-soft border-border text-muted hover:text-zinc-200',
-                )}
-                title={statusProjetoWebdesignLabel[s]}
-              >
-                {done ? <Check size={12} /> : i + 1}
-              </button>
-              {i < ESTEIRA_WEBDESIGN.length - 1 && (
-                <div
-                  className={cn('h-0.5 flex-1', done ? 'bg-emerald-500/40' : 'bg-border')}
-                />
-              )}
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-2 grid grid-cols-6 gap-1 text-[10px] uppercase tracking-wider">
-        {ESTEIRA_WEBDESIGN.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => onChange(s)}
-            className={cn(
-              'text-center truncate hover:text-zinc-200',
-              !isOff && i === idx ? 'text-brand-300 font-semibold' : 'text-muted',
-            )}
-          >
-            {statusProjetoWebdesignLabel[s]}
-          </button>
-        ))}
-      </div>
-      <div className="mt-3 flex items-center justify-center">
-        <button
-          onClick={() => onChange(isOff ? 'copy' : 'pausado')}
-          className={cn(
-            'rounded-full border px-3 py-1 text-[11px] font-medium transition-colors',
-            isOff
-              ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-300'
-              : 'border-border text-muted hover:text-zinc-200',
-          )}
-        >
-          {isOff ? '⏸ Pausado — clique para retomar' : '⏸ Pausar projeto'}
-        </button>
-      </div>
-    </div>
   )
 }
 
@@ -1324,11 +1505,14 @@ function Section({
   title,
   subtitle,
   icon: Icon,
+  badge,
   children,
 }: {
   title: string
   subtitle?: string
   icon?: React.ComponentType<{ size?: number }>
+  /** Selo no canto do cabeçalho (ex.: de quem é o material). */
+  badge?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -1339,10 +1523,11 @@ function Section({
             <Icon size={12} />
           </span>
         )}
-        <div>
+        <div className="min-w-0 flex-1">
           <h4 className="text-sm font-semibold">{title}</h4>
           {subtitle && <p className="text-[11px] text-muted">{subtitle}</p>}
         </div>
+        {badge}
       </div>
       {children}
     </div>

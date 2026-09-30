@@ -16,8 +16,21 @@ const hojeISO = () => new Date().toISOString().slice(0, 10)
  */
 export const SEM_ORIGEM = 'Sem Origem Identificada'
 
+/**
+ * Landing Pages vinculadas ao Marketing (Webdesign › Landing Page, ao
+ * concluir): o lead cuja origem cita a URL da LP vira o canal "LP · Nome",
+ * com linha própria no Comparativo entre canais. Registrado pela store do
+ * Comercial ao carregar (e pela tela de LP ao vincular).
+ */
+let canaisLP: { canal: string; chaves: string[] }[] = []
+export function registrarCanaisLP(lista: { canal: string; chaves: string[] }[]) {
+  canaisLP = lista
+}
+
 export function canalDoLead(lead: Lead): string {
   const raw = (lead.canalOriginal ?? lead.origem ?? '').trim().toLowerCase()
+  const lp = canaisLP.find((c) => c.chaves.some((k) => k && raw.includes(k)))
+  if (lp) return lp.canal
   // Sem canalOriginal/origem (ex.: webhook do CRM sem o campo) → gap de rastreio.
   if (!raw || raw.includes('sem origem')) return SEM_ORIGEM
   if (raw.includes('meta') || raw.includes('facebook') || raw.includes('instagram ads')) return 'Meta Ads'

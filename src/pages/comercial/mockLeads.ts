@@ -739,6 +739,38 @@ export const MOCK_LEADS: Lead[] = [
     dataCaptacao: '2026-09-20',
     qualificado: false,
   },
+  // Chegaram pela LP da própria agência (Webdesign › Landing Page "lp - www",
+  // vinculada ao Marketing) — viram o canal "LP · lp - www".
+  {
+    id: 'lead-lp-1',
+    nomeContato: 'Dra. Marina Castro',
+    empresa: 'Clínica Castro Dermato',
+    telefone: '(31) 90000-7788',
+    origem: 'Landing Page agencia-demo.com.br/lp-medicos',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Landing Page agencia-demo.com.br/lp-medicos',
+    dataEntrada: '2026-09-22',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-22',
+    qualificado: false,
+  },
+  {
+    id: 'lead-lp-2',
+    nomeContato: 'Dr. Paulo Nery',
+    empresa: 'Nery Cardiologia',
+    telefone: '(41) 90000-6655',
+    origem: 'Landing Page agencia-demo.com.br/lp-medicos',
+    etapaFunil: 'caixa_entrada',
+    origemEntrada: 'crm_externo',
+    crmProvider: 'RD Station',
+    canalOriginal: 'Landing Page agencia-demo.com.br/lp-medicos',
+    dataEntrada: '2026-09-24',
+    socialSellerId: '',
+    dataCaptacao: '2026-09-24',
+    qualificado: false,
+  },
 ]
 
 /**

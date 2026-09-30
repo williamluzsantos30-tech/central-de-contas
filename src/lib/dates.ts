@@ -69,6 +69,18 @@ export function calculateSLADeadline(aprovadoEm: Date | string, slaDiasUteis: nu
   return d
 }
 
+/** Dias úteis (seg–sex) decorridos de `inicio` até `fim` (o dia de início não conta). */
+export function diasUteisEntre(inicio: Date | string, fim: Date | string = new Date()): number {
+  const d = diaLocal(inicio)
+  const alvo = diaLocal(fim)
+  let n = 0
+  while (d < alvo) {
+    d.setDate(d.getDate() + 1)
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++
+  }
+  return n
+}
+
 /** Dias corridos de atraso de um prazo (0 se ainda não venceu). */
 export function diasDeAtraso(prazo: Date | string, hoje: Date = new Date()): number {
   const diff = Math.round((diaLocal(hoje).getTime() - diaLocal(prazo).getTime()) / 86_400_000)

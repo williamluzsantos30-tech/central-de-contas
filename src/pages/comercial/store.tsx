@@ -54,6 +54,8 @@ import {
   type TipoSync,
 } from './crmSync'
 import { MOCK_SYNC_LOGS } from './mockSyncLogs'
+import { registrarCanaisLP } from './marketingCalculator'
+import { carregarCanaisLP } from '@/pages/webdesign/landingPage/fluxoLP'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -301,6 +303,15 @@ export function ComercialProvider({ children }: { children: ReactNode }) {
       }
     }
     load()
+    // LPs vinculadas ao Marketing viram canal próprio; recria a lista de leads
+    // pra quem memoriza por `leads` recalcular os canais.
+    carregarCanaisLP()
+      .then((canais) => {
+        if (cancel || canais.length === 0) return
+        registrarCanaisLP(canais)
+        setLeads((l) => [...l])
+      })
+      .catch(() => {})
     return () => {
       cancel = true
     }

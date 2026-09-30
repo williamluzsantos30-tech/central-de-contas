@@ -25,6 +25,7 @@ type Tables =
   | 'cliente_metricas_social'
   | 'cliente_ideias_social'
   | 'edicoes_video'
+  | 'projetos_webdesign_fluxo'
 
 let counter = 0
 const uid = () => `m-${(++counter).toString().padStart(5, '0')}`
@@ -393,7 +394,7 @@ const criacoes: Row[] = [
 
 const projetos_webdesign: Row[] = [
   {
-    id: uid(),
+    id: 'lp-1',
     cliente_id: c1,
     titulo: 'Site institucional Dra. Fernanda Reis',
     tipo: 'site_institucional',
@@ -420,7 +421,7 @@ const projetos_webdesign: Row[] = [
     updated_at: daysISO(-2) + 'T14:00:00Z',
   },
   {
-    id: uid(),
+    id: 'lp-2',
     cliente_id: c2,
     titulo: 'LP — Catarata Premium',
     tipo: 'landing_page',
@@ -439,7 +440,7 @@ const projetos_webdesign: Row[] = [
     updated_at: daysISO(-1) + 'T10:30:00Z',
   },
   {
-    id: uid(),
+    id: 'lp-3',
     cliente_id: c4,
     titulo: 'Site completo Instituto Neuro+ com blog',
     tipo: 'site_institucional',
@@ -457,7 +458,7 @@ const projetos_webdesign: Row[] = [
     updated_at: daysISO(-3) + 'T16:00:00Z',
   },
   {
-    id: uid(),
+    id: 'lp-4',
     cliente_id: c3,
     titulo: 'LP — Ortopedia Esportiva',
     tipo: 'landing_page',
@@ -480,11 +481,11 @@ const projetos_webdesign: Row[] = [
     updated_at: daysISO(-10) + 'T18:00:00Z',
   },
   {
-    id: uid(),
+    id: 'lp-5',
     cliente_id: c5,
     titulo: 'Site + LP Estética Renascer',
     tipo: 'site_institucional',
-    status: 'aprovacao_copy',
+    status: 'pausado',
     responsavel_id: pAmanda,
     prazo: daysISO(45),
     url_producao: null,
@@ -499,11 +500,11 @@ const projetos_webdesign: Row[] = [
     updated_at: daysISO(-4) + 'T09:00:00Z',
   },
   {
-    id: uid(),
+    id: 'lp-6',
     cliente_id: c1,
     titulo: 'LP Black Friday — pacotes estéticos',
     tipo: 'landing_page',
-    status: 'aprovacao_design',
+    status: 'design',
     responsavel_id: pAmanda,
     prazo: daysISO(5),
     url_producao: null,
@@ -516,6 +517,28 @@ const projetos_webdesign: Row[] = [
     observacoes: 'Cliente pediu ajuste no hero. Segunda rodada de revisão de design.',
     created_at: daysISO(-7) + 'T11:00:00Z',
     updated_at: daysISO(-1) + 'T17:00:00Z',
+  },
+  {
+    id: 'lp-7',
+    cliente_id: null,
+    titulo: 'lp - www',
+    tipo: 'landing_page',
+    status: 'conclusao',
+    responsavel_id: pAmanda,
+    prazo: null,
+    url_producao: 'https://www.agencia-demo.com.br/lp-medicos',
+    briefing: 'LP da própria agência pra captar médicos (mentoria de marketing). Formulário integrado ao CRM.',
+    briefing_pdf_url: null,
+    identidade_visual_url: null,
+    identidade_visual_urls: [],
+    fotos: [],
+    copy_arquivo_url: null,
+    copy_arquivos: [],
+    copy_texto: 'HEADLINE:\nSua agenda cheia com marketing médico que respeita o CFM.\n\nCTA: Quero uma análise gratuita',
+    criacao_origem_id: null,
+    observacoes: null,
+    created_at: daysISO(-40) + 'T10:00:00Z',
+    updated_at: daysISO(-12) + 'T10:00:00Z',
   },
 ]
 
@@ -936,6 +959,56 @@ const edicoes_video: Row[] = [
   edicaoVideo('ev-8', c3, 2, 'Joelho: volte a correr sem dor', 'pendente', null, null),
 ]
 
+// Fluxo da esteira de LP (migration 096): responsável/datas por etapa,
+// aprovações, pausas, escalação, status da URL e vínculo com o Marketing.
+const ts = (dias: number) => daysISO(-dias) + 'T12:00:00Z'
+const etapasFeitas = (lista: [string, number, number, string | null][]) =>
+  Object.fromEntries(lista.map(([e, ini, fim, resp]) => [e, { iniciadaEm: ts(ini), concluidaEm: fim >= 0 ? ts(fim) : null, responsavelId: resp }]))
+const fluxoLP = (dados: Row): Row => ({
+  aprovacoes: [], emRevisao: null, pausa: null, pausas: [], escalado: null, eventos: [],
+  statusUrl: null, urlVerificadaEm: null, designUrl: null, marketing: null, iniciadoEm: null, etapas: {}, ...dados,
+})
+const projetos_webdesign_fluxo: Row[] = [
+  // SLA estourado e já escalado pro Head
+  { projeto_id: 'lp-1', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 15, 12, pAmanda], ['aprovacao_copy', 12, 9, pCarla], ['design', 9, -1, pAmanda]]),
+    aprovacoes: [{ id: 'a1', etapa: 'copy', status: 'aprovado', por: 'Cliente', data: ts(9) }],
+    escalado: { em: ts(1), por: 'Willian Gomes' },
+    eventos: [{ tipo: 'notificacao', em: ts(2), texto: 'Notificação enviada pra Amanda Costa (SLA estourado · Design)' }, { tipo: 'escalado', em: ts(1), texto: 'Escalado pro Head por Willian Gomes' }],
+  }) },
+  // SLA estourado, ainda sem ação
+  { projeto_id: 'lp-2', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 20, 17, pBruno], ['aprovacao_copy', 17, 15, pCarla], ['design', 15, 8, pBruno], ['aprovacao_design', 8, 6, pCarla], ['implementacao', 6, -1, pBruno]]),
+    aprovacoes: [{ id: 'a2', etapa: 'copy', status: 'aprovado', por: 'Cliente', data: ts(15) }, { id: 'a3', etapa: 'design', status: 'aprovado', por: 'Cliente', data: ts(6) }],
+  }) },
+  // No prazo
+  { projeto_id: 'lp-3', updated_at: nowISO(), dados: fluxoLP({ etapas: etapasFeitas([['copy', 3, -1, pBruno]]) }) },
+  // Concluído com URL no ar, ainda não vinculado ao Marketing
+  { projeto_id: 'lp-4', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 50, 46, pAmanda], ['aprovacao_copy', 46, 44, pCarla], ['design', 44, 38, pAmanda], ['aprovacao_design', 38, 36, pCarla], ['implementacao', 36, 30, pAmanda], ['conclusao', 30, 30, null]]),
+    aprovacoes: [{ id: 'a4', etapa: 'copy', status: 'aprovado', por: 'Cliente', data: ts(44) }, { id: 'a5', etapa: 'design', status: 'aprovado', por: 'Cliente', data: ts(36) }],
+    statusUrl: 'online', urlVerificadaEm: ts(1),
+  }) },
+  // Pausado na aprovação de copy
+  { projeto_id: 'lp-5', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 8, 5, pAmanda], ['aprovacao_copy', 5, -1, pCarla]]),
+    pausa: { motivo: 'Cliente em viagem — retoma na próxima semana', em: ts(2), etapa: 'aprovacao_copy', por: 'Carla Lima' },
+  }) },
+  // Design reprovado pelo cliente → voltou pra Design (em revisão)
+  { projeto_id: 'lp-6', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 7, 5, pAmanda], ['aprovacao_copy', 5, 4, pCarla], ['design', 1, -1, pAmanda]]),
+    aprovacoes: [{ id: 'a6', etapa: 'copy', status: 'aprovado', por: 'Cliente', data: ts(4) }, { id: 'a7', etapa: 'design', status: 'reprovado', por: 'Cliente', data: ts(1), motivo: 'Cores fora da identidade e CTA pouco visível no mobile.' }],
+    emRevisao: 'design', designUrl: 'https://www.figma.com/file/demo-black-friday',
+  }) },
+  // LP da agência: concluída e vinculada ao Marketing (leads lead-lp-*)
+  { projeto_id: 'lp-7', updated_at: nowISO(), dados: fluxoLP({
+    etapas: etapasFeitas([['copy', 40, 37, pAmanda], ['aprovacao_copy', 37, 36, pAdmin], ['design', 36, 30, pAmanda], ['aprovacao_design', 30, 29, pAdmin], ['implementacao', 29, 25, pAmanda], ['conclusao', 25, 25, null]]),
+    statusUrl: 'online', urlVerificadaEm: ts(0),
+    marketing: { canal: 'LP · lp - www', url: 'https://www.agencia-demo.com.br/lp-medicos', vinculadoEm: ts(24) },
+    eventos: [{ tipo: 'marketing', em: ts(24), texto: 'Vinculada ao Marketing como «LP · lp - www»' }],
+  }) },
+]
+
 const db: Record<Tables, Row[]> = {
   profiles,
   squads,
@@ -957,6 +1030,7 @@ const db: Record<Tables, Row[]> = {
   cliente_metricas_social,
   cliente_ideias_social,
   edicoes_video,
+  projetos_webdesign_fluxo,
 }
 
 // ---------- Persistência em localStorage (demo) ----------
@@ -977,12 +1051,14 @@ const PERSISTED_TABLES: Tables[] = [
   'producoes_social_media',
   'producoes_social_media_items',
   'edicoes_video',
+  'projetos_webdesign_fluxo',
 ]
 // v3 — adicionou modulos, jornada_social, social_media_id em cliente,
 // cliente_perfil_setup, métricas social, ideias, items.publicado_*, etc.
 // Bump pra invalidar caches antigos sem esses campos.
 // v4 — contratos (contrato_tipo/inicio/fim/status) nos clientes da demo (Renovações).
-const STORAGE_KEY = 'movmed-mockdb-v4'
+// v5 — ids fixos nas LPs + projetos_webdesign_fluxo (esteira de Landing Page).
+const STORAGE_KEY = 'movmed-mockdb-v5'
 
 function hydrateFromStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
