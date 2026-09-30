@@ -102,6 +102,12 @@ export interface EdicaoVideo {
   observacoes: string | null
   /** O que o cliente pediu pra mudar quando o video vai pra status=em_alteracao (migration 060). */
   descricao_alteracao: string | null
+  /**
+   * Postagem do Calendário (producoes_social_media_items) que este vídeo
+   * alimenta (migration 073). Preenchido ao aprovar o planejamento (reels) ou
+   * ao vincular na Entrega do vídeo.
+   */
+  social_media_item_id?: string | null
   created_at: string
   updated_at: string
   cliente?: Cliente | null

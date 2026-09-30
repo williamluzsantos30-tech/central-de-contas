@@ -24,6 +24,7 @@ type Tables =
   | 'cliente_perfil_setup'
   | 'cliente_metricas_social'
   | 'cliente_ideias_social'
+  | 'edicoes_video'
 
 let counter = 0
 const uid = () => `m-${(++counter).toString().padStart(5, '0')}`
@@ -907,6 +908,34 @@ const cliente_perfil_setup: Row[] = clientes
     }
   })
 
+// Edição de Vídeo — lotes de 2 com os 3 estados de SLA (no prazo, atrasado,
+// aguardando aprovação) + um lote concluído. aprovado_em = início do SLA.
+const aprovadoHa = (dias: number) => daysISO(-dias) + 'T12:00:00Z'
+const edicaoVideo = (id: string, cliente_id: string, criadoHa: number, titulo: string, status: string, responsavel_id: string | null, aprovado_em: string | null, extra: Row = {}): Row => ({
+  id, cliente_id, titulo, status, responsavel_id, ordem: 0, prazo: null, aprovado_em,
+  briefing: null, referencias: [], arquivos: [], video_final_url: null, observacoes: null, descricao_alteracao: null,
+  social_media_item_id: null, created_at: daysISO(-criadoHa) + 'T09:00:00Z', updated_at: daysISO(-criadoHa) + 'T09:00:00Z', ...extra,
+})
+const edicoes_video: Row[] = [
+  edicaoVideo('ev-1', c6, 12, 'Cirurgia videolaparoscópica: como é feita?', 'em_edicao', pBruno, aprovadoHa(9), {
+    briefing: 'Reel curto e didático sobre o procedimento. 45–60s, legenda na tela.',
+    referencias: [{ tipo: 'youtube', url: 'https://youtube.com/watch?v=demo-ref', descricao: 'Referência de ritmo' }],
+  }),
+  edicaoVideo('ev-2', c6, 11, 'Bariátrica X Canetas emagrecedoras', 'em_edicao', pBruno, aprovadoHa(1)),
+  edicaoVideo('ev-3', c6, 3, '[CAIXINHA DE PERGUNTA] "Fui diagnosticado com hérnia..."', 'pendente', null, null, {
+    arquivos: [{ nome: 'Google Drive', tamanho: 0, tipo: 'drive', url: 'https://drive.google.com/drive/folders/demo-brutos' }],
+  }),
+  edicaoVideo('ev-4', c1, 15, 'Um dia na clínica com a Dra. Fernanda', 'conclusao', pAmanda, aprovadoHa(13), {
+    video_final_url: 'https://drive.google.com/file/d/demo-dia-na-clinica/view',
+  }),
+  edicaoVideo('ev-5', c1, 6, 'Depoimento paciente Patrícia — 3 meses', 'em_aprovacao', pAmanda, aprovadoHa(2), {
+    video_final_url: 'https://drive.google.com/file/d/demo-depoimento/view',
+  }),
+  edicaoVideo('ev-6', c4, 25, 'Quando ir ao neurologista? 4 sinais de alerta', 'conclusao', pBruno, aprovadoHa(22)),
+  edicaoVideo('ev-7', c4, 24, 'Enxaqueca: 3 mitos', 'conclusao', pBruno, aprovadoHa(22)),
+  edicaoVideo('ev-8', c3, 2, 'Joelho: volte a correr sem dor', 'pendente', null, null),
+]
+
 const db: Record<Tables, Row[]> = {
   profiles,
   squads,
@@ -927,6 +956,7 @@ const db: Record<Tables, Row[]> = {
   cliente_perfil_setup,
   cliente_metricas_social,
   cliente_ideias_social,
+  edicoes_video,
 }
 
 // ---------- Persistência em localStorage (demo) ----------
@@ -946,6 +976,7 @@ const PERSISTED_TABLES: Tables[] = [
   'criativos_webdesign',
   'producoes_social_media',
   'producoes_social_media_items',
+  'edicoes_video',
 ]
 // v3 — adicionou modulos, jornada_social, social_media_id em cliente,
 // cliente_perfil_setup, métricas social, ideias, items.publicado_*, etc.

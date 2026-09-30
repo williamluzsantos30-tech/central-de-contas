@@ -45,3 +45,32 @@ export function isDateOverdue(iso: string | null | undefined): boolean {
   d.setHours(0, 0, 0, 0)
   return d.getTime() < hoje.getTime()
 }
+
+/** Data (YYYY-MM-DD ou ISO com hora) → dia local à meia-noite. */
+function diaLocal(v: Date | string): Date {
+  const d = typeof v === 'string' ? (v.length <= 10 ? parseLocalDate(v)! : new Date(v)) : new Date(v)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/**
+ * Prazo de SLA em dias úteis: soma `slaDiasUteis` dias de seg–sex a partir
+ * do dia de início (o próprio dia não conta; sábado/domingo são pulados).
+ * Ex.: aprovado na segunda + 3 dias úteis → quinta; na sexta + 3 → quarta.
+ * Mesma regra do add_business_days do banco. Feriados não são considerados.
+ */
+export function calculateSLADeadline(aprovadoEm: Date | string, slaDiasUteis: number): Date {
+  const d = diaLocal(aprovadoEm)
+  let faltam = Math.max(0, Math.round(slaDiasUteis))
+  while (faltam > 0) {
+    d.setDate(d.getDate() + 1)
+    if (d.getDay() !== 0 && d.getDay() !== 6) faltam--
+  }
+  return d
+}
+
+/** Dias corridos de atraso de um prazo (0 se ainda não venceu). */
+export function diasDeAtraso(prazo: Date | string, hoje: Date = new Date()): number {
+  const diff = Math.round((diaLocal(hoje).getTime() - diaLocal(prazo).getTime()) / 86_400_000)
+  return Math.max(0, diff)
+}

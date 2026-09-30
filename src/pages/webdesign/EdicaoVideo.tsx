@@ -1,151 +1,57 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Plus,
-  Search,
-  Film,
-  ExternalLink,
-  Trash2,
-  Calendar,
-  Upload,
-  X,
-  Link as LinkIcon,
-  ChevronRight,
-  ChevronDown,
-  FileText,
-  Paperclip,
-  Video,
-  Pencil,
-  User,
-  FolderOpen,
-} from 'lucide-react'
-import { PageHeader } from '@/components/layout/PageHeader'
+/**
+ * Execução › Edição de Vídeo.
+ *
+ * Um card por LOTE (até 2 vídeos de um cliente, SLA de 3 dias úteis); dentro,
+ * uma linha por VÍDEO com status, responsável e SLA próprios. O SLA de cada
+ * vídeo só começa quando o cliente aprova. Regras em ./edicaoVideo/lotes.ts.
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, ChevronDown, Clapperboard, Film, Hourglass, Plus, Search, X } from 'lucide-react'
+import { FilterBar, FilterPill, KPICard, PageHeader } from '@/components/ds'
 import { Button } from '@/components/ui/Button'
-import { Card, CardBody } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
-import { Badge } from '@/components/ui/Badge'
-import { Textarea } from '@/components/ui/Textarea'
-import { Avatar } from '@/components/ui/Avatar'
-import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
-import { uploadToStorageSafe } from '@/lib/storage'
-import { formatDateBR, isDateOverdue } from '@/lib/dates'
-import {
-  cn,
-  statusEdicaoVideoLabel,
-  ESTEIRA_EDICAO_VIDEO,
-  tipoReferenciaVideoLabel,
-} from '@/lib/utils'
-import type {
-  Cliente,
-  EdicaoVideo,
-  EdicaoReferencia,
-  EdicaoArquivo,
-  Profile,
-  StatusEdicaoVideo,
-  TipoReferenciaVideo,
-} from '@/types/database'
+import { cn, statusEdicaoVideoLabel, ESTEIRA_EDICAO_VIDEO } from '@/lib/utils'
+import type { Cliente, EdicaoVideo, StatusEdicaoVideo } from '@/types/database'
+import { LOTE_EDICAO_PADRAO, montarLotes, type EstadoSLA, type LoteEdicao, type VideoEdicao } from './edicaoVideo/lotes'
+import { carregarEditores, EDITORES_VAZIO, type ListaEditores } from './edicaoVideo/editores'
+import { VideoLoteCard } from './edicaoVideo/VideoLoteCard'
+import { VideoEditModal } from './edicaoVideo/VideoEditModal'
+import { statusDot } from './edicaoVideo/estilos'
 
-// Cor do dot da seção
-const statusDot: Record<StatusEdicaoVideo, string> = {
-  pendente: 'text-zinc-400',
-  em_edicao: 'text-violet-400',
-  em_aprovacao: 'text-amber-400',
-  em_alteracao: 'text-red-400',
-  conclusao: 'text-emerald-400',
-}
+// Usados pela página de preview (/preview/edicao-video).
+export { VideoEditModal as EdicaoVideoModal } from './edicaoVideo/VideoEditModal'
+export { EdicaoAccordion } from './edicaoVideo/EdicaoAccordion'
 
-// Barra colorida lateral do card (esquerda)
-const statusBar: Record<StatusEdicaoVideo, string> = {
-  pendente: 'bg-zinc-500/70',
-  em_edicao: 'bg-violet-500',
-  em_aprovacao: 'bg-amber-500',
-  em_alteracao: 'bg-red-500',
-  conclusao: 'bg-emerald-500',
-}
-
-// Cor forte pro pill de status (dropdown estilizado por status)
-const statusPill: Record<StatusEdicaoVideo, string> = {
-  pendente:
-    'border-zinc-500/50 bg-zinc-500/15 text-zinc-200',
-  em_edicao:
-    'border-violet-500/50 bg-violet-500/20 text-violet-100',
-  em_aprovacao:
-    'border-amber-500/60 bg-amber-500/25 text-amber-100',
-  em_alteracao:
-    'border-red-500/70 bg-red-500/30 text-red-100 font-semibold shadow-[0_0_10px_rgba(239,68,68,0.35)]',
-  conclusao:
-    'border-emerald-500/60 bg-emerald-500/20 text-emerald-100',
-}
-
-/** Conta dias úteis (seg-sex) entre `start` e hoje. */
-function diasUteisDesde(start: Date): number {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const cur = new Date(start)
-  cur.setHours(0, 0, 0, 0)
-  let days = 0
-  while (cur < today) {
-    cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) days++
-  }
-  return days
-}
-
-/** Conta dias úteis entre 2 datas. */
-function diasUteisEntre(start: Date, end: Date): number {
-  const cur = new Date(start)
-  cur.setHours(0, 0, 0, 0)
-  const target = new Date(end)
-  target.setHours(0, 0, 0, 0)
-  let days = 0
-  while (cur < target) {
-    cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) days++
-  }
-  return days
-}
-
-// =========================================================
-// Página principal
-// =========================================================
+const FILTRO_SLA: { value: Exclude<EstadoSLA, 'concluido'>; label: string }[] = [
+  { value: 'no_prazo', label: 'No prazo' },
+  { value: 'atrasado', label: 'Atrasado' },
+  { value: 'aguardando', label: 'Aguardando aprovação' },
+]
 
 export default function EdicaoVideo() {
   const [edicoes, setEdicoes] = useState<EdicaoVideo[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
+  const [editores, setEditores] = useState<ListaEditores>(EDITORES_VAZIO)
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [filtroCliente, setFiltroCliente] = useState<string>('')
-  const [filtroResponsavel, setFiltroResponsavel] = useState<string>('')
+  const [filtroCliente, setFiltroCliente] = useState('')
+  const [filtroResponsavel, setFiltroResponsavel] = useState('')
+  const [filtroSla, setFiltroSla] = useState<EstadoSLA | ''>('')
   const [filtroStatus, setFiltroStatus] = useState<StatusEdicaoVideo | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<EdicaoVideo | null>(null)
-  const [expandedGrupo, setExpandedGrupo] = useState<string | null>(null)
   const [showConcluidos, setShowConcluidos] = useState(false)
 
   async function load() {
-    setLoading(true)
-    const [eRes, cRes, rRes] = await Promise.all([
-      supabase
-        .from('edicoes_video')
-        .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
-        .order('ordem', { ascending: true })
-        .order('created_at', { ascending: false }),
+    const [eRes, cRes, eds] = await Promise.all([
+      supabase.from('edicoes_video').select('*, cliente:clientes(*)').order('created_at', { ascending: true }),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
-      supabase
-        .from('profiles')
-        .select('id, nome, avatar_url')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-        .order('nome'),
+      carregarEditores(),
     ])
     setEdicoes((eRes.data as EdicaoVideo[]) ?? [])
     setClientes((cRes.data as Cliente[]) ?? [])
-    setResponsaveisLista((rRes.data as Profile[]) ?? [])
+    setEditores(eds)
     setLoading(false)
   }
 
@@ -153,239 +59,193 @@ export default function EdicaoVideo() {
     load()
   }, [])
 
-  // Filtro base — cliente + responsavel + busca. Status fica SEPARADO
-  // pra regua de contadores mostrar a contagem "total" independente
-  // do filtro de status ativo.
-  const filteredBase = useMemo(() => {
-    let arr = edicoes
-    if (filtroCliente) arr = arr.filter((e) => e.cliente_id === filtroCliente)
-    if (filtroResponsavel) {
-      arr = arr.filter((e) => {
-        if (filtroResponsavel === '__sem__') return !e.responsavel_id
-        return e.responsavel_id === filtroResponsavel
-      })
-    }
-    if (q.trim()) {
-      const term = q.toLowerCase()
-      arr = arr.filter(
-        (e) =>
-          (e.titulo ?? '').toLowerCase().includes(term) ||
-          (e.cliente?.nome ?? '').toLowerCase().includes(term),
-      )
-    }
-    return arr
-  }, [edicoes, filtroCliente, filtroResponsavel, q])
+  const lotes = useMemo(
+    () => montarLotes(edicoes, new Map(clientes.map((c) => [c.id, c])), LOTE_EDICAO_PADRAO),
+    [edicoes, clientes],
+  )
 
-  // Contadores por status (com base no filteredBase — sem filtro de status)
-  const contadores = useMemo(() => {
-    const m = new Map<StatusEdicaoVideo, number>()
-    for (const s of ESTEIRA_EDICAO_VIDEO) m.set(s, 0)
-    for (const e of filteredBase) m.set(e.status, (m.get(e.status) ?? 0) + 1)
-    return m
-  }, [filteredBase])
+  // Filtros de base (cliente, responsável, busca) valem pra tudo; status e SLA
+  // ficam de fora das contagens pra régua/KPIs mostrarem o total real.
+  const passaBase = (l: LoteEdicao, v: VideoEdicao) => {
+    if (filtroCliente && l.clienteId !== filtroCliente) return false
+    if (filtroResponsavel === '__sem__' ? !!v.edicao.responsavel_id : filtroResponsavel && v.edicao.responsavel_id !== filtroResponsavel) return false
+    const t = q.trim().toLowerCase()
+    return !t || (v.edicao.titulo ?? '').toLowerCase().includes(t) || (l.cliente?.nome ?? '').toLowerCase().includes(t)
+  }
+  const base = lotes.flatMap((l) => l.videos.filter((v) => passaBase(l, v)))
 
-  // Aplica o filtro de status (se ativo) por cima do filteredBase
-  const filtered = useMemo(() => {
-    if (!filtroStatus) return filteredBase
-    return filteredBase.filter((e) => e.status === filtroStatus)
-  }, [filteredBase, filtroStatus])
+  const contadores = new Map<StatusEdicaoVideo, number>(ESTEIRA_EDICAO_VIDEO.map((s) => [s, 0]))
+  for (const v of base) if (!filtroSla || v.sla.estado === filtroSla) contadores.set(v.edicao.status, (contadores.get(v.edicao.status) ?? 0) + 1)
+  const atrasados = base.filter((v) => v.sla.estado === 'atrasado').length
+  const aguardando = base.filter((v) => v.sla.estado === 'aguardando').length
+  const emAberto = base.filter((v) => v.sla.estado !== 'concluido').length
 
-  // Agrupa por cliente_id. Ordem dos grupos: cliente com mais itens
-  // estourados primeiro (mais urgente); dentro do grupo por ordem asc.
-  const { porClienteAtivos, porClienteConcluidos } = useMemo(() => {
-    const m = new Map<string, EdicaoVideo[]>()
-    for (const e of filtered) {
-      const key = e.cliente_id ?? '__sem__'
-      const arr = m.get(key) ?? []
-      arr.push(e)
-      m.set(key, arr)
-    }
-    // Ordena items dentro do grupo por ordem asc
-    for (const arr of m.values()) {
-      arr.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-    }
-    // Separa: um grupo eh "concluido" quando TODOS os videos estao em conclusao
-    // (nenhum ainda em pendente/em_edicao/em_aprovacao/em_alteracao).
-    const ativos: Array<{ clienteId: string; items: EdicaoVideo[]; estourados: number }> = []
-    const concluidos: Array<{ clienteId: string; items: EdicaoVideo[]; estourados: number }> = []
-    for (const [clienteId, items] of m.entries()) {
-      const estourados = items.filter(
-        (i) => i.status !== 'conclusao' && i.prazo && isDateOverdue(i.prazo),
-      ).length
-      const todosConcluidos = items.length > 0 && items.every((i) => i.status === 'conclusao')
-      const grupo = { clienteId, items, estourados }
-      if (todosConcluidos) concluidos.push(grupo)
-      else ativos.push(grupo)
-    }
-    // Ativos: mais estourados primeiro, depois mais items totais
-    ativos.sort((a, b) => b.estourados - a.estourados || b.items.length - a.items.length)
-    // Concluidos: mais recentes primeiro (por updated_at do ultimo video)
-    concluidos.sort((a, b) => {
-      const ua = Math.max(...a.items.map((i) => new Date(i.updated_at).getTime()))
-      const ub = Math.max(...b.items.map((i) => new Date(i.updated_at).getTime()))
-      return ub - ua
-    })
-    return { porClienteAtivos: ativos, porClienteConcluidos: concluidos }
-  }, [filtered])
-  // Alias mantido pra retrocompat interno (empty check)
-  const porCliente = porClienteAtivos
+  const visiveis = lotes
+    .map((lote) => ({
+      lote,
+      videos: lote.videos.filter(
+        (v) => passaBase(lote, v) && (!filtroStatus || v.edicao.status === filtroStatus) && (!filtroSla || v.sla.estado === filtroSla),
+      ),
+    }))
+    .filter((x) => x.videos.length > 0)
+
+  // Ativos: cliente com mais atrasos primeiro; lotes do mesmo cliente juntos, em ordem.
+  const atrasosDoCliente = new Map<string, number>()
+  for (const { lote } of visiveis) atrasosDoCliente.set(lote.clienteId, (atrasosDoCliente.get(lote.clienteId) ?? 0) + lote.atrasados)
+  const ativos = visiveis
+    .filter((x) => !x.lote.concluido)
+    .sort(
+      (a, b) =>
+        (atrasosDoCliente.get(b.lote.clienteId) ?? 0) - (atrasosDoCliente.get(a.lote.clienteId) ?? 0) ||
+        (a.lote.cliente?.nome ?? '').localeCompare(b.lote.cliente?.nome ?? '') ||
+        a.lote.numero - b.lote.numero,
+    )
+  const ultimaAtualizacao = (l: LoteEdicao) => Math.max(...l.videos.map((v) => new Date(v.edicao.updated_at).getTime()))
+  const concluidos = visiveis.filter((x) => x.lote.concluido).sort((a, b) => ultimaAtualizacao(b.lote) - ultimaAtualizacao(a.lote))
+
+  // Postagens já vinculadas a algum vídeo (o modal não deixa repetir).
+  const vinculadosEmOutros = useMemo(
+    () => new Set(edicoes.filter((e) => e.social_media_item_id && e.id !== editing?.id).map((e) => e.social_media_item_id!)),
+    [edicoes, editing],
+  )
+
+  const abrir = (e: EdicaoVideo | null) => {
+    setEditing(e)
+    setModalOpen(true)
+  }
+  const temFiltro = !!(q || filtroCliente || filtroResponsavel || filtroSla || filtroStatus)
 
   return (
     <div>
       <PageHeader
         title="Edição de Vídeo"
-        description={`${edicoes.length} item(ns) · SLA: 2 vídeos a cada 3 dias úteis`}
+        description={`SLA: lote de ${LOTE_EDICAO_PADRAO.tamanhoLote} vídeos a cada ${LOTE_EDICAO_PADRAO.slaDiasUteis} dias úteis, contados da aprovação do cliente`}
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setModalOpen(true)
-            }}
-          >
-            <Plus size={14} /> Nova edição
+          <Button onClick={() => abrir(null)}>
+            <Plus size={14} /> Novo vídeo
           </Button>
         }
       />
 
-      <Card className="mb-4">
-        <CardBody className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-48">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-            />
-            <Input
-              className="pl-8"
-              placeholder="Buscar por título ou cliente..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <Select
-            value={filtroCliente}
-            onChange={(e) => setFiltroCliente(e.target.value)}
-            className="w-56"
-          >
-            <option value="">Todos clientes</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filtroResponsavel}
-            onChange={(e) => setFiltroResponsavel(e.target.value)}
-            className="w-56"
-          >
-            <option value="">Todos responsáveis</option>
-            <option value="__sem__">Sem responsável</option>
-            {responsaveisLista.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nome}
-              </option>
-            ))}
-          </Select>
-        </CardBody>
-      </Card>
-
-      {/* Regua de contadores por status — click filtra a lista abaixo */}
-      {!loading && edicoes.length > 0 && (
-        <ContadorRegua
-          contadores={contadores}
-          ativo={filtroStatus}
-          onClick={(s) => setFiltroStatus(filtroStatus === s ? '' : s)}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KPICard icon={<Clapperboard size={13} />} label="Vídeos em aberto" value={String(emAberto)} sub="em todos os lotes" />
+        <KPICard
+          icon={<Hourglass size={13} />}
+          label="Aguardando aprovação"
+          value={String(aguardando)}
+          sub="SLA ainda não iniciado"
         />
+        <KPICard
+          icon={<AlertTriangle size={13} />}
+          label="Vídeos atrasados"
+          value={String(atrasados)}
+          tone={atrasados > 0 ? 'danger' : 'neutral'}
+          sub={atrasados > 0 ? 'prazo vencido e não concluído' : 'nenhum vídeo fora do prazo'}
+        />
+      </div>
+
+      <FilterBar className="mb-3">
+        <div className="relative min-w-48 flex-1">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Input className="h-8 pl-8 text-xs" placeholder="Buscar por título ou cliente..." value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <FilterPill
+          value={filtroCliente}
+          onChange={setFiltroCliente}
+          placeholder="Todos clientes"
+          options={clientes.map((c) => ({ value: c.id, label: c.nome }))}
+        />
+        <FilterPill
+          value={filtroResponsavel}
+          onChange={setFiltroResponsavel}
+          placeholder="Todos responsáveis"
+          options={[{ value: '__sem__', label: 'Sem responsável' }, ...editores.pessoas.map((p) => ({ value: p.id, label: p.nome }))]}
+        />
+        <FilterPill value={filtroSla} onChange={(v) => setFiltroSla(v as EstadoSLA | '')} placeholder="Todos os status de SLA" options={FILTRO_SLA} />
+        {temFiltro && (
+          <button
+            onClick={() => {
+              setQ('')
+              setFiltroCliente('')
+              setFiltroResponsavel('')
+              setFiltroSla('')
+              setFiltroStatus('')
+            }}
+            className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-zinc-200"
+          >
+            <X size={11} /> limpar
+          </button>
+        )}
+      </FilterBar>
+
+      {/* Régua: contagem por VÍDEO (todos os lotes) — clique filtra */}
+      {!loading && edicoes.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-bg-card px-3 py-2">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted" title="Cada vídeo conta 1, somando todos os lotes — diferente do 'X de Y vídeos no lote' de cada card">
+            Vídeos por etapa
+          </span>
+          {ESTEIRA_EDICAO_VIDEO.map((s) => {
+            const n = contadores.get(s) ?? 0
+            const ativo = filtroStatus === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setFiltroStatus(ativo ? '' : s)}
+                disabled={n === 0 && !ativo}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  ativo
+                    ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
+                    : n === 0
+                      ? 'cursor-default border-border bg-bg-soft text-muted opacity-50'
+                      : 'border-border bg-bg-soft text-zinc-300 hover:border-brand-500/40',
+                )}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full bg-current', statusDot[s])} />
+                {statusEdicaoVideoLabel[s]}
+                <span className="tabular-nums opacity-80">{n}</span>
+              </button>
+            )
+          })}
+          <span className="ml-auto text-[10px] text-muted">contagem por vídeo, somando todos os lotes</span>
+        </div>
       )}
 
       {loading ? (
-        <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">
-          Carregando...
-        </div>
-      ) : porClienteAtivos.length === 0 && porClienteConcluidos.length === 0 ? (
+        <div className="rounded-xl border border-border bg-bg-card p-12 text-center text-sm text-muted">Carregando...</div>
+      ) : visiveis.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-bg-soft/40 p-12 text-center">
           <Film size={28} className="mx-auto mb-2 text-muted" />
-          <p className="text-sm text-zinc-200">
-            {edicoes.length === 0
-              ? 'Nenhuma edição na esteira'
-              : 'Nenhuma edição pros filtros ativos'}
-          </p>
+          <p className="text-sm text-zinc-200">{edicoes.length === 0 ? 'Nenhum vídeo na esteira' : 'Nenhum vídeo pros filtros ativos'}</p>
           <p className="mt-1 text-xs text-muted">
-            {edicoes.length === 0 ? (
-              <>Clique em <span className="text-brand-300">Nova edição</span> para começar.</>
-            ) : (
-              'Ajuste os filtros pra ver mais itens.'
-            )}
+            {edicoes.length === 0 ? 'Clique em "Novo vídeo" para começar.' : 'Ajuste os filtros pra ver mais vídeos.'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {porClienteAtivos.map(({ clienteId, items, estourados }) => (
-            <ClienteGrupoCard
-              key={clienteId}
-              cliente={items[0]?.cliente ?? null}
-              items={items}
-              estourados={estourados}
-              expanded={expandedGrupo === clienteId}
-              onToggle={() =>
-                setExpandedGrupo((cur) => (cur === clienteId ? null : clienteId))
-              }
-              onEdit={(e) => {
-                setEditing(e)
-                setModalOpen(true)
-              }}
-              onChanged={load}
-            />
+          {ativos.map(({ lote, videos }) => (
+            <VideoLoteCard key={lote.id} lote={lote} videos={videos} editores={editores} onEdit={abrir} onChanged={load} />
           ))}
 
-          {/* Grupos com 100% dos videos concluidos — recolhidos por padrao
-              pra desafogar a tela. Mesmo padrao da Producao Social Media. */}
-          {porClienteConcluidos.length > 0 && (
-            <div className="mt-4">
+          {concluidos.length > 0 && (
+            <div className="pt-2">
               <button
                 onClick={() => setShowConcluidos((v) => !v)}
-                className="group flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-bg-soft/40 px-4 py-2.5 transition-colors hover:bg-bg-soft/70"
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-bg-soft/40 px-4 py-2.5 transition-colors hover:bg-bg-soft/70"
               >
                 <span className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-300">
-                    Concluídos
-                  </span>
-                  <Badge tone="success" className="text-[10px]">
-                    {porClienteConcluidos.length}
-                  </Badge>
-                  <span className="text-[11px] text-muted">
-                    Clientes com 100% dos vídeos finalizados
-                  </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-200">Lotes concluídos</span>
+                  <span className="text-[11px] tabular-nums text-muted">{concluidos.length}</span>
+                  <span className="text-[11px] text-muted">· todos os vídeos do lote finalizados</span>
                 </span>
-                <ChevronDown
-                  size={14}
-                  className={cn(
-                    'text-muted transition-transform duration-200',
-                    showConcluidos && 'rotate-180',
-                  )}
-                />
+                <ChevronDown size={14} className={cn('text-muted transition-transform', showConcluidos && 'rotate-180')} />
               </button>
               {showConcluidos && (
-                <div className="mt-3 flex flex-col gap-3">
-                  {porClienteConcluidos.map(({ clienteId, items, estourados }) => (
-                    <ClienteGrupoCard
-                      key={clienteId}
-                      cliente={items[0]?.cliente ?? null}
-                      items={items}
-                      estourados={estourados}
-                      expanded={expandedGrupo === clienteId}
-                      onToggle={() =>
-                        setExpandedGrupo((cur) =>
-                          cur === clienteId ? null : clienteId,
-                        )
-                      }
-                      onEdit={(e) => {
-                        setEditing(e)
-                        setModalOpen(true)
-                      }}
-                      onChanged={load}
-                    />
+                <div className="mt-3 space-y-3">
+                  {concluidos.map(({ lote, videos }) => (
+                    <VideoLoteCard key={lote.id} lote={lote} videos={videos} editores={editores} onEdit={abrir} onChanged={load} />
                   ))}
                 </div>
               )}
@@ -394,1690 +254,15 @@ export default function EdicaoVideo() {
         </div>
       )}
 
-      <EdicaoVideoModal
+      <VideoEditModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         edicao={editing}
         clientes={clientes}
         onSaved={load}
+        editores={editores}
+        vinculadosEmOutros={vinculadosEmOutros}
       />
     </div>
   )
-}
-
-/* =========================================================
-   Accordion / linha horizontal larga (padrão Projetos)
-========================================================= */
-
-/* =========================================================
-   Regua de contadores por status (clicavel = filtro)
-   ========================================================= */
-
-function ContadorRegua({
-  contadores,
-  ativo,
-  onClick,
-}: {
-  contadores: Map<StatusEdicaoVideo, number>
-  ativo: StatusEdicaoVideo | ''
-  onClick: (s: StatusEdicaoVideo) => void
-}) {
-  return (
-    <Card className="mb-3">
-      <CardBody className="flex flex-wrap items-center gap-1.5 py-2">
-        {ESTEIRA_EDICAO_VIDEO.map((s) => {
-          const n = contadores.get(s) ?? 0
-          const isAtivo = ativo === s
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onClick(s)}
-              disabled={n === 0}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
-                isAtivo
-                  ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
-                  : n === 0
-                    ? 'border-border bg-bg-soft text-muted opacity-50 cursor-default'
-                    : 'border-border bg-bg-soft text-zinc-300 hover:border-brand-500/40 hover:text-brand-300',
-              )}
-            >
-              <span className={cn('h-1.5 w-1.5 rounded-full bg-current', statusDot[s])} />
-              <span>{statusEdicaoVideoLabel[s]}</span>
-              <span className="tabular-nums opacity-80">{n}</span>
-            </button>
-          )
-        })}
-        {ativo && (
-          <button
-            onClick={() => onClick(ativo)}
-            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted hover:text-zinc-200"
-          >
-            <X size={10} /> limpar filtro
-          </button>
-        )}
-      </CardBody>
-    </Card>
-  )
-}
-
-/* =========================================================
-   Card de cliente com N videos agrupados
-   ========================================================= */
-
-function ClienteGrupoCard({
-  cliente,
-  items,
-  estourados,
-  expanded,
-  onToggle,
-  onEdit,
-  onChanged,
-}: {
-  cliente: Cliente | null
-  items: EdicaoVideo[]
-  estourados: number
-  expanded: boolean
-  onToggle: () => void
-  onEdit: (e: EdicaoVideo) => void
-  onChanged: () => void
-}) {
-  // Contagem por status pros dots coloridos no header
-  const counts = useMemo(() => {
-    const c: Record<StatusEdicaoVideo, number> = {
-      pendente: 0,
-      em_edicao: 0,
-      em_aprovacao: 0,
-      em_alteracao: 0,
-      conclusao: 0,
-    }
-    for (const it of items) c[it.status]++
-    return c
-  }, [items])
-
-  const totalVideos = items.length
-  const concluidos = counts.conclusao
-  const progressPct = totalVideos === 0 ? 0 : Math.round((concluidos / totalVideos) * 100)
-
-  // Editor do grupo. Cliente decide UM editor pra tudo (mesmo padrao
-  // Producao Social Media). A gente identifica pela maioria: pega o
-  // editor com mais videos nao-concluidos atribuidos, com fallback pra
-  // qualquer editor do grupo (mesmo concluidos). Se ninguem foi
-  // atribuido, retorna null.
-  const responsavelPrincipal = useMemo(() => {
-    const contagem = new Map<string, { count: number; profile: EdicaoVideo['responsavel'] }>()
-    for (const it of items) {
-      if (!it.responsavel_id || !it.responsavel) continue
-      if (it.status === 'conclusao') continue
-      const cur = contagem.get(it.responsavel_id)
-      contagem.set(it.responsavel_id, {
-        count: (cur?.count ?? 0) + 1,
-        profile: it.responsavel,
-      })
-    }
-    if (contagem.size === 0) {
-      const primeiro = items.find((it) => it.responsavel)?.responsavel ?? null
-      return primeiro
-    }
-    let melhor: EdicaoVideo['responsavel'] = null
-    let maxCount = -1
-    for (const { count, profile } of contagem.values()) {
-      if (count > maxCount) {
-        maxCount = count
-        melhor = profile
-      }
-    }
-    return melhor
-  }, [items])
-
-  const responsavelIdDoGrupo = responsavelPrincipal?.id ?? null
-
-  // Edicao inline do editor do grupo (aplica em bulk pra todos os videos)
-  const [editingRespGrupo, setEditingRespGrupo] = useState(false)
-  const [responsaveisLista, setResponsaveisLista] = useState<Profile[]>([])
-  useEffect(() => {
-    if (!editingRespGrupo || responsaveisLista.length > 0) return
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('ativo', true)
-      .eq('aprovado', true)
-      .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-      .order('nome')
-      .then(({ data }) => setResponsaveisLista((data as Profile[]) ?? []))
-  }, [editingRespGrupo, responsaveisLista.length])
-
-  async function mudarResponsavelGrupo(novoId: string) {
-    // Atribui pra TODOS os videos do grupo em uma unica chamada.
-    // Even se o cliente tiver 50 videos, um in-list suporta.
-    const ids = items.map((it) => it.id)
-    if (ids.length === 0) return
-    await supabase
-      .from('edicoes_video')
-      .update({ responsavel_id: novoId || null })
-      .in('id', ids)
-    setEditingRespGrupo(false)
-    onChanged()
-  }
-
-  // Info do rodape — proxima entrega OU aviso de estourados
-  const proximoPrazo = useMemo(() => {
-    const abertos = items
-      .filter((it) => it.status !== 'conclusao' && it.prazo)
-      .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
-    return abertos[0]?.prazo ?? null
-  }, [items])
-
-  const barColor =
-    progressPct === 100
-      ? 'bg-emerald-500/70'
-      : estourados > 0
-        ? 'bg-red-500/70'
-        : progressPct >= 50
-          ? 'bg-amber-500/70'
-          : 'bg-sky-500/70'
-
-  return (
-    <div
-      className={cn(
-        'rounded-xl border bg-bg-card overflow-hidden transition-all',
-        expanded
-          ? 'border-brand-500/50 shadow-lg shadow-brand-500/5'
-          : 'border-border hover:border-brand-500/30',
-      )}
-    >
-      {/* Header clicavel — colapsa/expande */}
-      <div
-        onClick={onToggle}
-        className={cn(
-          'flex cursor-pointer items-center gap-3 px-4 py-3',
-          expanded ? 'bg-bg-soft/40' : 'hover:bg-bg-soft/40',
-        )}
-      >
-        <ChevronRight
-          size={14}
-          className={cn(
-            'shrink-0 text-muted transition-transform',
-            expanded && 'rotate-90',
-          )}
-        />
-        <FolderOpen size={16} className="shrink-0 text-brand-300" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-zinc-100">
-            [{(cliente?.nome ?? 'SEM CLIENTE').toUpperCase()}] EDIÇÃO DE VÍDEO
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-            <Badge tone="brand">
-              {totalVideos} {totalVideos === 1 ? 'vídeo' : 'vídeos'}
-            </Badge>
-            <Badge tone={progressPct === 100 ? 'success' : 'neutral'}>
-              {progressPct}% concluído
-            </Badge>
-            {cliente?.nome && <span>· {cliente.nome}</span>}
-            {cliente?.squad && <span>· Squad {cliente.squad}</span>}
-          </div>
-        </div>
-
-        {/* Dots coloridos por status (mesmo padrao do PlanejamentoCard) */}
-        <div className="hidden md:flex items-center gap-1">
-          {ESTEIRA_EDICAO_VIDEO.map((s) =>
-            counts[s] > 0 ? (
-              <span
-                key={s}
-                title={`${statusEdicaoVideoLabel[s]}: ${counts[s]}`}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-soft px-2 py-0.5 text-[10px] text-zinc-300"
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full bg-current', statusDot[s])} />
-                {counts[s]}
-              </span>
-            ) : null,
-          )}
-        </div>
-
-        {/* Aviso de estourados + avatar do responsavel principal */}
-        <div className="flex items-center gap-2">
-          {estourados > 0 && (
-            <span
-              className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300"
-              title="Vídeos com prazo estourado"
-            >
-              ⚠ {estourados} estourado{estourados > 1 ? 's' : ''}
-            </span>
-          )}
-          {/* Editor do grupo — click abre dropdown, aplica em TODOS os videos */}
-          <div onClick={(e) => e.stopPropagation()}>
-            {editingRespGrupo ? (
-              <select
-                autoFocus
-                value={responsavelIdDoGrupo ?? ''}
-                onChange={(e) => mudarResponsavelGrupo(e.target.value)}
-                onBlur={() => setEditingRespGrupo(false)}
-                className="h-7 rounded-md border border-brand-500 bg-bg-soft px-2 text-[11px] text-zinc-100 focus:outline-none"
-              >
-                <option value="">— sem editor —</option>
-                {responsaveisLista.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nome}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <button
-                onClick={() => setEditingRespGrupo(true)}
-                className="grid h-7 w-7 place-items-center rounded-full transition-all hover:ring-2 hover:ring-brand-500/40"
-                title={
-                  responsavelPrincipal
-                    ? `Editor: ${responsavelPrincipal.nome} — clique pra trocar (aplica em todos os vídeos do grupo)`
-                    : 'Clique pra atribuir um editor pra todos os vídeos deste cliente'
-                }
-              >
-                {responsavelPrincipal ? (
-                  <Avatar
-                    name={responsavelPrincipal.nome}
-                    url={responsavelPrincipal.avatar_url}
-                    size="sm"
-                  />
-                ) : (
-                  <span className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted">
-                    <User size={11} />
-                  </span>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Barra de progresso + rodape de status */}
-      <div>
-        <div className="h-1 bg-bg-soft">
-          <div
-            className={cn('h-full transition-all', barColor)}
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3 bg-bg-soft/30 px-4 py-1.5">
-          <span
-            className={cn(
-              'text-[10px] uppercase tracking-wider',
-              estourados > 0 ? 'text-red-400 font-semibold' : 'text-muted',
-            )}
-          >
-            SLA · lote 2 vídeos × 3 dias úteis
-          </span>
-          <span
-            className={cn(
-              'text-[11px] font-semibold',
-              progressPct === 100
-                ? 'text-emerald-400'
-                : estourados > 0
-                  ? 'text-red-400'
-                  : 'text-zinc-200',
-            )}
-          >
-            {progressPct === 100
-              ? 'Lote concluído'
-              : proximoPrazo
-                ? `Próxima entrega ${formatDateBR(proximoPrazo)}`
-                : 'Sem prazo definido'}
-          </span>
-        </div>
-      </div>
-
-      {/* Conteudo expandido — lista de videos + criacao rapida */}
-      {expanded && (
-        <div className="border-t border-border">
-          <div className="divide-y divide-border/60">
-            {items.map((it) => (
-              <LinhaVideo
-                key={it.id}
-                edicao={it}
-                onEdit={(override) => onEdit(override ?? it)}
-                onChanged={onChanged}
-              />
-            ))}
-          </div>
-          {cliente && (
-            <AdicionarVideoRapido
-              cliente={cliente}
-              responsavelIdDoGrupo={responsavelIdDoGrupo}
-              onCreated={onChanged}
-              onOpenFull={onEdit}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* =========================================================
-   Mini-form pra criar video ja com cliente definido pelo grupo
-   ========================================================= */
-
-function AdicionarVideoRapido({
-  cliente,
-  responsavelIdDoGrupo,
-  onCreated,
-  onOpenFull,
-}: {
-  cliente: Cliente
-  /** Editor atual do grupo. Novos videos ja nascem com ele atribuido. */
-  responsavelIdDoGrupo: string | null
-  onCreated: () => void
-  onOpenFull: (e: EdicaoVideo) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [titulo, setTitulo] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function criar(abrirDetalhesAoTerminar: boolean) {
-    if (!titulo.trim()) {
-      alert('Informe um título.')
-      return
-    }
-    setSaving(true)
-    // Novo video herda o editor do grupo (setado no header do grupo).
-    // Se o grupo ainda nao tem editor, fica null.
-    const { data, error } = await supabase
-      .from('edicoes_video')
-      .insert({
-        cliente_id: cliente.id,
-        titulo: titulo.trim(),
-        status: 'pendente',
-        responsavel_id: responsavelIdDoGrupo,
-      })
-      .select('*, cliente:clientes(*), responsavel:profiles!responsavel_id(*)')
-      .single()
-    setSaving(false)
-    if (error) {
-      alert('Erro ao criar: ' + error.message)
-      return
-    }
-    // Reset e recarrega
-    setTitulo('')
-    setExpanded(false)
-    onCreated()
-    // Se pediu abrir o modal completo, faz isso agora (ex: pra briefing/refs)
-    if (abrirDetalhesAoTerminar && data) {
-      onOpenFull(data as EdicaoVideo)
-    }
-  }
-
-  if (!expanded) {
-    return (
-      <button
-        onClick={() => setExpanded(true)}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-border py-2 text-[11px] text-muted transition-colors hover:bg-bg-soft/30 hover:text-brand-300"
-      >
-        <Plus size={12} />
-        Adicionar vídeo pra {cliente.nome}
-      </button>
-    )
-  }
-
-  return (
-    <div className="border-t border-border bg-bg-soft/20 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          autoFocus
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !saving) {
-              e.preventDefault()
-              criar(false)
-            } else if (e.key === 'Escape') {
-              setExpanded(false)
-              setTitulo('')
-            }
-          }}
-          placeholder="Título do vídeo (ex: Corte podcast episódio 12)"
-          className="h-8 flex-1 min-w-[220px] text-sm"
-        />
-        <Button size="sm" onClick={() => criar(false)} disabled={saving || !titulo.trim()}>
-          {saving ? '...' : 'Criar'}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => criar(true)}
-          disabled={saving || !titulo.trim()}
-          title="Cria e abre pra preencher briefing / refs / arquivos"
-        >
-          Criar e detalhar
-        </Button>
-        <button
-          onClick={() => {
-            setExpanded(false)
-            setTitulo('')
-          }}
-          className="grid h-7 w-7 place-items-center rounded text-muted hover:text-zinc-200"
-          title="Cancelar"
-        >
-          <X size={12} />
-        </button>
-      </div>
-      <p className="mt-1.5 text-[10px] text-muted">
-        Enter cria · Esc cancela · "Criar e detalhar" cria e abre pra colocar briefing/refs/arquivos
-      </p>
-    </div>
-  )
-}
-
-/* =========================================================
-   Linha compacta de 1 video
-   ========================================================= */
-
-function LinhaVideo({
-  edicao,
-  onEdit,
-  onChanged,
-}: {
-  edicao: EdicaoVideo
-  /** Se `override` for passado, abre o modal com essa versao (util quando
-   *  acabamos de atualizar um campo localmente e o parent ainda nao
-   *  refetch — evita o modal abrir com dados stale). */
-  onEdit: (override?: EdicaoVideo) => void
-  onChanged: () => void
-}) {
-  const concluido = edicao.status === 'conclusao'
-  const estourado = !concluido && edicao.prazo ? isDateOverdue(edicao.prazo) : false
-  // Sinaliza video em alteracao sem descricao — designer nao sabe o que mudar
-  const precisaDescricao =
-    edicao.status === 'em_alteracao' &&
-    (!edicao.descricao_alteracao || edicao.descricao_alteracao.trim() === '')
-
-  async function mudarStatus(novo: StatusEdicaoVideo) {
-    if (novo === edicao.status) return
-    await supabase.from('edicoes_video').update({ status: novo }).eq('id', edicao.id)
-    onChanged()
-    // Quando muda pra em_alteracao, abre o modal automaticamente pra
-    // pessoa ja preencher a descricao da alteracao no ato.
-    // IMPORTANTE: passa o item ja com status atualizado — o parent ainda
-    // nao refetch, entao se abrissemos com `edicao` o modal ia iniciar
-    // com o status antigo (bug reportado: "so vai se eu abrir a tarefa").
-    if (novo === 'em_alteracao') {
-      onEdit({ ...edicao, status: 'em_alteracao' })
-    }
-  }
-
-  return (
-    <div
-      className={cn(
-        'group relative flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-bg-soft/40',
-      )}
-    >
-      {/* Barra colorida lateral do status — mais grossa e sombreada pra
-          bater o olho e ja saber o status */}
-      <span
-        className={cn(
-          'absolute left-0 top-1 bottom-1 w-1 rounded-r',
-          statusBar[edicao.status],
-        )}
-      />
-
-      {/* Ordem + titulo */}
-      {/* IMPORTANTE: envolvo em arrow pra descartar o MouseEvent.
-          onEdit aceita (override?: EdicaoVideo) — se passar o event
-          direto, o event vira "override" e o modal abre com o event
-          no lugar do item (bug: "Selecione um cliente"). */}
-      <div
-        className="min-w-0 flex-1 cursor-pointer pl-2"
-        onClick={() => onEdit()}
-      >
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
-            #{edicao.ordem ?? 0}
-          </span>
-          <p className="truncate text-sm text-zinc-100">
-            {edicao.titulo || 'Sem título'}
-          </p>
-          {edicao.video_final_url && (
-            <a
-              href={edicao.video_final_url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0 text-muted hover:text-brand-300"
-              title="Abrir vídeo final"
-            >
-              <ExternalLink size={11} />
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Status pill colorido (dropdown estilizado) — cor forte pra bater o olho */}
-      <div className="relative">
-        <select
-          value={edicao.status}
-          onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
-          onClick={(e) => e.stopPropagation()}
-          className={cn(
-            'h-7 cursor-pointer appearance-none rounded-md border pl-2.5 pr-6 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-500/40',
-            statusPill[edicao.status],
-          )}
-          title="Mover de etapa"
-        >
-          {ESTEIRA_EDICAO_VIDEO.map((s) => (
-            <option key={s} value={s} className="bg-bg-card text-zinc-100">
-              {statusEdicaoVideoLabel[s]}
-            </option>
-          ))}
-        </select>
-        {/* Setinha custom (appearance-none esconde a padrao) */}
-        <ChevronDown
-          size={11}
-          className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 opacity-70"
-        />
-      </div>
-
-      {/* Prazo */}
-      <span
-        className={cn(
-          'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] tabular-nums',
-          concluido
-            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-            : estourado
-              ? 'border-red-500/40 bg-red-500/10 text-red-300'
-              : 'border-border bg-bg-soft text-zinc-300',
-        )}
-        title={estourado ? 'Prazo estourado' : 'Prazo'}
-      >
-        <Calendar size={10} />
-        {edicao.prazo ? formatDateBR(edicao.prazo) : '—'}
-        {estourado && <span>⚠</span>}
-      </span>
-
-      {/* Editor NAO aparece mais na linha — atribuido no header do grupo
-          (mesmo padrao da Producao Social Media). Se este video em
-          alteracao ainda nao tem descricao, mostra badge de aviso. */}
-      {precisaDescricao && (
-        <span
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-red-500/50 bg-red-500/15 px-2 text-[10px] font-semibold text-red-200"
-          title="Cliente pediu alteração mas ninguém descreveu o que mudar"
-        >
-          ⚠ sem descrição
-        </span>
-      )}
-
-      {/* Editar — mesma razao do onClick acima: envolve em arrow pra
-          descartar o MouseEvent (senao entra como override e quebra) */}
-      <button
-        onClick={() => onEdit()}
-        className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-bg-elev hover:text-brand-300 group-hover:opacity-100"
-        title="Editar detalhes"
-      >
-        <Pencil size={12} />
-      </button>
-    </div>
-  )
-}
-
-export function EdicaoAccordion({
-  edicao,
-  clientes: _clientes,
-  expanded,
-  onToggle,
-  onClick,
-  onChanged,
-  previewMode = false,
-}: {
-  edicao: EdicaoVideo
-  clientes: Cliente[]
-  expanded: boolean
-  onToggle: () => void
-  onClick: () => void
-  onChanged: () => void
-  previewMode?: boolean
-}) {
-  void _clientes // não usado nessa versão simples — futuro: edit inline de cliente
-
-  // SLA: do aprovado_em (ou created_at) até o prazo (calculado pelo banco)
-  const ref = edicao.aprovado_em ?? edicao.created_at
-  const refDate = new Date(ref)
-  const diasUsados = diasUteisDesde(refDate)
-  const prazoDate = edicao.prazo ? new Date(edicao.prazo + 'T12:00:00') : null
-  const totalSla = prazoDate ? diasUteisEntre(refDate, prazoDate) : 3
-  const concluido = edicao.status === 'conclusao'
-  const slaEstourado =
-    !concluido && edicao.prazo ? isDateOverdue(edicao.prazo) : false
-  const slaPct = Math.min(100, Math.round((diasUsados / Math.max(1, totalSla)) * 100))
-  const slaBarColor = concluido
-    ? 'bg-emerald-500/70'
-    : slaEstourado
-    ? 'bg-red-500/70'
-    : diasUsados >= totalSla - 1
-    ? 'bg-amber-500/70'
-    : 'bg-sky-500/70'
-  const slaLabelTxt = concluido
-    ? `SLA cumprido`
-    : slaEstourado
-    ? `SLA estourado`
-    : `${diasUsados}/${totalSla} dias úteis`
-
-  // Counts de assets
-  const refCount = (edicao.referencias ?? []).length
-  const arqCount = (edicao.arquivos ?? []).length
-  const temBriefing = !!edicao.briefing && edicao.briefing.trim().length > 0
-  const temVideoFinal = !!edicao.video_final_url
-
-  function go(e: React.MouseEvent) {
-    e.stopPropagation()
-    onClick()
-  }
-
-  // Mudança rápida de status direto pelo dropdown no card.
-  async function mudarStatus(novoStatus: StatusEdicaoVideo) {
-    if (novoStatus === edicao.status) return
-    if (previewMode) {
-      alert('Preview: mudança de status desabilitada.')
-      return
-    }
-    await supabase
-      .from('edicoes_video')
-      .update({ status: novoStatus })
-      .eq('id', edicao.id)
-    onChanged()
-  }
-
-  return (
-    <div
-      className={cn(
-        'rounded-xl border bg-bg-card overflow-hidden transition-all',
-        expanded
-          ? 'border-brand-500/50 shadow-lg shadow-brand-500/5'
-          : 'border-border hover:border-brand-500/30',
-      )}
-    >
-      <div
-        onClick={onToggle}
-        className={cn(
-          'relative flex cursor-pointer items-stretch transition-colors',
-          expanded ? 'bg-bg-soft/40' : 'hover:bg-bg-soft/40',
-        )}
-      >
-        {/* Barra colorida lateral */}
-        <div className={cn('w-1 shrink-0', statusBar[edicao.status])} />
-
-        <div className="flex flex-1 flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4">
-          {/* Lado esquerdo: chevron + título + meta */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <ChevronRight
-              size={14}
-              className={cn(
-                'shrink-0 text-muted transition-transform',
-                expanded && 'rotate-90',
-              )}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-zinc-100">
-                  {edicao.titulo || edicao.cliente?.nome || 'Sem título'}
-                </p>
-                <button
-                  onClick={go}
-                  className="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:bg-bg-elev hover:text-brand-300 group-hover:opacity-100"
-                  title="Editar"
-                >
-                  <Pencil size={11} />
-                </button>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-                <span className="inline-flex items-center rounded-md border border-border bg-bg-soft px-2 py-0.5 text-[11px] text-zinc-300">
-                  Edição de vídeo
-                </span>
-                {edicao.cliente?.nome && <span>· {edicao.cliente.nome}</span>}
-                {edicao.cliente?.nicho && <span>· {edicao.cliente.nicho}</span>}
-                {edicao.cliente?.squad && <span>· Squad {edicao.cliente.squad}</span>}
-              </div>
-            </div>
-          </div>
-
-          {/* Ícones de assets */}
-          <div className="flex items-center gap-1.5">
-            <IconBadge on={temBriefing} icon={FileText} title="Briefing preenchido" />
-            <IconBadge
-              on={refCount > 0}
-              icon={LinkIcon}
-              title={`${refCount} referência(s)`}
-            />
-            <IconBadge
-              on={arqCount > 0}
-              icon={Paperclip}
-              title={`${arqCount} arquivo(s)`}
-            />
-            <IconBadge on={temVideoFinal} icon={Video} title="Vídeo final entregue" />
-          </div>
-
-          {/* Direita: status, prazo, responsável */}
-          <div className="flex items-center gap-2">
-            {edicao.video_final_url && (
-              <a
-                href={edicao.video_final_url}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-soft px-2 py-1 text-[11px] text-zinc-300 hover:border-brand-500/40 hover:text-brand-300"
-                title="Abrir vídeo final"
-              >
-                <ExternalLink size={10} />
-                vídeo
-              </a>
-            )}
-            {/* Mover de etapa direto sem abrir modal */}
-            <Select
-              value={edicao.status}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => mudarStatus(e.target.value as StatusEdicaoVideo)}
-              className="h-7 w-36 text-[11px]"
-              title="Mover de etapa"
-            >
-              {ESTEIRA_EDICAO_VIDEO.map((s) => (
-                <option key={s} value={s}>
-                  {statusEdicaoVideoLabel[s]}
-                </option>
-              ))}
-            </Select>
-            <PrazoBadge prazo={edicao.prazo} concluido={concluido} />
-            {edicao.responsavel ? (
-              <Avatar
-                name={edicao.responsavel.nome}
-                url={edicao.responsavel.avatar_url}
-                size="sm"
-              />
-            ) : (
-              <span
-                className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-border text-muted"
-                title="Sem responsável"
-              >
-                <User size={12} />
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Barra de SLA */}
-      <div>
-        <div className="h-1 bg-bg-soft">
-          <div
-            className={cn('h-full transition-all', slaBarColor)}
-            style={{ width: `${slaPct}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3 bg-bg-soft/30 px-4 py-1.5">
-          <span
-            className={cn(
-              'text-[10px] uppercase tracking-wider',
-              slaEstourado ? 'text-red-400 font-semibold' : 'text-muted',
-            )}
-          >
-            SLA · lote 2 vídeos × 3 dias úteis
-          </span>
-          <span
-            className={cn(
-              'text-[11px] font-semibold',
-              concluido ? 'text-emerald-400' : slaEstourado ? 'text-red-400' : 'text-zinc-200',
-            )}
-          >
-            {slaLabelTxt}
-          </span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="border-t border-border p-5">
-          <ExpandedDetails edicao={edicao} onEdit={onClick} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function IconBadge({
-  on,
-  icon: Icon,
-  title,
-}: {
-  on: boolean
-  icon: React.ComponentType<{ size?: number; className?: string }>
-  title: string
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        'grid h-7 w-7 place-items-center rounded-md border',
-        on
-          ? 'border-brand-500/40 bg-brand-500/15 text-brand-300'
-          : 'border-border bg-bg-soft text-muted',
-      )}
-    >
-      <Icon size={12} />
-    </span>
-  )
-}
-
-function PrazoBadge({
-  prazo,
-  concluido,
-}: {
-  prazo: string | null
-  concluido: boolean
-}) {
-  if (!prazo) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-bg-soft px-2 py-1 text-[11px] text-muted">
-        <Calendar size={10} /> Sem prazo
-      </span>
-    )
-  }
-  const atrasada = !concluido && isDateOverdue(prazo)
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] whitespace-nowrap',
-        atrasada
-          ? 'border-red-500/40 bg-red-500/10 text-red-300'
-          : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-      )}
-    >
-      <Calendar size={10} />
-      {formatDateBR(prazo)}
-    </span>
-  )
-}
-
-function ExpandedDetails({
-  edicao,
-  onEdit,
-}: {
-  edicao: EdicaoVideo
-  onEdit: () => void
-}) {
-  return (
-    <div className="space-y-3 text-sm">
-      {edicao.briefing && (
-        <div>
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted">Briefing</p>
-          <p className="whitespace-pre-wrap text-xs text-zinc-200 leading-relaxed">
-            {edicao.briefing}
-          </p>
-        </div>
-      )}
-      {(edicao.referencias ?? []).length > 0 && (
-        <div>
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted">
-            Referências ({edicao.referencias.length})
-          </p>
-          <ul className="space-y-1">
-            {edicao.referencias.map((r, i) => (
-              <li key={i} className="flex items-center gap-2 text-xs">
-                <Badge tone="neutral" className="text-[9px]">
-                  {tipoReferenciaVideoLabel[r.tipo]}
-                </Badge>
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate text-brand-300 hover:underline"
-                >
-                  {r.descricao || r.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {(edicao.arquivos ?? []).length > 0 && (
-        <div>
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted">
-            Arquivos brutos ({edicao.arquivos.length})
-          </p>
-          <ul className="space-y-1">
-            {edicao.arquivos.map((a, i) => (
-              <li key={i} className="text-xs">
-                <a
-                  href={a.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-zinc-200 hover:text-brand-300 hover:underline"
-                >
-                  {a.nome}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {edicao.observacoes && (
-        <div>
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted">
-            Observações
-          </p>
-          <p className="whitespace-pre-wrap text-xs text-muted">{edicao.observacoes}</p>
-        </div>
-      )}
-      <div className="pt-1">
-        <Button size="sm" variant="outline" onClick={onEdit}>
-          <Pencil size={12} /> Editar detalhes
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-/* =========================================================
-   Modal de criar/editar (mantido)
-========================================================= */
-
-export function EdicaoVideoModal({
-  open,
-  onClose,
-  edicao,
-  clientes,
-  onSaved,
-  previewMode = false,
-}: {
-  open: boolean
-  onClose: () => void
-  edicao: EdicaoVideo | null
-  clientes: Cliente[]
-  onSaved: () => void
-  previewMode?: boolean
-}) {
-  const [form, setForm] = useState<{
-    cliente_id: string
-    titulo: string
-    status: StatusEdicaoVideo
-    responsavel_id: string
-    aprovado_em: string | null
-    briefing: string
-    referencias: EdicaoReferencia[]
-    arquivos: EdicaoArquivo[]
-    video_final_url: string
-    observacoes: string
-    descricao_alteracao: string
-  }>({
-    cliente_id: '',
-    titulo: '',
-    status: 'pendente',
-    responsavel_id: '',
-    aprovado_em: null,
-    briefing: '',
-    referencias: [],
-    arquivos: [],
-    video_final_url: '',
-    observacoes: '',
-    descricao_alteracao: '',
-  })
-  const [responsaveis, setResponsaveis] = useState<Profile[]>([])
-  const [saving, setSaving] = useState(false)
-  const [uploadingFinal, setUploadingFinal] = useState(false)
-  const [uploadingArquivos, setUploadingArquivos] = useState(false)
-  const [novoArquivoUrl, setNovoArquivoUrl] = useState('')
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const videoFinalInputRef = useRef<HTMLInputElement | null>(null)
-  // Chave da ultima abertura — evita reset do form quando o pai refetch
-  // enquanto o modal ta aberto (bug de "adiciona link e some").
-  // Ver useEffect abaixo.
-  const initializedForRef = useRef<string | null>(null)
-
-  /** Persiste UM patch direto no banco (bypass do save() geral). Usado
-   *  quando o usuario adiciona um anexo — se o item ja existe (tem id),
-   *  grava no ato pra sobreviver a fechar-sem-salvar ou refetch do pai.
-   *  Se e' item novo (sem id), so fica no estado local; ao clicar Salvar
-   *  o item e' criado com tudo junto. */
-  async function persistPatch(patch: Record<string, unknown>) {
-    if (!edicao?.id || previewMode) return
-    await supabase.from('edicoes_video').update(patch).eq('id', edicao.id)
-  }
-
-  /** Detecta o "tipo" do link pra rotular o item (Drive/YouTube/Vimeo/Link). */
-  function detectTipoLink(url: string): string {
-    const low = url.toLowerCase()
-    if (low.includes('drive.google')) return 'drive'
-    if (low.includes('youtube.com') || low.includes('youtu.be')) return 'youtube'
-    if (low.includes('vimeo.com')) return 'vimeo'
-    return 'link'
-  }
-
-  /** Extrai um "nome amigável" do URL pra exibir na lista. */
-  function nomeDoLink(url: string): string {
-    try {
-      const u = new URL(url)
-      // Pra Drive folder/file mostra o host + um sufixo curto
-      if (u.hostname.includes('drive.google')) return 'Google Drive'
-      if (u.hostname.includes('youtu')) return 'YouTube'
-      if (u.hostname.includes('vimeo')) return 'Vimeo'
-      return u.hostname.replace(/^www\./, '')
-    } catch {
-      return url
-    }
-  }
-
-  function addLinkArquivo() {
-    const url = novoArquivoUrl.trim()
-    if (!url) return
-    const novoArquivo = {
-      nome: nomeDoLink(url),
-      tamanho: 0,
-      tipo: detectTipoLink(url),
-      url,
-    }
-    const novosArquivos = [...form.arquivos, novoArquivo]
-    setForm((f) => ({ ...f, arquivos: novosArquivos }))
-    setNovoArquivoUrl('')
-    // Persiste no ato — mesmo se fechar sem salvar, o link nao some
-    void persistPatch({ arquivos: novosArquivos })
-  }
-
-  useEffect(() => {
-    if (!open) {
-      // Ao fechar, esquece a chave. Proxima abertura vai reinicializar.
-      initializedForRef.current = null
-      return
-    }
-    // So carrega responsaveis uma vez por abertura (nao a cada re-render)
-    if (previewMode) {
-      setResponsaveis([])
-    } else if (responsaveis.length === 0) {
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('ativo', true)
-        .eq('aprovado', true)
-        .or('cargo.eq.designer,cargos_extras.cs.{designer}')
-        .order('nome')
-        .then(({ data }) => setResponsaveis((data as Profile[]) ?? []))
-    }
-
-    // Bug antes: toda vez que o pai refetchava a lista, o `edicao` prop
-    // trocava de referencia e o form era resetado — apagava links/arquivos
-    // que o usuario acabou de adicionar mas nao salvou ainda.
-    // Agora: so inicializa uma vez por abertura de item (chave = id ou 'new').
-    // Se o mesmo item ja foi inicializado, nao sobrescreve o form.
-    const chaveAtual = edicao?.id ?? 'new'
-    if (initializedForRef.current === chaveAtual) return
-    initializedForRef.current = chaveAtual
-
-    if (edicao) {
-      setForm({
-        cliente_id: edicao.cliente_id,
-        titulo: edicao.titulo ?? '',
-        status: edicao.status,
-        responsavel_id: edicao.responsavel_id ?? '',
-        aprovado_em: edicao.aprovado_em,
-        briefing: edicao.briefing ?? '',
-        referencias: edicao.referencias ?? [],
-        arquivos: edicao.arquivos ?? [],
-        video_final_url: edicao.video_final_url ?? '',
-        observacoes: edicao.observacoes ?? '',
-        descricao_alteracao: edicao.descricao_alteracao ?? '',
-      })
-    } else {
-      setForm({
-        cliente_id: '',
-        titulo: '',
-        status: 'pendente',
-        responsavel_id: '',
-        aprovado_em: null,
-        briefing: '',
-        referencias: [],
-        arquivos: [],
-        video_final_url: '',
-        observacoes: '',
-        descricao_alteracao: '',
-      })
-    }
-  }, [open, edicao, previewMode, responsaveis.length])
-
-  async function save() {
-    if (!form.cliente_id) {
-      alert('Selecione um cliente.')
-      return
-    }
-    if (previewMode) {
-      alert('Preview: salvamento desabilitado.')
-      onClose()
-      return
-    }
-    setSaving(true)
-    const payload = {
-      cliente_id: form.cliente_id,
-      titulo: form.titulo.trim() || null,
-      status: form.status,
-      responsavel_id: form.responsavel_id || null,
-      aprovado_em: form.aprovado_em,
-      briefing: form.briefing || null,
-      referencias: form.referencias,
-      arquivos: form.arquivos,
-      video_final_url: form.video_final_url.trim() || null,
-      observacoes: form.observacoes || null,
-      descricao_alteracao: form.descricao_alteracao || null,
-    }
-    if (edicao) {
-      await supabase.from('edicoes_video').update(payload).eq('id', edicao.id)
-    } else {
-      await supabase.from('edicoes_video').insert(payload)
-    }
-    setSaving(false)
-    onSaved()
-    onClose()
-  }
-
-  async function excluir() {
-    if (!edicao) return
-    if (!confirm('Excluir essa edição de vídeo?')) return
-    if (previewMode) {
-      alert('Preview: exclusão desabilitada.')
-      onClose()
-      return
-    }
-    await supabase.from('edicoes_video').delete().eq('id', edicao.id)
-    onSaved()
-    onClose()
-  }
-
-  function toggleAprovado() {
-    setForm({
-      ...form,
-      aprovado_em: form.aprovado_em ? null : new Date().toISOString(),
-    })
-  }
-
-  async function onFilesSelected(files: FileList | null) {
-    if (!files || files.length === 0) return
-    if (previewMode) {
-      alert('Preview: upload desabilitado.')
-      return
-    }
-    setUploadingArquivos(true)
-    try {
-      const novos: EdicaoArquivo[] = []
-      for (const file of Array.from(files)) {
-        const url = await uploadToStorageSafe(file, 'edicao-video', 'webdesign-assets')
-        if (!url) continue
-        novos.push({ nome: file.name, tamanho: file.size, tipo: file.type, url })
-      }
-      if (novos.length > 0) {
-        const novosArquivos = [...form.arquivos, ...novos]
-        setForm((f) => ({ ...f, arquivos: novosArquivos }))
-        // Persiste no ato — anexo nunca some
-        await persistPatch({ arquivos: novosArquivos })
-      }
-    } finally {
-      setUploadingArquivos(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
-  async function onVideoFinalSelected(files: FileList | null) {
-    const file = files?.[0]
-    if (!file) return
-    if (previewMode) {
-      alert('Preview: upload desabilitado.')
-      return
-    }
-    setUploadingFinal(true)
-    try {
-      const url = await uploadToStorageSafe(file, 'edicao-video-final', 'webdesign-assets')
-      if (url) {
-        setForm((f) => ({ ...f, video_final_url: url }))
-        // Persiste no ato — se fechar sem salvar, video final ja esta gravado
-        await persistPatch({ video_final_url: url })
-      }
-    } finally {
-      setUploadingFinal(false)
-      if (videoFinalInputRef.current) videoFinalInputRef.current.value = ''
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      className="max-w-3xl"
-      title={edicao ? 'Editar edição de vídeo' : 'Nova edição de vídeo'}
-      footer={
-        <div className="flex items-center justify-between">
-          {edicao ? (
-            <Button variant="danger" size="sm" onClick={excluir}>
-              <Trash2 size={14} /> Excluir
-            </Button>
-          ) : (
-            <div />
-          )}
-          <div className="flex items-center gap-2">
-            {(uploadingArquivos || uploadingFinal) && (
-              <span className="text-[11px] text-amber-300">
-                ⚠ Aguarde upload terminar antes de salvar
-              </span>
-            )}
-            <Button variant="secondary" onClick={onClose} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={save}
-              disabled={saving || uploadingArquivos || uploadingFinal}
-              title={
-                uploadingArquivos || uploadingFinal
-                  ? 'Aguarde upload terminar'
-                  : undefined
-              }
-            >
-              {saving ? 'Salvando...' : edicao ? 'Salvar' : 'Criar'}
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        {/* Descricao da alteracao — so aparece quando status=em_alteracao.
-            Fica bem no topo com borda vermelha pra ninguem perder.
-            Mesmo padrao do ItemEditor da SocialMedia. */}
-        {form.status === 'em_alteracao' && (
-          <div className="rounded-xl border-2 border-red-500/60 bg-red-500/5 p-4 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-red-300">⚠</span>
-              <h4 className="text-sm font-semibold text-red-100">
-                Descrição da alteração
-              </h4>
-              <span className="text-[11px] text-red-300/80">
-                — o que o cliente pediu pra mudar
-              </span>
-            </div>
-            <Textarea
-              autoFocus={!form.descricao_alteracao}
-              value={form.descricao_alteracao}
-              onChange={(e) => {
-                const val = e.target.value
-                setForm({ ...form, descricao_alteracao: val })
-                // Persiste no ato — mesmo se fechar sem salvar, nao some
-                void persistPatch({ descricao_alteracao: val || null })
-              }}
-              placeholder="Ex.: Cortar o inicio (0-8s). Ajustar audio no 1:20 que ta muito baixo. Trocar a foto de capa da thumb."
-              className="min-h-[80px] border-red-500/30 bg-bg-soft text-sm focus:border-red-500/60"
-            />
-            <p className="mt-1.5 text-[10px] text-red-300/70">
-              Este campo fica de histórico mesmo depois do vídeo sair de alteração.
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Cliente">
-            <Select
-              value={form.cliente_id}
-              onChange={(e) => setForm({ ...form, cliente_id: e.target.value })}
-              disabled={!!edicao}
-            >
-              <option value="">—</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Status">
-            <Select
-              value={form.status}
-              onChange={(e) =>
-                setForm({ ...form, status: e.target.value as StatusEdicaoVideo })
-              }
-            >
-              {ESTEIRA_EDICAO_VIDEO.map((s) => (
-                <option key={s} value={s}>
-                  {statusEdicaoVideoLabel[s]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <Field label="Título">
-          <Input
-            value={form.titulo}
-            onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-            placeholder="Ex.: Reel — Antes e Depois Camila"
-          />
-        </Field>
-
-        {/* Responsavel foi removido daqui — atribui-se na criacao rapida do
-            grupo (mesmo padrao da producao social media). Se precisar
-            reatribuir depois, futuro: clicar no avatar da linha. */}
-        <Field label="Aprovado pelo cliente">
-          <button
-            type="button"
-            onClick={toggleAprovado}
-            className={cn(
-              'inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors',
-              form.aprovado_em
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                : 'border-border bg-bg-soft text-muted hover:border-brand-500/40 hover:text-zinc-200',
-            )}
-          >
-            {form.aprovado_em ? (
-              <>✓ Aprovado em {formatDateBR(form.aprovado_em)}</>
-            ) : (
-              <>○ Marcar como aprovado</>
-            )}
-          </button>
-          <p className="mt-1 text-[10px] text-muted">
-            Define o ponto de partida do prazo (lote 2 vídeos × 3 dias úteis).
-          </p>
-        </Field>
-
-        <Field label="Briefing / Contexto">
-          <Textarea
-            value={form.briefing}
-            onChange={(e) => setForm({ ...form, briefing: e.target.value })}
-            placeholder="Descreva o objetivo do vídeo, formato, tom, duração estimada, peças-chave..."
-            className="min-h-[90px]"
-          />
-        </Field>
-
-        <ReferenciasField
-          values={form.referencias}
-          onChange={(referencias) => {
-            setForm({ ...form, referencias })
-            // Persiste no ato — referencias tambem nao somem
-            void persistPatch({ referencias })
-          }}
-        />
-
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label>Arquivos brutos / referências</Label>
-            <div className="flex items-center gap-2">
-              {uploadingArquivos && (
-                <span className="text-[11px] text-amber-300">Enviando...</span>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingArquivos}
-              >
-                <Upload size={13} /> Adicionar arquivos
-              </Button>
-            </div>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => onFilesSelected(e.target.files)}
-          />
-          {/* Adicionar link (Drive/YouTube/Vimeo) — fica logo acima da lista,
-              evita ter que subir o arquivo quando o cliente entrega via Drive. */}
-          <div className="mb-1.5 grid grid-cols-[1fr_auto] gap-2">
-            <Input
-              value={novoArquivoUrl}
-              onChange={(e) => setNovoArquivoUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addLinkArquivo()
-                }
-              }}
-              placeholder="Cole um link do Drive/YouTube/Vimeo (pasta de brutos, etc)"
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={addLinkArquivo}
-              disabled={!novoArquivoUrl.trim()}
-            >
-              <LinkIcon size={13} /> Adicionar link
-            </Button>
-          </div>
-          {form.arquivos.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border bg-bg-soft px-3 py-4 text-center text-xs text-muted">
-              Suba briefings, prints, áudios de referência, transcrições — o que ajudar
-              o editor. Ou cole um link do Drive acima.
-            </div>
-          ) : (
-            <ul className="space-y-1.5">
-              {form.arquivos.map((a, i) => {
-                const isLink = a.tamanho === 0
-                return (
-                <li
-                  key={i}
-                  className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    {isLink && (
-                      <Badge tone="neutral" className="shrink-0 text-[9px] uppercase">
-                        {a.tipo}
-                      </Badge>
-                    )}
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate text-xs text-zinc-200 hover:text-brand-300 hover:underline"
-                      title={isLink ? a.url : a.nome}
-                    >
-                      {isLink ? a.url : a.nome}
-                    </a>
-                    {!isLink && (
-                      <span className="shrink-0 text-[11px] text-muted">
-                        {formatBytes(a.tamanho)}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const novosArquivos = form.arquivos.filter(
-                        (_, idx) => idx !== i,
-                      )
-                      setForm((f) => ({ ...f, arquivos: novosArquivos }))
-                      // Persiste no ato — remocao tambem nao volta se refetch
-                      void persistPatch({ arquivos: novosArquivos })
-                    }}
-                    className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
-                  >
-                    <X size={13} />
-                  </button>
-                </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-
-        <Field label="Vídeo final entregue">
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <Input
-              value={form.video_final_url}
-              onChange={(e) => setForm({ ...form, video_final_url: e.target.value })}
-              placeholder="Cole o link (Drive, Vimeo, YouTube) OU use upload ao lado"
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => videoFinalInputRef.current?.click()}
-              disabled={uploadingFinal}
-            >
-              <Upload size={13} /> {uploadingFinal ? 'Enviando...' : 'Upload'}
-            </Button>
-            <input
-              ref={videoFinalInputRef}
-              type="file"
-              accept="video/*"
-              className="hidden"
-              onChange={(e) => onVideoFinalSelected(e.target.files)}
-            />
-          </div>
-          {form.video_final_url && (
-            <div className="mt-1.5 flex items-center gap-2 text-[11px]">
-              <a
-                href={form.video_final_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brand-300 hover:underline"
-              >
-                <ExternalLink size={11} /> Abrir vídeo final
-              </a>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, video_final_url: '' })}
-                className="text-muted hover:text-red-300"
-                title="Remover"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          )}
-          <p className="mt-1 text-[10px] text-muted">
-            Pra arquivos grandes (acima de 50MB) prefira o link do Drive/Vimeo.
-          </p>
-        </Field>
-
-        <Field label="Observações">
-          <Textarea
-            value={form.observacoes}
-            onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-            placeholder="Notas internas (não vai pro cliente)."
-            className="min-h-[60px]"
-          />
-        </Field>
-      </div>
-    </Modal>
-  )
-}
-
-/* =========================================================
-   Campo de Referências (chips de links) — type auto-detect
-========================================================= */
-
-function ReferenciasField({
-  values,
-  onChange,
-}: {
-  values: EdicaoReferencia[]
-  onChange: (next: EdicaoReferencia[]) => void
-}) {
-  const [url, setUrl] = useState('')
-  const [descricao, setDescricao] = useState('')
-
-  function detectTipo(u: string): TipoReferenciaVideo {
-    const low = u.toLowerCase()
-    if (low.includes('drive.google')) return 'drive'
-    if (low.includes('youtube.com') || low.includes('youtu.be')) return 'youtube'
-    if (low.includes('vimeo.com')) return 'vimeo'
-    return 'link'
-  }
-
-  function add() {
-    const u = url.trim()
-    if (!u) return
-    onChange([
-      ...values,
-      { tipo: detectTipo(u), url: u, descricao: descricao.trim() || null },
-    ])
-    setUrl('')
-    setDescricao('')
-  }
-  function remove(idx: number) {
-    onChange(values.filter((_, i) => i !== idx))
-  }
-
-  return (
-    <div>
-      <Label>Referências (Drive, YouTube, links)</Label>
-      {values.length > 0 && (
-        <ul className="mb-2 space-y-1.5">
-          {values.map((r, i) => (
-            <li
-              key={i}
-              className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-soft px-3 py-2"
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <Badge tone="neutral" className="text-[9px] shrink-0">
-                  {tipoReferenciaVideoLabel[r.tipo]}
-                </Badge>
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate text-xs text-brand-300 hover:underline"
-                  title={r.url}
-                >
-                  {r.descricao || r.url}
-                </a>
-              </div>
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                className="rounded p-1 text-muted hover:bg-bg-elev hover:text-red-300"
-              >
-                <X size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              add()
-            }
-          }}
-          placeholder="Cole o URL (Drive, YouTube, Vimeo ou link genérico)"
-        />
-        <Button size="sm" variant="outline" onClick={add} disabled={!url.trim()}>
-          <Plus size={11} />
-        </Button>
-      </div>
-      <Input
-        value={descricao}
-        onChange={(e) => setDescricao(e.target.value)}
-        placeholder="Descrição opcional (ex.: 'Pasta com brutos da gravação')"
-        className="mt-2 text-xs"
-      />
-      <p className="mt-1 text-[10px] text-muted">
-        O tipo é detectado automaticamente pela URL.
-      </p>
-    </div>
-  )
-}
-
-/* =========================================================
-   Utils inline
-========================================================= */
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Label>{label}</Label>
-      {children}
-    </div>
-  )
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted">
-      {children}
-    </span>
-  )
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
