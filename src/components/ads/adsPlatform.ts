@@ -434,6 +434,31 @@ export function gerarCampanhasMock(args: {
   })
 }
 
+// ── Investimento simulado seguindo a verba ───────────────────────────────────
+// SIMULAÇÃO: o investido do mock acompanha a verba da plataforma (registrada
+// pela tela do cliente/lista), num "ritmo" por cliente, e no mês corrente é
+// proporcional aos dias já passados — assim o pacing faz sentido. Na API real
+// o investimento vem da conta de anúncios e isto sai.
+const verbasMock = new Map<string, number>()
+/** Ritmos fixos dos clientes da demo (cobre no ritmo / abaixo / estourado). */
+const RITMO_DEMO: Record<string, number> = { 'c-1': 0.95, 'c-2': 0.62, 'c-3': 0.9, 'c-4': 1.28, 'c-6': 1.04 }
+
+export function registrarVerbaMock(plataforma: AdsPlatformKey, clienteId: string, verba: number | null | undefined) {
+  const k = `${plataforma}|${clienteId}`
+  if (verba && verba > 0) verbasMock.set(k, verba)
+  else verbasMock.delete(k)
+}
+
+export function investimentoMock(plataforma: AdsPlatformKey, clienteId: string, periodo: string, faixa: [number, number]): number {
+  const p = periodo.slice(0, 7)
+  const verba = verbasMock.get(`${plataforma}|${clienteId}`)
+  const ritmo = RITMO_DEMO[clienteId] ?? 0.6 + (hash(`${plataforma}|${clienteId}|ritmo`) % 70) / 100 // 0,60–1,29
+  const mesCheio = verba ? verba * ritmo : ranged(hash(`${plataforma}|${clienteId}|${p}|inv`), faixa[0], faixa[1])
+  const [y, m] = p.split('-').map(Number)
+  const diasNoMes = new Date(y, m, 0).getDate()
+  return Math.round((mesCheio * diasDecorridosNoPeriodo(p)) / diasNoMes)
+}
+
 /** Dias já decorridos do período (mês corrente = dia de hoje; passado = mês inteiro). */
 export function diasDecorridosNoPeriodo(periodo: string): number {
   const [y, m] = periodo.slice(0, 7).split('-').map(Number)

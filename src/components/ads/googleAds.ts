@@ -9,6 +9,7 @@ import { Megaphone, Wallet, Eye, MousePointerClick, Percent, Coins, Target, Rece
 import {
   createAdsConnectionStore,
   gerarCampanhasMock,
+  investimentoMock,
   hash,
   ranged,
   type AdsMetricas,
@@ -51,7 +52,7 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const p = periodo.slice(0, 7)
   const base = hash(`${clienteId}|${p}`)
 
-  const investimento = ranged(hash(`${base}inv`), 1800, 24000)
+  const investimento = investimentoMock('google_ads', clienteId, p, [1800, 24000])
   const impressoes = ranged(hash(`${base}imp`), 40000, 900000)
   const cliques = ranged(hash(`${base}cli`), 400, 22000)
   const conversoes = ranged(hash(`${base}cv`), 8, Math.max(16, Math.round(cliques * 0.06)))

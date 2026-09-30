@@ -20,6 +20,7 @@ import {
 import {
   createAdsConnectionStore,
   gerarCampanhasMock,
+  investimentoMock,
   hash,
   ranged,
   type AdsMetricas,
@@ -60,7 +61,7 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const p = periodo.slice(0, 7)
   const base = hash(`meta|${clienteId}|${p}`)
 
-  const investimento = ranged(hash(`${base}inv`), 1500, 20000)
+  const investimento = investimentoMock('meta_ads', clienteId, p, [1500, 20000])
   const impressoes = ranged(hash(`${base}imp`), 60000, 1200000)
   // Frequência típica 1,3–2,8 → alcance = impressões ÷ frequência
   const frequencia = 1.3 + (hash(`${base}freq`) % 150) / 100

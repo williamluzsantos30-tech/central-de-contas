@@ -11,21 +11,18 @@ import { Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import { usePermissoes, PERM } from '@/hooks/usePermissoes'
-import {
-  cn,
-  JORNADAS_CLIENTE,
-  jornadaClienteLabel,
-  statusClienteLabel,
-  TIPOS_CLIENTE,
-  tipoClienteLabel,
-} from '@/lib/utils'
+import { JORNADAS_CLIENTE, jornadaClienteLabel, TIPOS_CLIENTE, tipoClienteLabel } from '@/lib/utils'
+import { CONTRATO_INFO, SAUDE_INFO, contratoDoCliente, saudeDaConta } from '@/lib/trafegoCliente'
+import { StatusBadges } from '@/components/trafego/TrafegoUI'
+import type { Tone } from '@/components/ds'
 import type { Cliente } from '@/types/database'
 
-const statusDot: Record<Cliente['status'], string> = {
-  ativo: 'bg-emerald-500',
-  atencao: 'bg-amber-500',
-  pausado: 'bg-zinc-500',
-  churn: 'bg-red-500',
+const TOM_BADGE: Partial<Record<Tone, 'success' | 'warning' | 'danger' | 'neutral'>> = {
+  success: 'success',
+  attention: 'warning',
+  warning: 'warning',
+  danger: 'danger',
+  neutral: 'neutral',
 }
 
 export function ClienteIdentidade({
@@ -40,6 +37,8 @@ export function ClienteIdentidade({
   direita?: ReactNode
 }) {
   const { can } = usePermissoes()
+  const contrato = contratoDoCliente(cliente)
+  const saude = saudeDaConta(cliente)
 
   async function updateField(field: string, val: string | null) {
     await supabase.from('clientes').update({ [field]: val }).eq('id', cliente.id)
@@ -53,10 +52,8 @@ export function ClienteIdentidade({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold text-zinc-100">{cliente.nome}</h1>
-            <span className="flex items-center gap-1.5 text-sm text-muted">
-              <span className={cn('h-2 w-2 rounded-full', statusDot[cliente.status])} />
-              {statusClienteLabel[cliente.status]}
-            </span>
+            {/* Dois conceitos separados: contrato × saúde da conta. */}
+            <StatusBadges cliente={cliente} />
           </div>
           {cliente.nicho && <p className="mt-1 text-sm text-muted">{cliente.nicho}</p>}
         </div>
@@ -79,26 +76,33 @@ export function ClienteIdentidade({
       {/* Badges editáveis */}
       <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs">
         <InlineEditBadge
-          label="Status"
-          value={cliente.status}
-          render={statusClienteLabel[cliente.status]}
+          label="Contrato"
+          value={contrato}
+          render={CONTRATO_INFO[contrato].label}
           readOnly={!can(PERM.editarStatus)}
           options={[
             { value: 'ativo', label: 'Ativo' },
-            { value: 'atencao', label: 'Atenção' },
             { value: 'pausado', label: 'Pausado' },
-            { value: 'churn', label: 'Churn' },
+            { value: 'encerrado', label: 'Encerrado (churn)' },
           ]}
-          onChange={(v) => updateField('status', v)}
-          tone={
-            cliente.status === 'ativo'
-              ? 'success'
-              : cliente.status === 'atencao'
-                ? 'warning'
-                : cliente.status === 'churn'
-                  ? 'danger'
-                  : 'neutral'
+          onChange={(v) =>
+            // Contrato Ativo mantém a marcação de atenção, se houver.
+            updateField('status', v === 'pausado' ? 'pausado' : v === 'encerrado' ? 'churn' : cliente.status === 'atencao' ? 'atencao' : 'ativo')
           }
+          tone={TOM_BADGE[CONTRATO_INFO[contrato].tone] ?? 'neutral'}
+        />
+        <InlineEditBadge
+          label="Saúde"
+          value={saude}
+          render={SAUDE_INFO[saude].label}
+          // Crítico vem do Controle do Head; saúde só se marca com contrato ativo.
+          readOnly={!can(PERM.editarStatus) || contrato !== 'ativo' || saude === 'critico'}
+          options={[
+            { value: 'estavel', label: 'Estável' },
+            { value: 'atencao', label: 'Atenção' },
+          ]}
+          onChange={(v) => updateField('status', v === 'atencao' ? 'atencao' : 'ativo')}
+          tone={TOM_BADGE[SAUDE_INFO[saude].tone] ?? 'neutral'}
         />
         <InlineEditBadge
           label="Jornada"

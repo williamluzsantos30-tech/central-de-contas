@@ -10,8 +10,17 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
 import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { ResumoClientesKpi } from '@/components/clientes/ResumoClientesKpi'
-import { situacaoCliente } from '@/pages/Clientes'
+import { BudgetPacingCompact } from '@/components/trafego/TrafegoUI'
 import { supabase } from '@/lib/supabase'
+import {
+  CONTRATO_INFO,
+  SAUDE_INFO,
+  contratoDoCliente,
+  pacingDoCliente,
+  saudeDaConta,
+  type Contrato,
+  type PlataformaMetas,
+} from '@/lib/trafegoCliente'
 import { temAlgumCargo, temCargo } from '@/lib/cargos'
 import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import {
@@ -20,13 +29,22 @@ import {
   formatDate,
   JORNADAS_CLIENTE,
   jornadaClienteLabel,
-  statusClienteLabel,
+  monthKey,
   tipoClienteLabel,
 } from '@/lib/utils'
 import { getTarefasDoDia, contarAtrasadasPorCliente } from '@/lib/tarefasDoDia'
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Cliente, Profile, Tarefa } from '@/types/database'
+import type { Cliente, MetasValores, Profile, Tarefa } from '@/types/database'
+
+type RealizadoMes = Partial<Record<PlataformaMetas, Partial<MetasValores>>>
+
+/** Mesmas cores da Saúde no cabeçalho do cliente. */
+const SAUDE_CLS: Record<keyof typeof SAUDE_INFO, string> = {
+  estavel: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+  atencao: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  critico: 'border-red-500/40 bg-red-500/10 text-red-300',
+}
 
 export default function ClientesTrafego() {
   const { profile } = useAuth()
@@ -39,7 +57,9 @@ export default function ClientesTrafego() {
   const [q, setQ] = useState('')
   const [fSquad, setFSquad] = useState('')
   const [fGestor, setFGestor] = useState('')
-  const [fStatus, setFStatus] = useState('')
+  const [fContrato, setFContrato] = useState<Contrato | ''>('')
+  // Realizado do mês (aba Metas) por cliente — só vale onde a integração não está conectada.
+  const [realizadoMes, setRealizadoMes] = useState<Map<string, RealizadoMes>>(new Map())
   const [fJornada, setFJornada] = useState('')
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
@@ -64,7 +84,7 @@ export default function ClientesTrafego() {
   async function load(silent = false) {
     if (!silent) setLoading(true)
     const today = new Date().toISOString().slice(0, 10)
-    const [cRes, gRes, tRes] = await Promise.all([
+    const [cRes, gRes, tRes, mRes] = await Promise.all([
       supabase
         .from('clientes')
         .select(
@@ -85,7 +105,13 @@ export default function ClientesTrafego() {
         .select('*, cliente:clientes(*)')
         .lte('data_vencimento', today)
         .neq('status', 'concluida'),
+      supabase.from('metas').select('cliente_id, resultado_data').eq('mes_ano', monthKey()),
     ])
+    const realizado = new Map<string, RealizadoMes>()
+    for (const m of (mRes.data as { cliente_id: string; resultado_data: RealizadoMes | null }[] | null) ?? []) {
+      if (m.resultado_data) realizado.set(m.cliente_id, m.resultado_data)
+    }
+    setRealizadoMes(realizado)
     setClientes((cRes.data as Cliente[]) ?? [])
     setGestores(gRes.data.filter((p) => temCargo(p, 'gestor_trafego')))
     setTarefas((tRes.data as Tarefa[]) ?? [])
@@ -106,7 +132,7 @@ export default function ClientesTrafego() {
       if (q && !c.nome.toLowerCase().includes(q.toLowerCase())) return false
       if (fSquad && c.squad !== fSquad) return false
       if (fGestor && c.gestor_id !== fGestor) return false
-      if (fStatus && c.status !== fStatus) return false
+      if (fContrato && contratoDoCliente(c) !== fContrato) return false
       if (fJornada && c.jornada !== fJornada) return false
       // Apenas meus = sou gestor de tráfego OU account manager OU social media do cliente
       if (escopo === 'meus' && profile) {
@@ -118,7 +144,7 @@ export default function ClientesTrafego() {
       }
       return true
     })
-  }, [clientes, q, fSquad, fGestor, fStatus, fJornada, escopo, profile])
+  }, [clientes, q, fSquad, fGestor, fContrato, fJornada, escopo, profile])
 
   // Fonte única: KPI "Tarefas atrasadas", painel "Tarefas do dia" e o
   // indicador da tabela saem TODOS daqui — escopados aos clientes filtrados.
@@ -195,12 +221,18 @@ export default function ClientesTrafego() {
               </option>
             ))}
           </Select>
-          <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="w-36">
-            <option value="">Todos status</option>
-            <option value="ativo">Ativo</option>
-            <option value="atencao">Atenção</option>
-            <option value="pausado">Pausado</option>
-            <option value="churn">Churn</option>
+          <Select
+            value={fContrato}
+            onChange={(e) => setFContrato(e.target.value as Contrato | '')}
+            className="w-40"
+            title="Situação do contrato"
+          >
+            <option value="">Todos contratos</option>
+            {(Object.keys(CONTRATO_INFO) as Contrato[]).map((k) => (
+              <option key={k} value={k}>
+                Contrato {CONTRATO_INFO[k].label.toLowerCase()}
+              </option>
+            ))}
           </Select>
           <Select value={fJornada} onChange={(e) => setFJornada(e.target.value)} className="w-40">
             <option value="">Todas jornadas</option>
@@ -224,7 +256,9 @@ export default function ClientesTrafego() {
                   <th className="px-3 py-2.5">Account Manager</th>
                   <th className="px-3 py-2.5">Gestor de Tráfego</th>
                   <th className="px-3 py-2.5">Verba</th>
-                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5" title="Saúde da conta — o contrato fica no filtro acima">
+                    Saúde
+                  </th>
                   <th className="px-3 py-2.5">Jornada</th>
                   <th className="px-3 py-2.5">Call alinhamento</th>
                   <th className="px-3 py-2.5">Última atualização</th>
@@ -247,6 +281,9 @@ export default function ClientesTrafego() {
                 ) : (
                   filtered.map((c) => {
                     const nAtrasadas = atrasadasPorCliente.get(c.id) ?? 0
+                    const { pacing, verbaTotal } = pacingDoCliente(c, realizadoMes.get(c.id))
+                    const saude = saudeDaConta(c)
+                    const contrato = contratoDoCliente(c)
                     return (
                     <tr key={c.id} className="border-t border-border hover:bg-bg-soft">
                       <td className="px-4 py-3 whitespace-nowrap">
@@ -282,20 +319,23 @@ export default function ClientesTrafego() {
                       <td className="px-3 py-3 text-sm whitespace-nowrap">
                         {c.gestor?.nome ?? '—'}
                       </td>
-                      <td className="px-3 py-3 text-sm font-medium text-emerald-300 whitespace-nowrap">
-                        {formatCurrency(
-                          (c.verba_google ?? 0) + (c.verba_meta ?? 0) || c.verba_mensal,
-                        )}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <p className="text-sm font-medium tabular-nums text-emerald-300">{formatCurrency(verbaTotal)}</p>
+                        <BudgetPacingCompact pacing={pacing} />
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <span
                           className={cn(
                             'inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-medium',
-                            situacaoCliente(c).cls,
+                            SAUDE_CLS[saude],
                           )}
                         >
-                          {situacaoCliente(c).label}
+                          {SAUDE_INFO[saude].label}
                         </span>
+                        {/* Contrato não-ativo aparece como nota — sem virar outro "status". */}
+                        {contrato !== 'ativo' && (
+                          <p className="mt-0.5 text-[10px] text-muted">Contrato {CONTRATO_INFO[contrato].label.toLowerCase()}</p>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-sm whitespace-nowrap">
                         {c.jornada ? jornadaClienteLabel[c.jornada] : '—'}

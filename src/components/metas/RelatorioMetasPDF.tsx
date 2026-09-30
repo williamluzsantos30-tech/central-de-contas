@@ -26,6 +26,7 @@ import {
   Font,
 } from '@react-pdf/renderer'
 import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
+import { formatarValor, montarTabelaMetas, nivelPct } from './metasTabela'
 
 const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
 
@@ -254,7 +255,7 @@ function normalize(raw: unknown): MetasPorPlataforma {
       meta: { ...empty(), ...((r.meta ?? {}) as MetasValores) },
     }
   }
-  return { google: { ...empty(), ...(r as MetasValores) }, meta: { ...empty() } }
+  return { google: { ...empty(), ...(r as unknown as MetasValores) }, meta: { ...empty() } }
 }
 
 function empty(): MetasValores {
@@ -323,6 +324,9 @@ function fmtCompetenciaCurta(mesAno: string): string {
 // Sub-componentes
 // ==============================================================
 
+const COR_PCT_PDF = { bom: '#059669', medio: '#ea580c', ruim: '#dc2626' }
+
+/** Mesma tabela da tela: Métrica | Meta | Realizado | % atingido (custos: menor é melhor). */
 function TabelaMetaVsResultado({
   meta,
   resultado,
@@ -330,41 +334,34 @@ function TabelaMetaVsResultado({
   meta: MetasValores
   resultado: MetasValores
 }) {
-  const rows: Array<[string, string, string, boolean]> = [
-    ['Investimento', fmtBRL(meta.investimento), fmtBRL(resultado.investimento), false],
-    ['Custo por mensagem', fmtBRL(meta.custo_mensagem), fmtBRL(resultado.custo_mensagem), false],
-    [
-      'Mensagens qualificadas',
-      fmtInt(meta.mensagens_qualificadas),
-      fmtInt(resultado.mensagens_qualificadas),
-      false,
-    ],
-    ['Nº consultas', fmtInt(meta.numero_consultas), fmtInt(resultado.numero_consultas), false],
-    ['TM consulta', fmtBRL(meta.tm_consulta), fmtBRL(resultado.tm_consulta), false],
-    [
-      'Nº procedimentos',
-      fmtInt(meta.numero_procedimentos),
-      fmtInt(resultado.numero_procedimentos),
-      false,
-    ],
-    ['TM procedimento', fmtBRL(meta.tm_procedimento), fmtBRL(resultado.tm_procedimento), false],
-    ['Faturamento estimado', fmtBRL(faturamento(meta)), fmtBRL(faturamento(resultado)), true],
-    ['ROAS', fmtRoas(roas(meta)), fmtRoas(roas(resultado)), true],
-  ]
+  const grupos = montarTabelaMetas(meta, resultado, null)
   return (
     <View style={styles.tabela}>
       <View style={styles.tabelaHead}>
         <Text style={styles.thLabel}>MÉTRICA</Text>
         <Text style={[styles.thVal, { color: COR_META }]}>META</Text>
-        <Text style={[styles.thVal, { color: COR_RESULT }]}>RESULTADO</Text>
+        <Text style={[styles.thVal, { color: COR_RESULT }]}>REALIZADO</Text>
+        <Text style={[styles.thVal, { color: COR_TEXTO_CINZA }]}>% ATINGIDO</Text>
       </View>
-      {rows.map(([label, metaVal, resVal, isCalc], i) => (
-        <View key={i} style={isCalc ? styles.linhaCalc : styles.linha}>
-          <Text style={isCalc ? styles.linhaCalcLabel : styles.linhaLabel}>{label}</Text>
-          <Text style={isCalc ? styles.linhaCalcVal : styles.linhaVal}>{metaVal}</Text>
-          <Text style={isCalc ? styles.linhaCalcVal : styles.linhaVal}>{resVal}</Text>
-        </View>
-      ))}
+      {grupos.flatMap((g) =>
+        g.linhas.map((l) => {
+          const calc = l.destaque
+          const cor = l.pct != null && !l.neutro ? COR_PCT_PDF[nivelPct(l.pct)] : COR_TEXTO_CINZA
+          return (
+            <View key={l.key} style={calc ? styles.linhaCalc : styles.linha} wrap={false}>
+              <Text style={calc ? styles.linhaCalcLabel : styles.linhaLabel}>
+                {l.label}
+                {l.formula ? `  = ${l.formula}` : ''}
+              </Text>
+              <Text style={calc ? styles.linhaCalcVal : styles.linhaVal}>{formatarValor(l.meta.valor, l.formato)}</Text>
+              <Text style={calc ? styles.linhaCalcVal : styles.linhaVal}>{formatarValor(l.real.valor, l.formato)}</Text>
+              <Text style={[calc ? styles.linhaCalcVal : styles.linhaVal, { color: cor }]}>
+                {l.pct != null ? `${Math.round(l.pct)}%` : '—'}
+              </Text>
+            </View>
+          )
+        }),
+      )}
     </View>
   )
 }

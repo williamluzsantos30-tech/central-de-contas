@@ -1,51 +1,29 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import {
-  TrendingUp,
-  TrendingDown,
-  Pencil,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  Target,
-  CheckCircle2,
-  Wallet,
-  MessageSquare,
-  Stethoscope,
-  Activity,
-  Trophy,
-  FileText,
-} from 'lucide-react'
+import { TrendingUp, TrendingDown, Pencil, Trash2, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency, monthKey } from '@/lib/utils'
+import { midiaDoMes, NOME_PLATAFORMA, registrarVerbasCliente, type PlataformaMetas } from '@/lib/trafegoCliente'
+import type { EstadoSalvar } from '@/components/trafego/TrafegoUI'
 import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
 import { downloadRelatorioMetasPDF } from './RelatorioMetasPDF'
+import { GoalsTable } from './GoalsTable'
+import { resultadoEfetivo, VALORES_VAZIOS } from './metasTabela'
 
 interface Props {
   clienteId: string
   cliente: Cliente
 }
 
-type Plataforma = 'google' | 'meta'
 type Seccao = 'meta_data' | 'resultado_data'
 
-const emptyValores: MetasValores = {
-  investimento: null,
-  custo_mensagem: null,
-  mensagens_qualificadas: null,
-  numero_consultas: null,
-  tm_consulta: null,
-  numero_procedimentos: null,
-  tm_procedimento: null,
-}
-
 const emptyPlataformas: MetasPorPlataforma = {
-  google: { ...emptyValores },
-  meta: { ...emptyValores },
+  google: { ...VALORES_VAZIOS },
+  meta: { ...VALORES_VAZIOS },
 }
 
 /** Normaliza — aceita formato antigo (valores direto) e novo ({google,meta}). */
@@ -53,100 +31,121 @@ function normalize(raw: unknown): MetasPorPlataforma {
   const r = (raw ?? {}) as Record<string, unknown>
   if ('google' in r || 'meta' in r) {
     return {
-      google: { ...emptyValores, ...((r.google ?? {}) as MetasValores) },
-      meta: { ...emptyValores, ...((r.meta ?? {}) as MetasValores) },
+      google: { ...VALORES_VAZIOS, ...((r.google ?? {}) as MetasValores) },
+      meta: { ...VALORES_VAZIOS, ...((r.meta ?? {}) as MetasValores) },
     }
   }
   // formato antigo → só google
+  return { google: { ...VALORES_VAZIOS, ...(r as unknown as MetasValores) }, meta: { ...VALORES_VAZIOS } }
+}
+
+/** Realizado de cada mês com a mídia da integração por cima (quando conectada). */
+function comMidiaIntegrada(m: Meta, clienteId: string): Meta {
+  const res = normalize(m.resultado_data)
+  const periodo = m.mes_ano.slice(0, 7)
   return {
-    google: { ...emptyValores, ...(r as MetasValores) },
-    meta: { ...emptyValores },
+    ...m,
+    resultado_data: {
+      google: resultadoEfetivo(res.google, midiaDoMes(clienteId, 'google', periodo, res.google)),
+      meta: resultadoEfetivo(res.meta, midiaDoMes(clienteId, 'meta', periodo, res.meta)),
+    },
   }
 }
 
-interface Calculos {
-  valorDiario: number | null
-  mensagens: number | null
-  custoMensagemQualificada: number | null
-  txaConversaoConsulta: number | null
-  txaConversaoProcedimento: number | null
-  faturamento: number | null
-  roas: number | null
-  cac: number | null
+const TIMEOUT_SALVAR_MS = 15000
+
+/**
+ * Estado local + auto-save (debounce 600 ms) de UMA seção/plataforma.
+ * "Salvando..." → "Salvo" (some em 2 s) → erro com "Tentar novamente".
+ * Nunca fica preso: timeout de 15 s vira erro.
+ */
+function usePlanilha(externo: MetasValores, salvar: (v: MetasValores) => Promise<void>) {
+  const [local, setLocal] = useState<MetasValores>({ ...VALORES_VAZIOS, ...externo })
+  const [estado, setEstado] = useState<EstadoSalvar>('idle')
+  const localRef = useRef(local)
+  const sujoRef = useRef(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const salvoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const salvarRef = useRef(salvar)
+  salvarRef.current = salvar
+  const chaveExterna = JSON.stringify(externo)
+
+  // Troca de mês / recarga: adota o valor externo se não há edição pendente.
+  useEffect(() => {
+    if (sujoRef.current) return
+    const v = { ...VALORES_VAZIOS, ...externo }
+    localRef.current = v
+    setLocal(v)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveExterna])
+
+  async function flush() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (!sujoRef.current) return
+    sujoRef.current = false
+    setEstado('saving')
+    try {
+      await Promise.race([
+        salvarRef.current(localRef.current),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT_SALVAR_MS)),
+      ])
+      setEstado('saved')
+      if (salvoRef.current) clearTimeout(salvoRef.current)
+      salvoRef.current = setTimeout(() => setEstado('idle'), 2000)
+    } catch {
+      sujoRef.current = true // mantém pra "Tentar novamente"
+      setEstado('error')
+    }
+  }
+
+  function set(campo: keyof MetasValores, valor: number | null) {
+    const n = { ...localRef.current, [campo]: valor }
+    localRef.current = n
+    setLocal(n)
+    sujoRef.current = true
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => void flush(), 600)
+  }
+
+  // Saiu da aba/página com edição pendente: salva sem esperar.
+  useEffect(() => {
+    const onUnload = () => {
+      if (sujoRef.current) void salvarRef.current(localRef.current)
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onUnload)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      if (salvoRef.current) clearTimeout(salvoRef.current)
+      if (sujoRef.current) void salvarRef.current(localRef.current)
+    }
+  }, [])
+
+  return { local, set, estado, flush }
 }
 
-function computeCalculos(v: MetasValores): Calculos {
-  const faturamento =
-    (v.numero_consultas ?? 0) * (v.tm_consulta ?? 0) +
-    (v.numero_procedimentos ?? 0) * (v.tm_procedimento ?? 0)
-  return {
-    valorDiario: v.investimento ? v.investimento / 30 : null,
-    mensagens:
-      v.investimento && v.custo_mensagem ? Math.floor(v.investimento / v.custo_mensagem) : null,
-    custoMensagemQualificada:
-      v.investimento && v.mensagens_qualificadas
-        ? v.investimento / v.mensagens_qualificadas
-        : null,
-    txaConversaoConsulta:
-      v.numero_consultas && v.mensagens_qualificadas
-        ? (v.numero_consultas / v.mensagens_qualificadas) * 100
-        : null,
-    txaConversaoProcedimento:
-      v.numero_procedimentos && v.numero_consultas
-        ? (v.numero_procedimentos / v.numero_consultas) * 100
-        : null,
-    faturamento: faturamento > 0 ? faturamento : null,
-    roas: v.investimento && faturamento > 0 ? faturamento / v.investimento : null,
-    cac: v.investimento && v.numero_consultas ? v.investimento / v.numero_consultas : null,
-  }
-}
+const PESO_ESTADO: Record<EstadoSalvar, number> = { error: 3, saving: 2, saved: 1, idle: 0 }
+const combinar = (a: EstadoSalvar, b: EstadoSalvar) => (PESO_ESTADO[a] >= PESO_ESTADO[b] ? a : b)
 
 export function MetasPanel({ clienteId, cliente }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(monthKey())
   const [todosMeses, setTodosMeses] = useState<Meta[]>([])
   const [loading, setLoading] = useState(true)
   const [gerandoPdf, setGerandoPdf] = useState(false)
-
-  async function baixarPdf() {
-    if (todosMeses.length === 0) {
-      alert('Não há metas registradas pra esse cliente ainda.')
-      return
-    }
-    setGerandoPdf(true)
-    try {
-      await downloadRelatorioMetasPDF({ cliente, historico: todosMeses })
-    } finally {
-      setGerandoPdf(false)
-    }
-  }
-
-  // Refs das 4 planilhas para forçar flush antes de operações destrutivas
-  const planMetaGoogleRef = useRef<PlanilhaHandle>(null)
-  const planResultGoogleRef = useRef<PlanilhaHandle>(null)
-  const planMetaMetaRef = useRef<PlanilhaHandle>(null)
-  const planResultMetaRef = useRef<PlanilhaHandle>(null)
-
-  /** Garante que qualquer save pendente das planilhas seja finalizado antes de continuar. */
-  async function flushAllPlanilhas() {
-    await Promise.all([
-      planMetaGoogleRef.current?.flush(),
-      planResultGoogleRef.current?.flush(),
-      planMetaMetaRef.current?.flush(),
-      planResultMetaRef.current?.flush(),
-    ])
-  }
-
   const initializedRef = useRef(false)
+  // Saves em fila: dois saves do mesmo mês (Google e Meta, meta e realizado)
+  // não podem criar a linha do mês duas vezes.
+  const filaRef = useRef<Promise<unknown>>(Promise.resolve())
+
+  // O investido simulado das integrações segue a verba de cada plataforma.
+  registrarVerbasCliente(cliente)
 
   async function load() {
-    // Loading visível APENAS na primeira carga; saves subsequentes refrescam em background
-    // (caso contrário, o componente desmonta a cada save e o input "perde" o valor digitado)
     if (!initializedRef.current) setLoading(true)
-    const { data } = await supabase
-      .from('metas')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .order('mes_ano', { ascending: false })
+    const { data } = await supabase.from('metas').select('*').eq('cliente_id', clienteId).order('mes_ano', { ascending: false })
     setTodosMeses((data as Meta[]) ?? [])
     if (!initializedRef.current) {
       setLoading(false)
@@ -159,75 +158,87 @@ export function MetasPanel({ clienteId, cliente }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId])
 
-  const metaAtual = useMemo(
-    () => todosMeses.find((m) => m.mes_ano === selectedMonth) ?? null,
-    [todosMeses, selectedMonth],
-  )
-
+  const metaAtual = useMemo(() => todosMeses.find((m) => m.mes_ano === selectedMonth) ?? null, [todosMeses, selectedMonth])
   const metaData = useMemo(() => normalize(metaAtual?.meta_data), [metaAtual])
   const resultadoData = useMemo(() => normalize(metaAtual?.resultado_data), [metaAtual])
 
-  async function saveSection(section: Seccao, plataforma: Plataforma, valores: MetasValores) {
-    // Busca o registro atualizado DO DB (evita race condition quando o usuário
-    // edita Google e Meta em sequência antes do load() terminar).
-    const { data: freshArr } = await supabase
-      .from('metas')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .eq('mes_ano', selectedMonth)
-    const fresh = (freshArr as Meta[] | null)?.[0] ?? null
-
-    if (fresh) {
-      const currentSection = normalize(fresh[section])
-      const updated: MetasPorPlataforma = { ...currentSection, [plataforma]: valores }
-      await supabase.from('metas').update({ [section]: updated }).eq('id', fresh.id)
-    } else {
-      const newSection: MetasPorPlataforma = {
-        google: section !== section ? emptyValores : emptyValores,
-        meta: emptyValores,
-        [plataforma]: valores,
+  function salvarSecao(section: Seccao, plataforma: PlataformaMetas, valores: MetasValores): Promise<void> {
+    const mes = selectedMonth
+    const tarefa = async () => {
+      // Lê o registro atual DO BANCO (evita pisar em edição da outra plataforma).
+      const { data: freshArr, error: e1 } = await supabase.from('metas').select('*').eq('cliente_id', clienteId).eq('mes_ano', mes)
+      if (e1) throw e1
+      const fresh = (freshArr as Meta[] | null)?.[0] ?? null
+      if (fresh) {
+        const updated: MetasPorPlataforma = { ...normalize(fresh[section]), [plataforma]: valores }
+        const { error } = await supabase.from('metas').update({ [section]: updated }).eq('id', fresh.id)
+        if (error) throw error
+      } else {
+        const nova: MetasPorPlataforma = { ...emptyPlataformas, [plataforma]: valores }
+        const { error } = await supabase.from('metas').insert({
+          cliente_id: clienteId,
+          mes_ano: mes,
+          meta_data: section === 'meta_data' ? nova : emptyPlataformas,
+          resultado_data: section === 'resultado_data' ? nova : emptyPlataformas,
+        })
+        if (error) throw error
       }
-      await supabase.from('metas').insert({
-        cliente_id: clienteId,
-        mes_ano: selectedMonth,
-        meta_data: section === 'meta_data' ? newSection : emptyPlataformas,
-        resultado_data: section === 'resultado_data' ? newSection : emptyPlataformas,
-      })
+      void load()
     }
-    load()
+    const p = filaRef.current.then(tarefa, tarefa)
+    filaRef.current = p.catch(() => undefined)
+    return p
+  }
+
+  const metaG = usePlanilha(metaData.google, (v) => salvarSecao('meta_data', 'google', v))
+  const realG = usePlanilha(resultadoData.google, (v) => salvarSecao('resultado_data', 'google', v))
+  const metaM = usePlanilha(metaData.meta, (v) => salvarSecao('meta_data', 'meta', v))
+  const realM = usePlanilha(resultadoData.meta, (v) => salvarSecao('resultado_data', 'meta', v))
+
+  async function flushAll() {
+    await Promise.allSettled([metaG.flush(), realG.flush(), metaM.flush(), realM.flush()])
+  }
+
+  async function baixarPdf() {
+    await flushAll()
+    const historico = todosMeses.map((m) => comMidiaIntegrada(m, clienteId))
+    if (historico.length === 0) {
+      alert('Não há metas registradas pra esse cliente ainda.')
+      return
+    }
+    setGerandoPdf(true)
+    try {
+      await downloadRelatorioMetasPDF({ cliente, historico })
+    } finally {
+      setGerandoPdf(false)
+    }
   }
 
   async function excluirMeta(id: string) {
     if (!confirm('Excluir este mês do histórico?')) return
-    await flushAllPlanilhas()
+    await flushAll()
     await supabase.from('metas').delete().eq('id', id)
     load()
   }
 
-  async function shiftMonth(delta: number) {
-    // Flush qualquer save pendente ANTES de trocar de mês,
-    // senão o debounce dispara depois com o mês novo (race condition)
-    await flushAllPlanilhas()
-    const d = parseISO(selectedMonth)
-    d.setMonth(d.getMonth() + delta)
-    setSelectedMonth(format(d, 'yyyy-MM-01'))
-  }
-
-  async function goToCurrentMonth() {
-    await flushAllPlanilhas()
-    setSelectedMonth(monthKey())
-  }
-
-  async function selectMonth(mes: string) {
-    await flushAllPlanilhas()
+  async function irParaMes(mes: string) {
+    await flushAll()
     setSelectedMonth(mes)
   }
 
-  if (loading) {
-    return <p className="text-sm text-muted">Carregando...</p>
+  function shiftMonth(delta: number) {
+    const d = parseISO(selectedMonth)
+    d.setMonth(d.getMonth() + delta)
+    void irParaMes(format(d, 'yyyy-MM-01'))
   }
 
+  if (loading) return <p className="text-sm text-muted">Carregando...</p>
+
   const isCurrentMonth = selectedMonth === monthKey()
+  const periodo = selectedMonth.slice(0, 7)
+  const midiaG = midiaDoMes(clienteId, 'google', periodo, realG.local)
+  const midiaM = midiaDoMes(clienteId, 'meta', periodo, realM.local)
+  const historicoEfetivo = todosMeses.map((m) => comMidiaIntegrada(m, clienteId))
 
   return (
     <div>
@@ -238,16 +249,14 @@ export function MetasPanel({ clienteId, cliente }: Props) {
             onClick={() => shiftMonth(-1)}
             className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted hover:bg-bg-elev hover:text-zinc-100"
             title="Mês anterior"
+            aria-label="Mês anterior"
           >
             <ChevronLeft size={14} />
           </button>
           <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-soft px-4 py-1.5 text-sm">
             <span className="font-semibold text-zinc-100">{formatCompetencia(selectedMonth)}</span>
             {!isCurrentMonth && (
-              <button
-                onClick={goToCurrentMonth}
-                className="text-[11px] text-brand-300 hover:underline"
-              >
+              <button onClick={() => void irParaMes(monthKey())} className="text-[11px] text-brand-300 hover:underline">
                 voltar ao atual
               </button>
             )}
@@ -256,6 +265,7 @@ export function MetasPanel({ clienteId, cliente }: Props) {
             onClick={() => shiftMonth(1)}
             className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted hover:bg-bg-elev hover:text-zinc-100"
             title="Próximo mês"
+            aria-label="Próximo mês"
           >
             <ChevronRight size={14} />
           </button>
@@ -265,477 +275,57 @@ export function MetasPanel({ clienteId, cliente }: Props) {
           size="sm"
           onClick={baixarPdf}
           disabled={gerandoPdf || todosMeses.length === 0}
-          title="Baixa PDF com resultados mês a mês + resumo do período"
+          title="Baixa o PDF com a tabela Meta × Realizado de cada mês + resumo do período"
         >
           <FileText size={13} />
           {gerandoPdf ? 'Gerando...' : 'Baixar PDF'}
         </Button>
       </div>
 
-      {/* Google Ads */}
-      <PlatformSection title="Google Ads — Captação de Leads" color="blue">
-        <Planilha
-          ref={planMetaGoogleRef}
-          titulo="Meta do Mês"
-          tone="meta"
-          valores={metaData.google}
-          onChange={(v) => saveSection('meta_data', 'google', v)}
-        />
-        <Planilha
-          ref={planResultGoogleRef}
-          titulo="Resultado Obtido"
-          tone="success"
-          valores={resultadoData.google}
-          onChange={(v) => saveSection('resultado_data', 'google', v)}
-        />
-      </PlatformSection>
-
-      {/* Meta Ads */}
-      <PlatformSection title="Meta Ads — Captação de Leads" color="violet">
-        <Planilha
-          ref={planMetaMetaRef}
-          titulo="Meta do Mês"
-          tone="meta"
-          valores={metaData.meta}
-          onChange={(v) => saveSection('meta_data', 'meta', v)}
-        />
-        <Planilha
-          ref={planResultMetaRef}
-          titulo="Resultado Obtido"
-          tone="success"
-          valores={resultadoData.meta}
-          onChange={(v) => saveSection('resultado_data', 'meta', v)}
-        />
-      </PlatformSection>
+      <GoalsTable
+        titulo="Google Ads — Captação de Leads"
+        nomePlataforma={NOME_PLATAFORMA.google}
+        corTitulo="text-blue-300"
+        meta={metaG.local}
+        real={realG.local}
+        midia={midiaG}
+        semVerba={!cliente.verba_google}
+        estado={combinar(metaG.estado, realG.estado)}
+        onRetry={() => void Promise.allSettled([metaG.flush(), realG.flush()])}
+        onMeta={metaG.set}
+        onReal={realG.set}
+        onBlur={() => void Promise.allSettled([metaG.flush(), realG.flush()])}
+      />
+      <GoalsTable
+        titulo="Meta Ads — Captação de Leads"
+        nomePlataforma={NOME_PLATAFORMA.meta}
+        corTitulo="text-violet-300"
+        meta={metaM.local}
+        real={realM.local}
+        midia={midiaM}
+        semVerba={!cliente.verba_meta}
+        estado={combinar(metaM.estado, realM.estado)}
+        onRetry={() => void Promise.allSettled([metaM.flush(), realM.flush()])}
+        onMeta={metaM.set}
+        onReal={realM.set}
+        onBlur={() => void Promise.allSettled([metaM.flush(), realM.flush()])}
+      />
 
       {/* Histórico agregado */}
-      {todosMeses.length > 0 && (
+      {historicoEfetivo.length > 0 && (
         <div className="mt-6">
           <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
             Evolução mensal · Resultados (Google + Meta somados)
           </h3>
-          <HistoricoTable
-            historico={todosMeses}
-            selectedMonth={selectedMonth}
-            onDelete={excluirMeta}
-            onSelect={selectMonth}
-          />
+          <HistoricoTable historico={historicoEfetivo} selectedMonth={selectedMonth} onDelete={excluirMeta} onSelect={(m) => void irParaMes(m)} />
         </div>
       )}
     </div>
   )
 }
 
-function PlatformSection({
-  title,
-  color,
-  children,
-}: {
-  title: string
-  color: 'blue' | 'violet'
-  children: React.ReactNode
-}) {
-  const accent =
-    color === 'blue'
-      ? { dot: 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.7)]', text: 'text-blue-300' }
-      : { dot: 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.7)]', text: 'text-violet-300' }
-  return (
-    <div className="mb-6">
-      <div className="mb-3 flex items-center gap-2">
-        <span className={cn('h-2 w-2 rounded-full', accent.dot)} />
-        <h3 className={cn('text-[11px] font-bold uppercase tracking-widest', accent.text)}>
-          {title}
-        </h3>
-        <div className="flex-1 h-px bg-gradient-to-r from-border via-border/40 to-transparent" />
-      </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{children}</div>
-    </div>
-  )
-}
-
-export type PlanilhaHandle = { flush: () => Promise<void> }
-
-const Planilha = forwardRef<
-  PlanilhaHandle,
-  {
-    titulo: string
-    tone: 'meta' | 'success'
-    valores: MetasValores
-    onChange: (v: MetasValores) => Promise<void> | void
-  }
->(function Planilha({ titulo, tone, valores, onChange }, externalRef) {
-  const [local, setLocal] = useState<MetasValores>({ ...emptyValores, ...valores })
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const firstRenderRef = useRef(true)
-  const onChangeRef = useRef(onChange)
-  const localRef = useRef(local)
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Mantém refs atualizadas
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
-  useEffect(() => {
-    localRef.current = local
-  }, [local])
-
-  // Salva os valores atuais imediatamente (cancela debounce pendente)
-  async function flushSave() {
-    if (pendingTimerRef.current) {
-      clearTimeout(pendingTimerRef.current)
-      pendingTimerRef.current = null
-    }
-    // Skip se nada mudou em relação aos valores carregados (evita race em flush sem mudanças)
-    if (JSON.stringify(localRef.current) === JSON.stringify({ ...emptyValores, ...valores })) {
-      return
-    }
-    setSaveState('saving')
-    try {
-      await onChangeRef.current(localRef.current)
-      setSaveState('saved')
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-      savedTimerRef.current = setTimeout(() => setSaveState('idle'), 1500)
-    } catch {
-      setSaveState('idle')
-    }
-  }
-
-  // Permite o pai (MetasPanel) forçar o save, ex: antes de trocar de mês
-  useImperativeHandle(externalRef, () => ({ flush: flushSave }), [])
-
-  // Reset quando os valores externos mudam (mês trocado, recarregamento, etc.)
-  useEffect(() => {
-    setLocal({ ...emptyValores, ...valores })
-    firstRenderRef.current = true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(valores)])
-
-  // Auto-save com debounce de 600ms
-  useEffect(() => {
-    if (firstRenderRef.current) {
-      firstRenderRef.current = false
-      return
-    }
-    setSaveState('saving')
-    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current)
-    pendingTimerRef.current = setTimeout(() => {
-      flushSave()
-    }, 600)
-    return () => {
-      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [local])
-
-  // Flush ao desmontar (sair da página, trocar tab, etc.)
-  useEffect(() => {
-    return () => {
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current)
-        // dispara save imediato sem await (sair da página)
-        try {
-          onChangeRef.current(localRef.current)
-        } catch {
-          /* noop */
-        }
-      }
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-    }
-  }, [])
-
-  // Salva quando o usuário fechar a aba/janela com mudanças pendentes
-  useEffect(() => {
-    function onBeforeUnload() {
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current)
-        try {
-          onChangeRef.current(localRef.current)
-        } catch {
-          /* noop */
-        }
-      }
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [])
-
-  const calc = useMemo(() => computeCalculos(local), [local])
-
-  const isMeta = tone === 'meta'
-  const HeaderIcon = isMeta ? Target : CheckCircle2
-
-  function setField(key: keyof MetasValores, val: string) {
-    setLocal((cur) => ({ ...cur, [key]: val === '' ? null : Number(val) }))
-  }
-
-  return (
-    <Card className="overflow-hidden">
-      {/* Header com ícone, título e gradiente sutil */}
-      <div
-        className={cn(
-          'relative flex items-center gap-2.5 border-b px-4 py-3',
-          isMeta
-            ? 'border-indigo-500/30 bg-gradient-to-r from-indigo-500/15 via-indigo-500/5 to-transparent'
-            : 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent',
-        )}
-      >
-        <div
-          className={cn(
-            'grid h-8 w-8 place-items-center rounded-lg border',
-            isMeta
-              ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300'
-              : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
-          )}
-        >
-          <HeaderIcon size={15} />
-        </div>
-        <div className="flex-1">
-          <h4
-            className={cn(
-              'text-[13px] font-semibold leading-tight',
-              isMeta ? 'text-indigo-200' : 'text-emerald-200',
-            )}
-          >
-            {titulo}
-          </h4>
-          <p className="text-[10.5px] text-muted leading-tight mt-0.5">
-            {isMeta ? 'Projeção do que se espera atingir' : 'O que de fato aconteceu no mês'}
-          </p>
-        </div>
-        <SaveIndicator state={saveState} />
-      </div>
-
-      <div className="divide-y divide-border/40">
-        <SectionGroup icon={Wallet} label="Investimento" tone={tone}>
-          <InputRow
-            label="Investimento"
-            value={local.investimento}
-            onChange={(v) => setField('investimento', v)}
-            onBlur={flushSave}
-            format="money"
-          />
-          <CalcRow
-            label="Valor diário"
-            formula="investimento / 30"
-            value={calc.valorDiario}
-            format="money"
-          />
-        </SectionGroup>
-
-        <SectionGroup icon={MessageSquare} label="Funil de mensagens" tone={tone}>
-          <InputRow
-            label="Custo por mensagem"
-            value={local.custo_mensagem}
-            onChange={(v) => setField('custo_mensagem', v)}
-            onBlur={flushSave}
-            format="money"
-          />
-          <CalcRow
-            label="Mensagens"
-            formula="investimento ÷ custo por mensagem"
-            value={calc.mensagens}
-            format="int"
-          />
-          <InputRow
-            label="Mensagens qualificadas"
-            value={local.mensagens_qualificadas}
-            onChange={(v) => setField('mensagens_qualificadas', v)}
-            onBlur={flushSave}
-            format="int"
-          />
-          <CalcRow
-            label="Custo por mens. qualificada"
-            formula="investimento ÷ mens. qualificadas"
-            value={calc.custoMensagemQualificada}
-            format="money"
-          />
-        </SectionGroup>
-
-        <SectionGroup icon={Stethoscope} label="Funil de consultas" tone={tone}>
-          <InputRow
-            label="Nº de consultas / mês"
-            value={local.numero_consultas}
-            onChange={(v) => setField('numero_consultas', v)}
-            onBlur={flushSave}
-            format="int"
-          />
-          <InputRow
-            label="Ticket médio (consulta)"
-            value={local.tm_consulta}
-            onChange={(v) => setField('tm_consulta', v)}
-            onBlur={flushSave}
-            format="money"
-          />
-          <CalcRow
-            label="Taxa de conversão"
-            formula="consultas ÷ mens. qualificadas"
-            value={calc.txaConversaoConsulta}
-            format="percent"
-          />
-        </SectionGroup>
-
-        <SectionGroup icon={Activity} label="Funil de procedimentos" tone={tone}>
-          <InputRow
-            label="Nº de procedimentos / mês"
-            value={local.numero_procedimentos}
-            onChange={(v) => setField('numero_procedimentos', v)}
-            onBlur={flushSave}
-            format="int"
-          />
-          <InputRow
-            label="Ticket médio (procedimento)"
-            value={local.tm_procedimento}
-            onChange={(v) => setField('tm_procedimento', v)}
-            onBlur={flushSave}
-            format="money"
-          />
-          <CalcRow
-            label="Taxa de conversão"
-            formula="procedimentos ÷ consultas"
-            value={calc.txaConversaoProcedimento}
-            format="percent"
-          />
-        </SectionGroup>
-
-        <SectionGroup icon={Trophy} label="Resultado" tone={tone}>
-          <CalcRow
-            label="Faturamento"
-            formula="(consultas × TM) + (proc. × TM proc.)"
-            value={calc.faturamento}
-            format="money"
-            emphasis="strong"
-          />
-          <CalcRow
-            label="ROAS"
-            formula="faturamento ÷ investimento"
-            value={calc.roas}
-            format="multiplier"
-            emphasis="strong"
-          />
-          <CalcRow
-            label="CAC"
-            formula="investimento ÷ consultas"
-            value={calc.cac}
-            format="money"
-            emphasis="medium"
-          />
-        </SectionGroup>
-      </div>
-    </Card>
-  )
-})
-
-function SectionGroup({
-  icon: Icon,
-  label,
-  tone,
-  children,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>
-  label: string
-  tone: 'brand' | 'success'
-  children: React.ReactNode
-}) {
-  const accent = tone === 'brand' ? 'text-brand-300' : 'text-emerald-300'
-  return (
-    <div>
-      <div className="flex items-center gap-1.5 bg-bg-soft/60 px-4 py-1.5">
-        <Icon size={11} className={cn('opacity-70', accent)} />
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-          {label}
-        </span>
-      </div>
-      <div className="divide-y divide-border/30">{children}</div>
-    </div>
-  )
-}
-
-function InputRow({
-  label,
-  value,
-  onChange,
-  onBlur,
-  format,
-}: {
-  label: string
-  value: number | null
-  onChange: (v: string) => void
-  onBlur?: () => void
-  format: 'money' | 'int' | 'percent'
-}) {
-  const prefix = format === 'money' ? 'R$' : ''
-  return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5 transition-colors hover:bg-bg-soft/40">
-      <span className="text-[12.5px] text-zinc-200">{label}</span>
-      <div className="flex items-center gap-1 w-32">
-        {prefix && <span className="text-[10.5px] font-medium text-muted shrink-0">{prefix}</span>}
-        <input
-          type="number"
-          step={format === 'money' ? '0.01' : '1'}
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          placeholder="0"
-          className={cn(
-            'h-7 w-full rounded-md border border-transparent bg-bg-soft/60 px-2 text-right text-[12.5px] font-medium text-zinc-100',
-            'transition-all duration-150',
-            'hover:border-border placeholder:text-muted/40',
-            'focus:border-brand-500/60 focus:bg-bg-soft focus:outline-none focus:ring-2 focus:ring-brand-500/20',
-          )}
-        />
-      </div>
-    </div>
-  )
-}
-
-function CalcRow({
-  label,
-  formula,
-  value,
-  format,
-  emphasis,
-}: {
-  label: string
-  formula: string
-  value: number | null
-  format: 'money' | 'int' | 'percent' | 'multiplier'
-  emphasis?: 'medium' | 'strong'
-}) {
-  let text: string
-  if (value === null || Number.isNaN(value)) {
-    text = '—'
-  } else if (format === 'money') {
-    text = formatCurrency(value)
-  } else if (format === 'percent') {
-    text = `${value.toFixed(2).replace('.', ',')}%`
-  } else if (format === 'multiplier') {
-    text = `${value.toFixed(2).replace('.', ',')}x`
-  } else {
-    text = Math.round(value).toString()
-  }
-
-  const isFilled = value !== null && !Number.isNaN(value)
-
-  return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5">
-      <div className="min-w-0">
-        <p className="text-[12.5px] text-zinc-300">{label}</p>
-        <p className="text-[10px] italic text-muted/80 truncate">= {formula}</p>
-      </div>
-      <div
-        className={cn(
-          'w-32 rounded-md px-2 py-1 text-right text-[13px] font-semibold tabular-nums',
-          !isFilled && 'text-muted',
-          isFilled && emphasis === 'strong' && 'bg-emerald-500/10 text-emerald-300',
-          isFilled && emphasis === 'medium' && 'text-zinc-100',
-          isFilled && !emphasis && 'text-zinc-100',
-        )}
-      >
-        {text}
-      </div>
-    </div>
-  )
+function faturamentoDe(v: MetasValores): number {
+  return (v.numero_consultas ?? 0) * (v.tm_consulta ?? 0) + (v.numero_procedimentos ?? 0) * (v.tm_procedimento ?? 0)
 }
 
 /* Tabela histórica agregada Google + Meta */
@@ -750,10 +340,8 @@ interface Agregado {
 
 function combinaMes(m: Meta): Agregado {
   const res = normalize(m.resultado_data)
-  const calcG = computeCalculos(res.google)
-  const calcM = computeCalculos(res.meta)
   const investimento = (res.google.investimento ?? 0) + (res.meta.investimento ?? 0)
-  const faturamento = (calcG.faturamento ?? 0) + (calcM.faturamento ?? 0)
+  const faturamento = faturamentoDe(res.google) + faturamentoDe(res.meta)
   const leads =
     (res.google.mensagens_qualificadas ?? 0) + (res.meta.mensagens_qualificadas ?? 0)
   const consultas = (res.google.numero_consultas ?? 0) + (res.meta.numero_consultas ?? 0)
@@ -963,31 +551,6 @@ function HistoricoTable({
   )
 }
 
-
-function SaveIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
-  if (state === 'idle') {
-    return (
-      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted/60">
-        <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
-        Auto-save
-      </span>
-    )
-  }
-  if (state === 'saving') {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-        Salvando…
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300 animate-fade-in">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-      Salvo
-    </span>
-  )
-}
 
 function formatCompetencia(mesAno: string): string {
   try {

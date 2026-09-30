@@ -784,6 +784,10 @@ export interface MetasValores {
   tm_consulta: number | null
   numero_procedimentos: number | null
   tm_procedimento: number | null
+  /** Realizado de mídia digitado quando a integração está desconectada (JSON, sem migração). */
+  cliques?: number | null
+  /** Google: conversões · Meta: resultados. Realizado manual quando sem integração. */
+  mensagens?: number | null
 }
 
 export interface MetasPorPlataforma {

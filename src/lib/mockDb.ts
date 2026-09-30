@@ -91,7 +91,7 @@ const clientes: Row[] = [
   { id: c1, nome: 'Dra. Fernanda Reis', nicho: 'Dermatologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'ativo', jornada: 'otimizacao', jornada_social: 'postando', nps: 9, semaforo: 'verde', data_inicio: daysISO(-120), plataformas: 'ambos', verba_mensal: 6000, verba_google: 3500, verba_meta: 2500, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-fernanda', observacoes: 'Atendimento particular, foco em botox e rejuvenescimento.', contrato_tipo: '12_meses', contrato_inicio: daysISO(-245), contrato_fim: daysISO(120), contrato_status: 'ativo', created_at: daysISO(-120) + 'T00:00:00Z', updated_at: daysISO(-2) + 'T00:00:00Z' },
   { id: c2, nome: 'Clínica Olhar Claro', nicho: 'Oftalmologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'atencao', jornada: 'escala', jornada_social: null, nps: 6, semaforo: 'laranja', data_inicio: daysISO(-200), plataformas: 'google_ads', verba_mensal: 4500, verba_google: 4500, verba_meta: 0, fonte_crm: 'kommo', kommo_account_id: 'kommo-1234', link_grupo: 'https://chat.whatsapp.com/demo-olhar', observacoes: 'Foco em catarata e lentes premium.', contrato_tipo: '6_meses', contrato_inicio: daysISO(-178), contrato_fim: daysISO(5), contrato_status: 'ativo', created_at: daysISO(-200) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
   { id: c3, nome: 'Dr. Rafael Azevedo', nicho: 'Ortopedia', squad: 'Delta', tipo: 'consultoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'ativo', jornada: 'onboarding', jornada_social: 'onboarding', nps: 8, semaforo: 'verde', data_inicio: daysISO(-60), plataformas: 'meta_ads', verba_mensal: 3200, verba_google: 0, verba_meta: 3200, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Especialista em joelho e esporte.', contrato_tipo: '3_meses', contrato_inicio: daysISO(-45), contrato_fim: daysISO(45), contrato_status: 'ativo', created_at: daysISO(-60) + 'T00:00:00Z', updated_at: daysISO(-5) + 'T00:00:00Z' },
-  { id: c4, nome: 'Instituto Neuro+', nicho: 'Neurologia', squad: 'Alpha', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'ativo', jornada: 'escala', jornada_social: 'postando', nps: 10, semaforo: 'verde', data_inicio: daysISO(-310), plataformas: 'ambos', verba_mensal: 8500, verba_google: 5000, verba_meta: 3500, fonte_crm: 'kommo', kommo_account_id: 'kommo-5678', link_grupo: 'https://chat.whatsapp.com/demo-neuro', observacoes: 'Cliente-âncora. Envolve 3 neurologistas.', contrato_tipo: 'anual', contrato_inicio: daysISO(-310), contrato_fim: daysISO(55), contrato_status: 'ativo', created_at: daysISO(-310) + 'T00:00:00Z', updated_at: daysISO(-3) + 'T00:00:00Z' },
+  { id: c4, nome: 'Instituto Neuro+', nicho: 'Neurologia', squad: 'Alpha', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'ativo', status_saude_geral: 'critico', jornada: 'escala', jornada_social: 'postando', nps: 10, semaforo: 'verde', data_inicio: daysISO(-310), plataformas: 'ambos', verba_mensal: 8500, verba_google: 5000, verba_meta: 3500, fonte_crm: 'kommo', kommo_account_id: 'kommo-5678', link_grupo: 'https://chat.whatsapp.com/demo-neuro', observacoes: 'Cliente-âncora. Envolve 3 neurologistas.', contrato_tipo: 'anual', contrato_inicio: daysISO(-310), contrato_fim: daysISO(55), contrato_status: 'ativo', created_at: daysISO(-310) + 'T00:00:00Z', updated_at: daysISO(-3) + 'T00:00:00Z' },
   { id: c5, nome: 'Estética Renascer', nicho: 'Cirurgia plástica', squad: 'Beta', tipo: 'assessoria', modulos: ['social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'pausado', jornada: 'onboarding', jornada_social: 'onboarding', nps: null, semaforo: 'amarelo', data_inicio: daysISO(-25), plataformas: null, verba_mensal: null, verba_google: null, verba_meta: null, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Em onboarding — só Social Media.', contrato_tipo: '3_meses', contrato_inicio: daysISO(-68), contrato_fim: daysISO(22), contrato_status: 'pausado', created_at: daysISO(-25) + 'T00:00:00Z', updated_at: daysISO(-10) + 'T00:00:00Z' },
   { id: c6, nome: 'Dr. Daniel Oliveira', nicho: 'Gastroenterologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'atencao', jornada: 'otimizacao', jornada_social: 'postando', nps: 7, semaforo: 'laranja', data_inicio: daysISO(-180), plataformas: 'ambos', verba_mensal: 7500, verba_google: 4500, verba_meta: 3000, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-daniel', observacoes: 'Cirurgião do aparelho digestivo.', contrato_tipo: '6_meses', contrato_inicio: daysISO(-186), contrato_fim: daysISO(-4), contrato_status: 'ativo', created_at: daysISO(-180) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
 ]
@@ -313,7 +313,10 @@ const metas: Row[] = [
   { id: uid(), cliente_id: c1, mes_ano: '2025-11-01', meta_data: { google: { investimento: 1400, custo_mensagem: 9, mensagens_qualificadas: 70, numero_consultas: 30, tm_consulta: 480, numero_procedimentos: 10, tm_procedimento: 100 }, meta: { investimento: 800, custo_mensagem: 11, mensagens_qualificadas: 40, numero_consultas: 13, tm_consulta: 450, numero_procedimentos: 4, tm_procedimento: 180 } }, resultado_data: { google: { investimento: 1352, custo_mensagem: 9, mensagens_qualificadas: 69, numero_consultas: 23, tm_consulta: 510, numero_procedimentos: 5, tm_procedimento: 760 }, meta: { investimento: 780, custo_mensagem: 12, mensagens_qualificadas: 38, numero_consultas: 10, tm_consulta: 470, numero_procedimentos: 2, tm_procedimento: 700 } }, verba_planejada: 1400, meta_leads: 140, meta_cpl: 10, meta_vendas: 10, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c1, mes_ano: '2025-10-01', meta_data: { google: { investimento: 900, custo_mensagem: 11, mensagens_qualificadas: 40, numero_consultas: 20, tm_consulta: 480, numero_procedimentos: 10, tm_procedimento: 300 }, meta: { investimento: 550, custo_mensagem: 13, mensagens_qualificadas: 22, numero_consultas: 9, tm_consulta: 440, numero_procedimentos: 4, tm_procedimento: 320 } }, resultado_data: { google: { investimento: 917, custo_mensagem: 11, mensagens_qualificadas: 38, numero_consultas: 23, tm_consulta: 480, numero_procedimentos: 10, tm_procedimento: 108 }, meta: { investimento: 560, custo_mensagem: 13, mensagens_qualificadas: 20, numero_consultas: 10, tm_consulta: 440, numero_procedimentos: 4, tm_procedimento: 300 } }, verba_planejada: 900, meta_leads: 80, meta_cpl: 11, meta_vendas: 10, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c1, mes_ano: '2025-09-01', meta_data: { google: { investimento: 1100, custo_mensagem: 11, mensagens_qualificadas: 50, numero_consultas: 20, tm_consulta: 500, numero_procedimentos: 13, tm_procedimento: 800 }, meta: { investimento: 700, custo_mensagem: 12, mensagens_qualificadas: 32, numero_consultas: 10, tm_consulta: 460, numero_procedimentos: 5, tm_procedimento: 760 } }, resultado_data: { google: { investimento: 1102, custo_mensagem: 11, mensagens_qualificadas: 48, numero_consultas: 15, tm_consulta: 500, numero_procedimentos: 13, tm_procedimento: 1000 }, meta: { investimento: 720, custo_mensagem: 12, mensagens_qualificadas: 30, numero_consultas: 8, tm_consulta: 460, numero_procedimentos: 4, tm_procedimento: 900 } }, verba_planejada: 1100, meta_leads: 100, meta_cpl: 11, meta_vendas: 13, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), cliente_id: c2, mes_ano: monthFirst(), meta_data: {}, resultado_data: {}, verba_planejada: 4500, meta_leads: 60, meta_cpl: 75, meta_vendas: 12, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
+  // Metas parcialmente preenchidas: só o topo do funil (resto fica "—").
+  { id: uid(), cliente_id: c2, mes_ano: monthFirst(), meta_data: { google: { investimento: 4500, custo_mensagem: 70, mensagens_qualificadas: 45 } }, resultado_data: { google: { mensagens_qualificadas: 21, numero_consultas: 9 } }, verba_planejada: 4500, meta_leads: 60, meta_cpl: 75, meta_vendas: 12, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
+  // Meta Ads desconectado no c6 → Realizado de mídia do Meta digitado à mão.
+  { id: uid(), cliente_id: c6, mes_ano: monthFirst(), meta_data: { google: { investimento: 4500, custo_mensagem: 40, mensagens_qualificadas: 80, numero_consultas: 30, tm_consulta: 450 }, meta: { investimento: 3000, custo_mensagem: 25 } }, resultado_data: { google: { mensagens_qualificadas: 62, numero_consultas: 24, tm_consulta: 430 }, meta: { investimento: 2650, cliques: 1840, mensagens: 96 } }, verba_planejada: 7500, meta_leads: 120, meta_cpl: 60, meta_vendas: 30, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c4, mes_ano: monthFirst(), meta_data: {}, resultado_data: {}, verba_planejada: 8500, meta_leads: 110, meta_cpl: 78, meta_vendas: 30, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c4, mes_ano: prevMonthFirst(), meta_data: {}, resultado_data: {}, verba_planejada: 8000, meta_leads: 100, meta_cpl: 80, meta_vendas: 28, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c3, mes_ano: monthFirst(), meta_data: {}, resultado_data: {}, verba_planejada: 3200, meta_leads: 45, meta_cpl: 72, meta_vendas: 10, observacoes: null, created_at: nowISO(), updated_at: nowISO() },
@@ -1080,7 +1083,49 @@ const PERSISTED_TABLES: Tables[] = [
 // v5 — ids fixos nas LPs + projetos_webdesign_fluxo (esteira de Landing Page).
 // v6 — planejamentos de Social Media aprovados em datas que cobrem os 3 estados de SLA.
 // v7 — ids fixos nos criativos + criativos_webdesign_fluxo (Aprovação do Design).
-const STORAGE_KEY = 'movmed-mockdb-v7'
+// v8 — metas parciais (c2, c6) + saúde crítica no c4 (tela do cliente no Tráfego).
+const STORAGE_KEY = 'movmed-mockdb-v8'
+
+/**
+ * Conexões simuladas das integrações de Ads (localStorage dos adapters) pra a
+ * demo cobrir os estados do pacing: c1 no ritmo, c2 abaixo do ritmo, c4
+ * estourado e c6 com o Meta Ads DESCONECTADO (Realizado digitado à mão).
+ * Roda uma vez por versão; conexões feitas depois pelo usuário ficam.
+ * Só é chamada em modo demo (supabase.ts).
+ */
+const ADS_SEED_KEY = 'ads-demo-seed-v1'
+export function seedAdsConexoesDemo() {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    const ls = window.localStorage
+    if (ls.getItem(ADS_SEED_KEY)) return
+    const agora = nowISO()
+    const conn = (contaId: string, modo: 'direta' | 'agencia') => ({ contaId, modo, conectadoEm: agora, ultimaSincronizacao: agora, tokenStatus: 'valido' })
+    const mesclar = (key: string, seed: Record<string, unknown>, remover: string[] = []) => {
+      const atual = JSON.parse(ls.getItem(key) ?? '{}') as Record<string, unknown>
+      for (const id of remover) delete atual[id]
+      ls.setItem(key, JSON.stringify({ ...atual, ...seed }))
+    }
+    mesclar('gads-conn', {
+      [c1]: conn('123-456-7890', 'agencia'),
+      [c2]: conn('234-567-8901', 'direta'),
+      [c4]: conn('345-678-9012', 'agencia'),
+      [c6]: conn('456-789-0123', 'direta'),
+    })
+    mesclar(
+      'meta-ads-conn',
+      {
+        [c1]: conn('act_1029384756', 'agencia'),
+        [c3]: conn('act_5647382910', 'direta'),
+        [c4]: conn('act_1122334455', 'agencia'),
+      },
+      [c6],
+    )
+    ls.setItem(ADS_SEED_KEY, agora)
+  } catch {
+    /* storage indisponível — a demo segue sem integrações */
+  }
+}
 
 function hydrateFromStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return

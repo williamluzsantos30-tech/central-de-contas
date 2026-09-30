@@ -35,15 +35,20 @@ import {
   formatCurrency,
   formatDate,
   frequenciaLabel,
+  monthKey,
   plataformaLabel,
+  tipoOtimizacaoLabel,
   TIPOS_ATIVO,
 } from '@/lib/utils'
+import { pacingDoCliente } from '@/lib/trafegoCliente'
+import { BudgetPacingBar } from '@/components/trafego/TrafegoUI'
 import type {
   Ativo,
   Cliente,
   ClientePerfilSetup,
   FrequenciaTarefa,
   ItemSocialMedia,
+  MetasValores,
   Otimizacao,
   PlanejamentoSocialMedia,
   TipoAtivo,
@@ -459,7 +464,7 @@ export default function ClienteDetalhe() {
 
       {opTrafegoAtivo && tab === 'visao' && (
         <div className="space-y-4">
-          <FunilClienteCard clienteId={cliente.id} />
+          <FunilClienteCard cliente={cliente} onIrParaMetas={() => setTab('metas')} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card>
               <CardHeader>
@@ -496,7 +501,7 @@ export default function ClienteDetalhe() {
               {otimizacoes.slice(0, 3).map((o) => (
                 <div key={o.id} className="rounded-md border border-border bg-bg-soft p-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <Badge tone="brand">{o.tipo}</Badge>
+                    <Badge tone="brand">{tipoOtimizacaoLabel[o.tipo] ?? o.tipo}</Badge>
                     <span className="text-muted">{formatDate(o.data_otimizacao)}</span>
                   </div>
                   <p className="mt-1 line-clamp-2">{o.descricao}</p>
@@ -663,6 +668,22 @@ function ClienteHeader({
     onChanged()
   }
 
+  // Pacing: investido do mês (integração; sem ela, o Realizado da aba Metas).
+  const [manualMes, setManualMes] = useState<Record<'google' | 'meta', MetasValores> | null>(null)
+  useEffect(() => {
+    supabase
+      .from('metas')
+      .select('resultado_data')
+      .eq('cliente_id', cliente.id)
+      .eq('mes_ano', monthKey())
+      .maybeSingle()
+      .then(({ data }) => {
+        const r = ((data as { resultado_data: Record<string, MetasValores> } | null)?.resultado_data ?? {}) as Record<string, MetasValores>
+        setManualMes({ google: r.google ?? ({} as MetasValores), meta: r.meta ?? ({} as MetasValores) })
+      })
+  }, [cliente.id])
+  const { google: invG, meta: invM, verbaTotal, pacing, origem: origemTxt } = pacingDoCliente(cliente, manualMes)
+
   return (
     <Card className="mb-5">
       <CardBody>
@@ -672,28 +693,29 @@ function ClienteHeader({
           onChanged={onChanged}
           onEdit={onEdit}
           direita={
-            <div className="text-right">
+            <div className="flex flex-col items-end text-right">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
                 Verba Mensal
               </p>
               <p className="mt-0.5 text-3xl font-semibold text-emerald-300">
-                {formatCurrency(
-                  (cliente.verba_google ?? 0) + (cliente.verba_meta ?? 0) || cliente.verba_mensal,
-                )}
+                {formatCurrency(verbaTotal)}
               </p>
               <div className="mt-1 flex items-center justify-end gap-3 text-[11px] text-muted">
                 <InlineVerba
                   label="Google"
                   value={cliente.verba_google}
+                  investido={invG.investimento}
                   onChange={(v) => updateField('verba_google', v)}
                 />
                 <span className="text-zinc-700">·</span>
                 <InlineVerba
                   label="Meta"
                   value={cliente.verba_meta}
+                  investido={invM.investimento}
                   onChange={(v) => updateField('verba_meta', v)}
                 />
               </div>
+              <BudgetPacingBar pacing={pacing} origem={origemTxt} />
             </div>
           }
         />
@@ -731,10 +753,13 @@ function InfoField({ label, value }: { label: string; value: React.ReactNode }) 
 function InlineVerba({
   label,
   value,
+  investido,
   onChange,
 }: {
   label: string
   value: number | null
+  /** Investido no mês nessa plataforma (integração ou manual). */
+  investido?: number | null
   onChange: (v: number | null) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -781,14 +806,22 @@ function InlineVerba({
   return (
     <button
       onClick={() => setEditing(true)}
-      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-bg-elev"
+      className="inline-flex flex-col items-end rounded-md px-1.5 py-0.5 hover:bg-bg-elev"
       title={`Editar verba ${label}`}
     >
-      <span>{label}</span>
-      <span className="font-medium text-emerald-300">
-        {value !== null && value !== undefined ? formatCurrency(value) : '—'}
+      <span className="inline-flex items-center gap-1">
+        <span>{label}</span>
+        <span className="font-medium text-emerald-300">
+          {value !== null && value !== undefined ? formatCurrency(value) : '—'}
+        </span>
+        <Pencil size={9} className="opacity-50" />
       </span>
-      <Pencil size={9} className="opacity-50" />
+      {investido != null && (
+        <span className="text-[10px] text-muted">
+          investido {formatCurrency(investido)}
+          {value ? ` · ${Math.round((investido / value) * 100)}%` : ''}
+        </span>
+      )}
     </button>
   )
 }
