@@ -33,6 +33,8 @@ import {
   tipoClienteLabel,
 } from '@/lib/utils'
 import { getTarefasDoDia, contarAtrasadasPorCliente } from '@/lib/tarefasDoDia'
+import { addDias, hojeISO, segundaDaSemana, type RegistroOcorrencia } from '@/lib/ocorrencias'
+import { carregarRegistros, desdeFallback } from '@/lib/ocorrenciasStore'
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Cliente, MetasValores, Profile, Tarefa } from '@/types/database'
@@ -50,9 +52,10 @@ export default function ClientesTrafego() {
   const { profile } = useAuth()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [gestores, setGestores] = useState<Profile[]>([])
-  // Tarefas não concluídas com prazo <= hoje — fonte única do KPI "Tarefas
-  // atrasadas", do painel "Tarefas do dia" e do indicador da tabela.
+  // Tarefas ativas + ocorrências gravadas — fonte única do KPI "Tarefas
+  // atrasadas", do painel "Tarefas do dia" e dos indicadores da tabela.
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
+  const [registros, setRegistros] = useState<Map<string, RegistroOcorrencia[]>>(new Map())
   const { nomes: squadsAtivos } = useSquads()
   const [q, setQ] = useState('')
   const [fSquad, setFSquad] = useState('')
@@ -83,8 +86,10 @@ export default function ClientesTrafego() {
    */
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    const today = new Date().toISOString().slice(0, 10)
-    const [cRes, gRes, tRes, mRes] = await Promise.all([
+    const hoje = hojeISO()
+    // Janela das ocorrências: perdidas dos últimos 7 dias + semana e mês em aberto.
+    const desde = [addDias(hoje, -8), segundaDaSemana(hoje), `${hoje.slice(0, 7)}-01`].sort()[0]
+    const [cRes, gRes, tRes, mRes, regs] = await Promise.all([
       supabase
         .from('clientes')
         .select(
@@ -99,14 +104,15 @@ export default function ClientesTrafego() {
       buscarProfilesComPapel((sel) =>
         supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome'),
       ),
-      // Tarefas não concluídas com prazo <= hoje (atrasadas + de hoje).
+      // Tarefas ativas (recorrentes = modelo; esporádicas em aberto).
       supabase
         .from('tarefas')
-        .select('*, cliente:clientes(*)')
-        .lte('data_vencimento', today)
-        .neq('status', 'concluida'),
+        .select('*, cliente:clientes(*), template:task_templates(*)')
+        .in('status', ['pendente', 'em_andamento']),
       supabase.from('metas').select('cliente_id, resultado_data').eq('mes_ano', monthKey()),
+      carregarRegistros({ desde }),
     ])
+    setRegistros(regs)
     const realizado = new Map<string, RealizadoMes>()
     for (const m of (mRes.data as { cliente_id: string; resultado_data: RealizadoMes | null }[] | null) ?? []) {
       if (m.resultado_data) realizado.set(m.cliente_id, m.resultado_data)
@@ -148,10 +154,11 @@ export default function ClientesTrafego() {
 
   // Fonte única: KPI "Tarefas atrasadas", painel "Tarefas do dia" e o
   // indicador da tabela saem TODOS daqui — escopados aos clientes filtrados.
-  const tarefasDoDia = useMemo(() => {
-    const hojeISO = new Date().toISOString().slice(0, 10)
-    return getTarefasDoDia(tarefas, filtered, hojeISO)
-  }, [tarefas, filtered])
+  const hoje = hojeISO()
+  const tarefasDoDia = useMemo(
+    () => getTarefasDoDia(tarefas, registros, filtered, hoje, desdeFallback()),
+    [tarefas, registros, filtered, hoje],
+  )
   const atrasadasPorCliente = useMemo(
     () => contarAtrasadasPorCliente(tarefasDoDia.atrasadas),
     [tarefasDoDia],
@@ -166,7 +173,12 @@ export default function ClientesTrafego() {
 
       {/* Resumo operacional (KPIs verba/tarefas/ativos + painel "Tarefas do dia").
           KPI e painel consomem a mesma fonte (tarefasDoDia). */}
-      <ResumoClientesKpi clientes={filtered} tarefasDoDia={tarefasDoDia} />
+      <ResumoClientesKpi
+        clientes={filtered}
+        tarefasDoDia={tarefasDoDia}
+        hoje={hoje}
+        onTarefasChanged={() => load(true)}
+      />
 
       <Card className="mb-4">
         <CardBody className="flex flex-wrap items-center gap-2">
@@ -281,6 +293,7 @@ export default function ClientesTrafego() {
                 ) : (
                   filtered.map((c) => {
                     const nAtrasadas = atrasadasPorCliente.get(c.id) ?? 0
+                    const nPerdidas = tarefasDoDia.perdidasPorCliente.get(c.id) ?? 0
                     const { pacing, verbaTotal } = pacingDoCliente(c, realizadoMes.get(c.id))
                     const saude = saudeDaConta(c)
                     const contrato = contratoDoCliente(c)
@@ -303,6 +316,14 @@ export default function ClientesTrafego() {
                               <AlertTriangle size={10} className="mr-0.5" />
                               {nAtrasadas} atrasada{nAtrasadas > 1 ? 's' : ''}
                             </Badge>
+                          )}
+                          {nPerdidas > 0 && (
+                            <span
+                              className="inline-flex shrink-0 items-center gap-0.5 rounded border border-orange-500/50 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300"
+                              title={`${nPerdidas} ocorrência(s) de tarefas recorrentes não feitas nos últimos 7 dias`}
+                            >
+                              ⚠ {nPerdidas} perdida{nPerdidas > 1 ? 's' : ''}
+                            </span>
                           )}
                           {c.tipo && (
                             <Badge tone="neutral" className="shrink-0">

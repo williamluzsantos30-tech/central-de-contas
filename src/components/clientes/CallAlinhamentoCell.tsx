@@ -136,8 +136,13 @@ export function CallAlinhamentoCell({
   }, [open])
 
   const dias = diasUntil(proxima)
+  // Sem agenda e a última call foi há mais de 30 dias → alerta laranja.
+  const diasSemCall = !proxima && ultima ? -(diasUntil(ultima) ?? 0) : null
+  const semCallHaMuito = diasSemCall !== null && diasSemCall > 30
   const cor =
-    proxima === null
+    semCallHaMuito
+      ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+      : proxima === null
       ? 'border-dashed border-border bg-bg-soft text-muted'
       : dias === null
         ? 'border-border bg-bg-soft text-zinc-300'
@@ -229,7 +234,9 @@ export function CallAlinhamentoCell({
             ? ultima
               ? `Última call: ${formatBR(ultima)}`
               : 'Sem registro de última call ainda'
-            : 'Sem call agendada'
+            : ultima
+              ? `Sem call agendada · última em ${formatBR(ultima)}`
+              : 'Sem call agendada'
         }
       >
         <CalendarClock size={11} />
@@ -240,6 +247,8 @@ export function CallAlinhamentoCell({
               <span className="opacity-80">· {labelRelativo(dias)}</span>
             )}
           </>
+        ) : semCallHaMuito ? (
+          <span className="font-medium">Sem call há {diasSemCall}d</span>
         ) : (
           <span className="italic">sem agenda</span>
         )}

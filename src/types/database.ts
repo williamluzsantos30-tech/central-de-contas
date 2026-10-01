@@ -655,6 +655,10 @@ export interface Tarefa {
   responsavel_id: string | null
   data_vencimento: string | null
   data_conclusao: string | null
+  /** Semanal: dia da semana (1–5); mensal: dia do mês. Null = do template / do vencimento (migration 098). */
+  dia_referencia?: number | null
+  /** Início da contagem de ocorrências — antes disso nada é "perdida" (migration 098). */
+  ocorrencias_desde?: string | null
   created_at: string
   updated_at: string
   cliente?: Cliente | null

@@ -1,77 +1,48 @@
 /**
- * Fonte ÚNICA de verdade das "tarefas do dia" da operação de Tráfego.
+ * Fonte ÚNICA das "tarefas do dia" da operação de Tráfego: o KPI "Tarefas
+ * atrasadas", o painel "Tarefas do dia" e os indicadores da tabela de
+ * clientes saem todos daqui.
  *
- * Antes, o KPI "Tarefas atrasadas" e o painel "Minhas tarefas de hoje" usavam
- * queries/regras diferentes (KPI = vencidas de qualquer responsável; painel =
- * só as MINHAS com vencimento HOJE), o que gerava a contradição de "KPI 4 +
- * painel vazio". Agora os dois consomem exatamente esta função.
- *
- * Regra (mesma do KPI original): clientes ativos (não arquivados), fora de
- * onboarding e não-churn; tarefa não concluída com prazo <= hoje. Atrasada =
- * prazo < hoje; de hoje = prazo === hoje.
+ * Regra por ocorrência (ver lib/ocorrencias.ts):
+ *   - Para hoje: ocorrência prevista pra hoje, ainda pendente;
+ *   - Atrasadas: esporádicas vencidas + semanais/mensais com a data passada
+ *     e o período ainda aberto;
+ *   - Diária não feita no dia vira "perdida" (não entra em atrasadas) e
+ *     aparece como "⚠ N perdidas" no cliente (últimos 7 dias).
+ * Base: clientes ativos (não arquivados), sem churn e fora de onboarding.
  */
+import { resumirDoDia, type ItemDoDia, type RegistroOcorrencia, type ResumoDoDia } from '@/lib/ocorrencias'
 import type { Cliente, Tarefa } from '@/types/database'
 
-export interface TarefasDoDia {
-  /** Prazo vencido (< hoje) e não concluída. Mais antiga primeiro. */
-  atrasadas: Tarefa[]
-  /** Prazo é exatamente hoje e não concluída. */
-  hoje: Tarefa[]
-}
+export type TarefasDoDia = ResumoDoDia
 
 /** Base do KPI: clientes ativos, sem churn e FORA de onboarding. */
 function baseDaOperacao(clientes: Cliente[]): (clienteId: string) => boolean {
   const baseAtiva = clientes.filter((c) => !c.arquivado_em && c.status !== 'churn')
   const baseIds = new Set(baseAtiva.map((c) => c.id))
-  const onboardingIds = new Set(
-    baseAtiva.filter((c) => c.jornada === 'onboarding').map((c) => c.id),
-  )
+  const onboardingIds = new Set(baseAtiva.filter((c) => c.jornada === 'onboarding').map((c) => c.id))
   return (clienteId) => baseIds.has(clienteId) && !onboardingIds.has(clienteId)
 }
 
 export function getTarefasDoDia(
   tarefas: Tarefa[],
+  registros: Map<string, RegistroOcorrencia[]>,
   clientes: Cliente[],
   hojeISO: string,
+  fallbackDesde?: string,
 ): TarefasDoDia {
-  // Mesma base do KPI: clientes ativos, sem churn, e onboarding é excluído.
   const naBase = baseDaOperacao(clientes)
-
-  const atrasadas: Tarefa[] = []
-  const hoje: Tarefa[] = []
-  for (const t of tarefas) {
-    if (t.status === 'concluida') continue
-    if (!t.data_vencimento) continue
-    if (!naBase(t.cliente_id)) continue
-    const venc = t.data_vencimento.slice(0, 10)
-    if (venc < hojeISO) atrasadas.push(t)
-    else if (venc === hojeISO) hoje.push(t)
-  }
-
-  // Atrasadas: mais antiga primeiro (prioridade visual no topo).
-  atrasadas.sort((a, b) =>
-    (a.data_vencimento ?? '') < (b.data_vencimento ?? '')
-      ? -1
-      : (a.data_vencimento ?? '') > (b.data_vencimento ?? '')
-        ? 1
-        : 0,
+  return resumirDoDia(
+    tarefas.filter((t) => naBase(t.cliente_id)),
+    registros,
+    hojeISO,
+    fallbackDesde,
   )
-  return { atrasadas, hoje }
 }
 
 /** Nº de tarefas atrasadas por cliente — pro indicador da tabela de clientes. */
-export function contarAtrasadasPorCliente(atrasadas: Tarefa[]): Map<string, number> {
+export function contarAtrasadasPorCliente(atrasadas: ItemDoDia[]): Map<string, number> {
   const m = new Map<string, number>()
-  for (const t of atrasadas) m.set(t.cliente_id, (m.get(t.cliente_id) ?? 0) + 1)
+  for (const i of atrasadas) m.set(i.tarefa.cliente_id, (m.get(i.tarefa.cliente_id) ?? 0) + 1)
   return m
-}
-
-/** Rótulo "Vencida há N dia(s)" (hoje local) pra um prazo ISO 'YYYY-MM-DD'. */
-export function vencidaHaLabel(dateISO: string, agora: Date = new Date()): string {
-  const alvo = new Date(dateISO.slice(0, 10) + 'T00:00:00')
-  const hoje = new Date(agora)
-  hoje.setHours(0, 0, 0, 0)
-  const dias = Math.round((hoje.getTime() - alvo.getTime()) / 86400000)
-  if (dias <= 0) return 'Vence hoje'
-  return `Vencida há ${dias} ${dias === 1 ? 'dia' : 'dias'}`
 }

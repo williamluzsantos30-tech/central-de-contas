@@ -2,6 +2,16 @@
 // Mock in-memory database + Supabase-like client.
 // Usado quando VITE_SUPABASE_URL/ANON_KEY não estão definidos — permite rodar
 // o app inteiro com dados fictícios realistas.
+import {
+  addDias,
+  generateOccurrences,
+  hojeISO,
+  modeloDaTarefa,
+  ocorrenciaAtual,
+  proximaDataPrevista,
+  type RegistroOcorrencia,
+} from './ocorrencias'
+import type { Tarefa } from '@/types/database'
 
 type Row = Record<string, any>
 type Tables =
@@ -10,6 +20,7 @@ type Tables =
   | 'clientes'
   | 'task_templates'
   | 'tarefas'
+  | 'tarefa_ocorrencias'
   | 'tarefa_comentarios'
   | 'ativos'
   | 'logins_acessos'
@@ -83,13 +94,13 @@ const task_templates: Row[] = [
   { id: 'tpl-3', nome: 'Envio de relatório manual no grupo', descricao: 'Relatório semanal consolidado', frequencia: 'semanal', prioridade: 'alta', dias_semana: [5], dia_mes: null, ativo: true, created_at: nowISO() },
   { id: 'tpl-4', nome: 'Coleta de feedback com cliente/secretária', descricao: 'Alinhar agenda e pendências', frequencia: 'semanal', prioridade: 'media', dias_semana: [3], dia_mes: null, ativo: true, created_at: nowISO() },
   { id: 'tpl-5', nome: 'Revisão/atualização do Google Meu Negócio', descricao: 'Fotos, posts, horários', frequencia: 'mensal', prioridade: 'media', dias_semana: [], dia_mes: 10, ativo: true, created_at: nowISO() },
-  { id: 'tpl-6', nome: 'Revisão de públicos Meta Ads', descricao: 'Validar públicos customizados', frequencia: 'mensal', prioridade: 'media', dias_semana: [], dia_mes: 15, ativo: true, created_at: nowISO() },
+  { id: 'tpl-6', nome: 'Revisão de públicos Meta Ads', descricao: 'Validar públicos customizados', frequencia: 'mensal', prioridade: 'baixa', dias_semana: [], dia_mes: 16, ativo: true, created_at: nowISO() },
   { id: 'tpl-7', nome: 'Coleta de 12 criativos de tráfego', descricao: 'Banco mensal de referências', frequencia: 'mensal', prioridade: 'media', dias_semana: [], dia_mes: 20, ativo: true, created_at: nowISO() },
 ]
 
 const clientes: Row[] = [
   { id: c1, nome: 'Dra. Fernanda Reis', nicho: 'Dermatologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAdmin, social_media_id: pAmanda, status: 'ativo', jornada: 'otimizacao', jornada_social: 'postando', nps: 9, semaforo: 'verde', data_inicio: daysISO(-120), plataformas: 'ambos', verba_mensal: 6000, verba_google: 3500, verba_meta: 2500, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: 'https://chat.whatsapp.com/demo-fernanda', observacoes: 'Atendimento particular, foco em botox e rejuvenescimento.', contrato_tipo: '12_meses', contrato_inicio: daysISO(-245), contrato_fim: daysISO(120), contrato_status: 'ativo', created_at: daysISO(-120) + 'T00:00:00Z', updated_at: daysISO(-2) + 'T00:00:00Z' },
-  { id: c2, nome: 'Clínica Olhar Claro', nicho: 'Oftalmologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'atencao', jornada: 'escala', jornada_social: null, nps: 6, semaforo: 'laranja', data_inicio: daysISO(-200), plataformas: 'google_ads', verba_mensal: 4500, verba_google: 4500, verba_meta: 0, fonte_crm: 'kommo', kommo_account_id: 'kommo-1234', link_grupo: 'https://chat.whatsapp.com/demo-olhar', observacoes: 'Foco em catarata e lentes premium.', contrato_tipo: '6_meses', contrato_inicio: daysISO(-178), contrato_fim: daysISO(5), contrato_status: 'ativo', created_at: daysISO(-200) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
+  { id: c2, nome: 'Clínica Olhar Claro', nicho: 'Oftalmologia', squad: 'BlackOps', tipo: 'assessoria', modulos: ['trafego'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'atencao', ultima_call_alinhamento: daysISO(-45), proxima_call_alinhamento: null, jornada: 'escala', jornada_social: null, nps: 6, semaforo: 'laranja', data_inicio: daysISO(-200), plataformas: 'google_ads', verba_mensal: 4500, verba_google: 4500, verba_meta: 0, fonte_crm: 'kommo', kommo_account_id: 'kommo-1234', link_grupo: 'https://chat.whatsapp.com/demo-olhar', observacoes: 'Foco em catarata e lentes premium.', contrato_tipo: '6_meses', contrato_inicio: daysISO(-178), contrato_fim: daysISO(5), contrato_status: 'ativo', created_at: daysISO(-200) + 'T00:00:00Z', updated_at: daysISO(-1) + 'T00:00:00Z' },
   { id: c3, nome: 'Dr. Rafael Azevedo', nicho: 'Ortopedia', squad: 'Delta', tipo: 'consultoria', modulos: ['trafego', 'social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'ativo', jornada: 'onboarding', jornada_social: 'onboarding', nps: 8, semaforo: 'verde', data_inicio: daysISO(-60), plataformas: 'meta_ads', verba_mensal: 3200, verba_google: 0, verba_meta: 3200, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Especialista em joelho e esporte.', contrato_tipo: '3_meses', contrato_inicio: daysISO(-45), contrato_fim: daysISO(45), contrato_status: 'ativo', created_at: daysISO(-60) + 'T00:00:00Z', updated_at: daysISO(-5) + 'T00:00:00Z' },
   { id: c4, nome: 'Instituto Neuro+', nicho: 'Neurologia', squad: 'Alpha', tipo: 'assessoria', modulos: ['trafego', 'social_media'], gestor_id: pBruno, account_manager_id: pAdmin, social_media_id: pBruno, status: 'ativo', status_saude_geral: 'critico', jornada: 'escala', jornada_social: 'postando', nps: 10, semaforo: 'verde', data_inicio: daysISO(-310), plataformas: 'ambos', verba_mensal: 8500, verba_google: 5000, verba_meta: 3500, fonte_crm: 'kommo', kommo_account_id: 'kommo-5678', link_grupo: 'https://chat.whatsapp.com/demo-neuro', observacoes: 'Cliente-âncora. Envolve 3 neurologistas.', contrato_tipo: 'anual', contrato_inicio: daysISO(-310), contrato_fim: daysISO(55), contrato_status: 'ativo', created_at: daysISO(-310) + 'T00:00:00Z', updated_at: daysISO(-3) + 'T00:00:00Z' },
   { id: c5, nome: 'Estética Renascer', nicho: 'Cirurgia plástica', squad: 'Beta', tipo: 'assessoria', modulos: ['social_media'], gestor_id: pAmanda, account_manager_id: pAmanda, social_media_id: pAmanda, status: 'pausado', jornada: 'onboarding', jornada_social: 'onboarding', nps: null, semaforo: 'amarelo', data_inicio: daysISO(-25), plataformas: null, verba_mensal: null, verba_google: null, verba_meta: null, fonte_crm: 'nativo', kommo_account_id: null, link_grupo: null, observacoes: 'Em onboarding — só Social Media.', contrato_tipo: '3_meses', contrato_inicio: daysISO(-68), contrato_fim: daysISO(22), contrato_status: 'pausado', created_at: daysISO(-25) + 'T00:00:00Z', updated_at: daysISO(-10) + 'T00:00:00Z' },
@@ -97,37 +108,93 @@ const clientes: Row[] = [
 ]
 
 const tarefas: Row[] = []
-// gerar 1 diária, 2 semanais, 2 mensais por cliente (mix de status e vencimentos)
-const porCliente: [string, string, string[]][] = [
-  [c1, pAmanda, ['pendente', 'concluida', 'pendente', 'em_andamento', 'concluida']],
-  [c2, pBruno, ['pendente', 'pendente', 'concluida', 'pendente', 'pendente']],
-  [c3, pAmanda, ['concluida', 'pendente', 'pendente', 'em_andamento', 'pendente']],
-  [c4, pBruno, ['pendente', 'concluida', 'concluida', 'pendente', 'em_andamento']],
-  [c5, pAmanda, ['pendente', 'pendente', 'pendente', 'pendente', 'pendente']],
-]
-const tplsAplicar = [task_templates[0], task_templates[1], task_templates[3], task_templates[4], task_templates[6]]
-const vencimentos = [0, 2, -1, 14, 22] // diária hoje, semanal +2, semanal atrasada, mensal +14, mensal +22
+const tarefa_ocorrencias: Row[] = []
 
-for (const [cid, resp, statuses] of porCliente) {
-  tplsAplicar.forEach((t, i) => {
-    const st = statuses[i]
-    const due = daysISO(vencimentos[i])
-    tarefas.push({
+/**
+ * Tarefas recorrentes da demo = MODELO + ocorrências feitas, tudo relativo a
+ * hoje. Cobre: diária com várias perdidas (c1), semanal em dia (c1), mensal
+ * já feita com a próxima no mês que vem (c1, dia 16), mensal com a data
+ * passada e o mês aberto (atrasada), tarefa sem responsável (c2).
+ * `feita(i, n, atual)` = i-ésima ocorrência de n; `atual` = a do período corrente.
+ */
+type RegraDemo = (i: number, n: number, atual: boolean) => boolean
+const sempre: RegraDemo = () => true
+const passadas: RegraDemo = (_i, _n, atual) => !atual
+const recorrentesDemo: { cid: string; resp: string | null; tpl: string; desde: number; feita: RegraDemo; obs?: string }[] = [
+  // c1 — Dra. Fernanda
+  { cid: c1, resp: pAmanda, tpl: 'tpl-1', desde: -26, feita: (i, _n, atual) => !atual && i % 3 === 0, obs: 'Cliente sem acesso ao gerenciador — conta de anúncios em análise pela Meta.' },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-2', desde: -40, feita: sempre },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-3', desde: -40, feita: passadas },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-4', desde: -40, feita: (i, n, atual) => !atual && i !== n - 3 },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-5', desde: -100, feita: passadas },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-6', desde: -100, feita: sempre },
+  { cid: c1, resp: pAmanda, tpl: 'tpl-7', desde: -100, feita: (_i, _n, atual) => atual },
+  // c2 — Olhar Claro (mensal sem responsável)
+  { cid: c2, resp: pBruno, tpl: 'tpl-1', desde: -20, feita: (i, n, atual) => !atual && i !== n - 3 && i !== n - 5 },
+  { cid: c2, resp: pBruno, tpl: 'tpl-2', desde: -30, feita: passadas },
+  { cid: c2, resp: null, tpl: 'tpl-5', desde: -70, feita: passadas },
+  // c3 — Dr. Rafael (onboarding: fora do painel)
+  { cid: c3, resp: pAmanda, tpl: 'tpl-1', desde: -6, feita: sempre },
+  // c4 — Neuro+
+  { cid: c4, resp: pBruno, tpl: 'tpl-1', desde: -20, feita: passadas },
+  { cid: c4, resp: pBruno, tpl: 'tpl-4', desde: -30, feita: sempre },
+  { cid: c4, resp: pBruno, tpl: 'tpl-7', desde: -70, feita: passadas },
+  // c6 — Dr. Daniel
+  { cid: c6, resp: pAmanda, tpl: 'tpl-1', desde: -20, feita: (i, n, atual) => !atual && i < n - 4 },
+  { cid: c6, resp: pAmanda, tpl: 'tpl-3', desde: -30, feita: passadas },
+]
+
+{
+  const hoje = hojeISO()
+  for (const r of recorrentesDemo) {
+    const t = task_templates.find((x) => x.id === r.tpl)!
+    const desde = addDias(hoje, r.desde)
+    const row: Row = {
       id: uid(),
-      cliente_id: cid,
+      cliente_id: r.cid,
       template_id: t.id,
       nome: t.nome,
       descricao: t.descricao,
       frequencia: t.frequencia,
       prioridade: t.prioridade,
-      status: st,
-      responsavel_id: resp,
-      data_vencimento: due,
-      data_conclusao: st === 'concluida' ? daysISO(-1) + 'T10:00:00Z' : null,
-      created_at: nowISO(),
+      status: 'pendente',
+      responsavel_id: r.resp,
+      data_vencimento: null,
+      data_conclusao: null,
+      dia_referencia: null,
+      ocorrencias_desde: desde,
+      created_at: `${desde}T09:00:00`,
       updated_at: nowISO(),
+    }
+    const modelo = modeloDaTarefa({ ...row, template: t } as unknown as Tarefa)
+    const atual = ocorrenciaAtual(modelo, [], hoje)
+    const ocs = generateOccurrences(modelo, { inicio: desde, fim: atual?.dataPrevista ?? hoje })
+    let ultimaPerdida: string | null = null
+    ocs.forEach((oc, i) => {
+      const ehAtual = oc.dataPrevista === atual?.dataPrevista
+      if (r.feita(i, ocs.length, ehAtual)) {
+        tarefa_ocorrencias.push({
+          id: uid(),
+          tarefa_id: row.id,
+          data_prevista: oc.dataPrevista,
+          status: 'feita',
+          concluida_em: `${oc.dataPrevista}T${String(14 + (i % 5)).padStart(2, '0')}:${String((i * 17) % 60).padStart(2, '0')}:00`,
+          concluida_por: r.resp ?? pAdmin,
+          observacao: null,
+          created_at: nowISO(),
+          updated_at: nowISO(),
+        })
+        if (!ehAtual) row.data_conclusao = `${oc.dataPrevista}T18:00:00`
+      } else if (!ehAtual) ultimaPerdida = oc.dataPrevista
     })
-  })
+    if (r.obs && ultimaPerdida) {
+      tarefa_ocorrencias.push({ id: uid(), tarefa_id: row.id, data_prevista: ultimaPerdida, status: 'pendente', concluida_em: null, concluida_por: null, observacao: r.obs, created_at: nowISO(), updated_at: nowISO() })
+    }
+    // Vencimento legado = próxima ocorrência em aberto.
+    const regs = tarefa_ocorrencias.filter((o) => o.tarefa_id === row.id) as RegistroOcorrencia[]
+    row.data_vencimento = proximaDataPrevista(modelo, regs, hoje)
+    tarefas.push(row)
+  }
 }
 
 // Algumas esporádicas
@@ -140,7 +207,7 @@ tarefas.push(
 tarefas.push(
   { id: uid(), cliente_id: c1, template_id: null, nome: 'Revisar estratégia trimestral com gestor', descricao: 'Sync de metas Q2', frequencia: 'esporadica', prioridade: 'alta', status: 'pendente', responsavel_id: pAdmin, data_vencimento: today(), data_conclusao: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c4, template_id: null, nome: 'Aprovar orçamento de R$ 2k para teste de criativo', descricao: null, frequencia: 'esporadica', prioridade: 'alta', status: 'pendente', responsavel_id: pAdmin, data_vencimento: today(), data_conclusao: null, created_at: nowISO(), updated_at: nowISO() },
-  { id: uid(), cliente_id: c2, template_id: null, nome: 'Ligar para o médico sobre churn risk', descricao: 'Cliente reclamou da performance', frequencia: 'esporadica', prioridade: 'alta', status: 'pendente', responsavel_id: pAdmin, data_vencimento: daysISO(-1), data_conclusao: null, created_at: nowISO(), updated_at: nowISO() },
+  { id: uid(), cliente_id: c2, template_id: null, nome: 'Ligar para o médico sobre churn risk', descricao: 'Cliente reclamou da performance', frequencia: 'esporadica', prioridade: 'alta', status: 'pendente', responsavel_id: pAdmin, data_vencimento: daysISO(-4), data_conclusao: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c3, template_id: null, nome: 'Definir aumento de verba para próximo mês', descricao: null, frequencia: 'esporadica', prioridade: 'media', status: 'pendente', responsavel_id: pAdmin, data_vencimento: daysISO(3), data_conclusao: null, created_at: nowISO(), updated_at: nowISO() },
   { id: uid(), cliente_id: c1, template_id: null, nome: 'Review do portfólio de clientes dermato', descricao: null, frequencia: 'esporadica', prioridade: 'media', status: 'concluida', responsavel_id: pAdmin, data_vencimento: daysISO(-2), data_conclusao: daysISO(-2) + 'T14:00:00Z', created_at: nowISO(), updated_at: nowISO() },
 )
@@ -1036,6 +1103,7 @@ const db: Record<Tables, Row[]> = {
   task_templates,
   clientes,
   tarefas,
+  tarefa_ocorrencias,
   tarefa_comentarios,
   ativos,
   logins_acessos,
@@ -1084,7 +1152,8 @@ const PERSISTED_TABLES: Tables[] = [
 // v6 — planejamentos de Social Media aprovados em datas que cobrem os 3 estados de SLA.
 // v7 — ids fixos nos criativos + criativos_webdesign_fluxo (Aprovação do Design).
 // v8 — metas parciais (c2, c6) + saúde crítica no c4 (tela do cliente no Tráfego).
-const STORAGE_KEY = 'movmed-mockdb-v8'
+// v9 — última call de alinhamento antiga no c2 ("Sem call há Nd").
+const STORAGE_KEY = 'movmed-mockdb-v9'
 
 /**
  * Conexões simuladas das integrações de Ads (localStorage dos adapters) pra a
@@ -1222,6 +1291,7 @@ class Q {
   _filters: Array<(r: Row) => boolean> = []
   _orders: { field: string; asc: boolean }[] = []
   _limit: number | null = null
+  _offset = 0
   _mode: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select'
   _payload: any = null
   _onConflict: string[] = []
@@ -1306,6 +1376,8 @@ class Q {
     return this
   }
   limit(n: number) { this._limit = n; return this }
+  /** Paginação do PostgREST: linhas `from` a `to` (inclusive). */
+  range(from: number, to: number) { this._offset = from; this._limit = to - from + 1; return this }
 
   single() { return this._run().then((r) => ({ data: (r.data as Row[])?.[0] ?? null, error: null })) }
   maybeSingle() { return this.single() }
@@ -1386,7 +1458,7 @@ class Q {
           return 0
         })
       }
-      if (this._limit) filtered = filtered.slice(0, this._limit)
+      if (this._offset || this._limit) filtered = filtered.slice(this._offset, this._limit ? this._offset + this._limit : undefined)
       const count = filtered.length
       if (this._head) return resolve({ data: null, error: null, count })
       const joins = parseJoins(this._select)

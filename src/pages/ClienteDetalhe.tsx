@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, Pencil, Plus, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Pencil, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClienteForm } from '@/components/clientes/ClienteForm'
-import { TarefaItem } from '@/components/tarefas/TarefaItem'
-import { TarefaDrawer } from '@/components/tarefas/TarefaDrawer'
-import { NovaTarefaModal } from '@/components/tarefas/NovaTarefaModal'
+import { TarefasClientePanel } from '@/components/tarefas/TarefasClientePanel'
 import { AtivoCard } from '@/components/ativos/AtivoCard'
 import { LoginsAcessosPanel } from '@/components/ativos/LoginsAcessosPanel'
 import { OtimizacaoTimeline } from '@/components/otimizacoes/OtimizacaoTimeline'
@@ -34,19 +32,19 @@ import {
   cn,
   formatCurrency,
   formatDate,
-  frequenciaLabel,
   monthKey,
   plataformaLabel,
   tipoOtimizacaoLabel,
   TIPOS_ATIVO,
 } from '@/lib/utils'
 import { pacingDoCliente } from '@/lib/trafegoCliente'
+import { addDias, hojeISO, resumirDoDia, type RegistroOcorrencia } from '@/lib/ocorrencias'
+import { carregarRegistros, desdeFallback } from '@/lib/ocorrenciasStore'
 import { BudgetPacingBar } from '@/components/trafego/TrafegoUI'
 import type {
   Ativo,
   Cliente,
   ClientePerfilSetup,
-  FrequenciaTarefa,
   ItemSocialMedia,
   MetasValores,
   Otimizacao,
@@ -61,29 +59,6 @@ type SocialTab = 'painel' | 'setup' | 'planejamento' | 'calendario' | 'metricas'
 // (Tráfego OU Social), como era nas páginas separadas. Qual operacional
 // aparece é resolvido por serviço do cliente ∩ setor do usuário.
 type TopView = 'ficha' | 'operacional'
-
-const freqStyle: Record<FrequenciaTarefa, { title: string; dot: string; borderLeft: string }> = {
-  diaria: {
-    title: 'text-red-300',
-    dot: 'bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.6)]',
-    borderLeft: 'border-l-red-400/60',
-  },
-  semanal: {
-    title: 'text-orange-300',
-    dot: 'bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.6)]',
-    borderLeft: 'border-l-orange-400/60',
-  },
-  mensal: {
-    title: 'text-pink-300',
-    dot: 'bg-pink-400 shadow-[0_0_6px_rgba(244,114,182,0.6)]',
-    borderLeft: 'border-l-pink-400/60',
-  },
-  esporadica: {
-    title: 'text-zinc-300',
-    dot: 'bg-zinc-500',
-    borderLeft: 'border-l-zinc-600/60',
-  },
-}
 
 export default function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>()
@@ -116,11 +91,10 @@ export default function ClienteDetalhe() {
     abaParam === 'operacional-social' || abaParam === 'operacional-trafego' ? 'operacional' : 'ficha',
   )
   const [editOpen, setEditOpen] = useState(false)
-  const [novaFreq, setNovaFreq] = useState<FrequenciaTarefa | null>(null)
-  const [drawerTarefa, setDrawerTarefa] = useState<Tarefa | null>(null)
   const [novaOtimOpen, setNovaOtimOpen] = useState(false)
   const [filtroPlatform, setFiltroPlatform] = useState('')
-  const [restaurandoTarefas, setRestaurandoTarefas] = useState(false)
+  // Ocorrências gravadas das tarefas (feita/observação) — janela da trilha.
+  const [registrosTarefas, setRegistrosTarefas] = useState<Map<string, RegistroOcorrencia[]>>(new Map())
 
   // Dados específicos de Social Media
   const [perfilSetup, setPerfilSetup] = useState<ClientePerfilSetup | null>(null)
@@ -153,8 +127,12 @@ export default function ClienteDetalhe() {
       supabase.from('producoes_social_media').select('*').eq('cliente_id', id),
     ])
     const cli = cRes.data as Cliente
+    const listaTarefas = (tRes.data as Tarefa[]) ?? []
+    // Registros antes das tarefas: a lista já nasce com a trilha certa.
+    // 130 dias cobre a trilha da mensal (3 meses + o atual).
+    setRegistrosTarefas(await carregarRegistros({ tarefaIds: listaTarefas.map((t) => t.id), desde: addDias(hojeISO(), -130) }))
     setCliente(cli)
-    setTarefas((tRes.data as Tarefa[]) ?? [])
+    setTarefas(listaTarefas)
     setAtivos((aRes.data as Ativo[]) ?? [])
     setOtimizacoes((oRes.data as Otimizacao[]) ?? [])
     const map = new Map<string, number>()
@@ -186,45 +164,12 @@ export default function ClienteDetalhe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  async function restaurarTarefasPadrao() {
-    if (!id) return
-    if (
-      !confirm(
-        'Restaurar tarefas padrão: vai criar as tarefas dos templates ativos que estão faltando pra esse cliente. Não duplica tarefas em aberto. Continuar?',
-      )
-    )
-      return
-    setRestaurandoTarefas(true)
-    const { data, error } = await supabase.rpc('sync_tarefas_faltantes', {
-      p_cliente_id: id,
-    })
-    setRestaurandoTarefas(false)
-    if (error) {
-      alert('Erro ao restaurar: ' + error.message)
-      return
-    }
-    const n = Array.isArray(data) ? data.length : 0
-    if (n === 0) {
-      alert('Nenhuma tarefa faltando — as tarefas padrão desse cliente já estão todas em aberto.')
-    } else {
-      alert(`${n} tarefa(s) restaurada(s) a partir dos templates.`)
-      await load()
-    }
-  }
-
-  const grouped = useMemo(() => {
-    const groups: Record<FrequenciaTarefa, Tarefa[]> = {
-      diaria: [],
-      semanal: [],
-      mensal: [],
-      esporadica: [],
-    }
-    // Esconde concluídas (recorrentes já avançam automaticamente)
-    for (const t of tarefas) {
-      if (t.status !== 'concluida') groups[t.frequencia].push(t)
-    }
-    return groups
-  }, [tarefas])
+  const hoje = hojeISO()
+  // Mesma regra do painel "Tarefas do dia" da lista, só deste cliente.
+  const resumoTarefas = useMemo(
+    () => resumirDoDia(tarefas, registrosTarefas, hoje, desdeFallback()),
+    [tarefas, registrosTarefas, hoje],
+  )
 
   const ativosByTipo = useMemo(() => {
     const map = new Map<TipoAtivo, Ativo>()
@@ -242,13 +187,6 @@ export default function ClienteDetalhe() {
   }
 
 
-  const pendentes = tarefas.filter((t) => t.status !== 'concluida').length
-  const atrasadas = tarefas.filter(
-    (t) =>
-      t.status !== 'concluida' &&
-      t.data_vencimento &&
-      new Date(t.data_vencimento) < new Date(new Date().toISOString().slice(0, 10)),
-  ).length
   const ativosOk = ativos.filter((a) => a.status === 'funcional').length
   const ativosProblema = ativos.filter((a) => a.status === 'com_problema').length
 
@@ -471,9 +409,17 @@ export default function ClienteDetalhe() {
                 <CardTitle>Tarefas</CardTitle>
               </CardHeader>
             <CardBody className="space-y-1 text-sm">
-              <Row label="Pendentes" value={pendentes} />
-              <Row label="Atrasadas" value={atrasadas} tone={atrasadas > 0 ? 'danger' : undefined} />
-              <Row label="Total" value={tarefas.length} />
+              <Row label="Para hoje" value={resumoTarefas.hoje.length} />
+              <Row
+                label="Atrasadas"
+                value={resumoTarefas.atrasadas.length}
+                tone={resumoTarefas.atrasadas.length > 0 ? 'danger' : undefined}
+              />
+              <Row
+                label="Perdidas (7 dias)"
+                value={resumoTarefas.perdidasSemana}
+                tone={resumoTarefas.perdidasSemana > 0 ? 'warning' : undefined}
+              />
             </CardBody>
           </Card>
           <Card>
@@ -517,54 +463,14 @@ export default function ClienteDetalhe() {
       )}
 
       {opTrafegoAtivo && tab === 'tarefas' && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={restaurarTarefasPadrao}
-              disabled={restaurandoTarefas}
-              title="Cria as tarefas dos templates que estão faltando pra esse cliente. Não duplica tarefas em aberto."
-            >
-              <RefreshCw size={12} className={restaurandoTarefas ? 'animate-spin' : ''} />
-              {restaurandoTarefas ? 'Restaurando...' : 'Restaurar padrões'}
-            </Button>
-          </div>
-          {(['diaria', 'semanal', 'mensal', 'esporadica'] as FrequenciaTarefa[]).map((freq) => {
-            const style = freqStyle[freq]
-            return (
-              <Card key={freq} className={cn('border-l-2', style.borderLeft)}>
-                <CardHeader>
-                  <CardTitle className={style.title}>
-                    <span
-                      aria-hidden
-                      className={cn('mr-2 inline-block h-2 w-2 rounded-full align-middle', style.dot)}
-                    />
-                    {frequenciaLabel[freq]}
-                  </CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setNovaFreq(freq)}>
-                    <Plus size={12} /> Nova
-                  </Button>
-                </CardHeader>
-                <CardBody className="space-y-2">
-                  {grouped[freq].length === 0 ? (
-                    <p className="text-xs text-muted">Sem tarefas nessa frequência.</p>
-                  ) : (
-                    grouped[freq].map((t) => (
-                      <TarefaItem
-                        key={t.id}
-                        tarefa={t}
-                        onChange={load}
-                        onOpen={setDrawerTarefa}
-                        comentariosCount={comentariosCount.get(t.id)}
-                      />
-                    ))
-                  )}
-                </CardBody>
-              </Card>
-            )
-          })}
-        </div>
+        <TarefasClientePanel
+          cliente={cliente}
+          tarefas={tarefas}
+          registros={registrosTarefas}
+          comentariosCount={comentariosCount}
+          hoje={hoje}
+          onChanged={load}
+        />
       )}
 
       {opTrafegoAtivo && tab === 'ativos' && (
@@ -609,19 +515,6 @@ export default function ClienteDetalhe() {
         cliente={cliente}
         onSaved={load}
       />
-      <NovaTarefaModal
-        open={!!novaFreq}
-        onClose={() => setNovaFreq(null)}
-        clienteId={cliente.id}
-        frequencia={novaFreq ?? 'diaria'}
-        onCreated={load}
-      />
-      <TarefaDrawer
-        open={!!drawerTarefa}
-        onClose={() => setDrawerTarefa(null)}
-        tarefa={drawerTarefa}
-        onChanged={load}
-      />
       <OtimizacaoForm
         open={novaOtimOpen}
         onClose={() => setNovaOtimOpen(false)}
@@ -639,9 +532,9 @@ function Row({
 }: {
   label: string
   value: string | number
-  tone?: 'success' | 'danger'
+  tone?: 'success' | 'danger' | 'warning'
 }) {
-  const color = tone === 'danger' ? 'text-red-400' : tone === 'success' ? 'text-emerald-400' : ''
+  const color = tone === 'danger' ? 'text-red-400' : tone === 'success' ? 'text-emerald-400' : tone === 'warning' ? 'text-orange-400' : ''
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted text-xs uppercase tracking-wide">{label}</span>
