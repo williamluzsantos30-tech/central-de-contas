@@ -163,6 +163,26 @@ function valorOuNull(v: string | undefined): { valor: string | null; pendente: b
   return { valor: s, pendente: false }
 }
 
+/**
+ * Tira a ideia que veio GRUDADA no começo do conteúdo:
+ *   "Ideia: explicar X. / Lâmina 1 (capa): "…" / Lâmina 2: …"
+ *   → ideia "Explicar X."  ·  copy "Lâmina 1 (capa): "…" / Lâmina 2: …"
+ * A ideia termina na quebra de linha ou no " / " que abre o próximo rótulo
+ * (Lâmina, Título, Texto, Gancho… — qualquer "Rótulo:" curto). Sem "Ideia:"
+ * no começo, devolve o texto como está.
+ */
+export function separarIdeia(texto: string | null): { ideia: string | null; copy: string | null } {
+  if (!texto) return { ideia: null, copy: texto }
+  const m = texto.match(/^\s*ideia(?:\s+do\s+conte[uú]do)?\s*:\s*/i)
+  if (!m) return { ideia: null, copy: texto }
+  const resto = texto.slice(m[0].length)
+  const fim = resto.search(/\n|\s\/\s*(?=[^\s/][^/:\n]{0,40}:)/)
+  const ideiaBruta = (fim === -1 ? resto : resto.slice(0, fim)).trim()
+  const copy = fim === -1 ? '' : resto.slice(fim).replace(/^\s*\/?\s*/, '').trim()
+  const ideia = ideiaBruta ? ideiaBruta.charAt(0).toUpperCase() + ideiaBruta.slice(1) : null
+  return { ideia, copy: copy || null }
+}
+
 /** Monta um ItemParseado a partir dos campos crus de um bloco. */
 function montaItem(
   campos: Partial<Record<Campo, string>>,
@@ -192,10 +212,12 @@ function montaItem(
   const dataRes = parseData(campos.data ?? '')
   if (dataRes.pendente && !cat.isBacklog) pendencias.push('DATA')
 
-  // Copy (conteúdo / roteiro) e ideia
+  // Copy (conteúdo / roteiro) e ideia. "Ideia: …" grudada no começo do
+  // CONTEÚDO sai da copy e vai pra ideia (a copy é só o que entra na arte).
   const copyRes = valorOuNull(campos.copy)
   if (copyRes.pendente) pendencias.push('CONTEÚDO/ROTEIRO')
   const ideiaRes = valorOuNull(campos.ideia)
+  const separado = separarIdeia(copyRes.valor)
 
   // Legenda
   const legendaRes = valorOuNull(campos.legenda)
@@ -211,8 +233,8 @@ function montaItem(
     formato: cat.formato,
     isBacklog: cat.isBacklog,
     titulo,
-    copy: copyRes.valor,
-    ideia: ideiaRes.valor,
+    copy: separado.copy,
+    ideia: ideiaRes.valor ?? separado.ideia,
     legenda: legendaRes.valor,
     linkDrive: linkRes.valor,
     data: dataRes.iso,

@@ -7,14 +7,14 @@
  * planejamento do mês se ainda não existir). Reaproveita
  * producoes_social_media_items; não há entidade "Postagem" separada.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CheckCircle2, AlertTriangle, CalendarClock, FileWarning, Link2, Sparkles } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { parseConteudos, type CategoriaImport, type ItemParseado } from '@/lib/importarConteudos'
+import { parseConteudos, separarIdeia, type CategoriaImport, type ItemParseado } from '@/lib/importarConteudos'
 import type { Cliente, FormatoSocialMedia } from '@/types/database'
 
 const EXEMPLO = `CATEGORIA: Reels
@@ -35,6 +35,25 @@ LEGENDA: PENDENTE
 CATEGORIA: Backlog
 TÍTULO: Depoimento cliente X
 IDEIA: Reserva pra semana sem gravação`
+
+/**
+ * Trecho pra colar no prompt da IA que gera o planejamento — garante o
+ * formato que o motor entende e a separação ideia × texto da arte.
+ */
+const FORMATO_PROMPT = `FORMATO DE SAÍDA (obrigatório): um bloco por post, separados por uma linha em branco, sem nenhum texto antes ou depois dos blocos. Cada campo numa linha própria, começando pelo rótulo em MAIÚSCULAS:
+
+CATEGORIA: Carrossel | Reels | Estático | Backlog
+DATA: DD/MM/AAAA
+TÍTULO: headline do post
+IDEIA: uma frase com o objetivo/abordagem do post
+CONTEÚDO: SOMENTE o texto que vai DENTRO da arte — carrossel: "Lâmina 1 (capa): … / Lâmina 2: …"; estático: título e texto da arte; Reels: roteiro (gancho, desenvolvimento, CTA)
+LEGENDA: legenda do Instagram (texto FORA da arte), com CTA e hashtags
+LINK DO DRIVE: link do vídeo (só Reels; se ainda não existir, escreva PENDENTE)
+
+REGRAS:
+- A ideia vai SOMENTE no campo IDEIA. Nunca comece o CONTEÚDO com "Ideia:" nem repita a ideia dentro dele.
+- CONTEÚDO não leva explicação pro designer, só o texto final da arte.
+- Não invente data: se não houver, escreva PENDENTE.`
 
 const catInfo: Record<CategoriaImport, { label: string; cls: string }> = {
   carrossel: { label: 'Carrossel', cls: 'border-brand-500/50 bg-brand-500/15 text-brand-200' },
@@ -89,6 +108,21 @@ export function ImportarConteudosModal({
   const [importing, setImporting] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
+  const [formatoAberto, setFormatoAberto] = useState(false)
+  const [formatoCopiado, setFormatoCopiado] = useState<'ok' | 'falhou' | null>(null)
+  const formatoRef = useRef<HTMLTextAreaElement>(null)
+
+  async function copiarFormato() {
+    try {
+      await navigator.clipboard.writeText(FORMATO_PROMPT)
+      setFormatoCopiado('ok')
+      setTimeout(() => setFormatoCopiado(null), 2500)
+    } catch {
+      // Sem permissão de área de transferência: deixa o texto selecionado pra Ctrl+C.
+      formatoRef.current?.select()
+      setFormatoCopiado('falhou')
+    }
+  }
 
   const { itens, rejeitados } = useMemo(() => parseConteudos(raw), [raw])
   const comPendencia = itens.filter((i) => i.pendencias.length > 0).length
@@ -172,20 +206,31 @@ export function ImportarConteudosModal({
       let corrigidos = 0
       for (const it of unicos) {
         const ex = existentes.get(chaveItem(it.formato, it.data, it.titulo))
-        if (!ex || !it.copy || ex.copy_texto?.trim()) continue
-        const patch: Record<string, string | null> = { copy_texto: it.copy }
-        if (mesmoTexto(ex.ideia_conteudo, it.copy)) patch.ideia_conteudo = it.ideia
+        if (!ex) continue
+        let patch: Record<string, string | null> | null = null
+        if (!ex.copy_texto?.trim()) {
+          if (!it.copy) continue
+          patch = { copy_texto: it.copy }
+          if (mesmoTexto(ex.ideia_conteudo, it.copy)) patch.ideia_conteudo = it.ideia
+        } else {
+          // Copy importada com "Ideia: … / Lâmina 1…" grudado: tira a ideia
+          // da copy e leva pra Ideia do conteúdo (se ela estiver vazia).
+          const sep = separarIdeia(ex.copy_texto)
+          if (!sep.ideia) continue
+          patch = { copy_texto: sep.copy }
+          if (!ex.ideia_conteudo?.trim()) patch.ideia_conteudo = sep.ideia
+        }
         const { error: upErr } = await supabase.from('producoes_social_media_items').update(patch).eq('id', ex.id)
         if (!upErr) corrigidos++
       }
       const resumoExistentes =
-        jaExistiam > 0 ? ` · ${jaExistiam} já existiam${corrigidos > 0 ? ` (${corrigidos} com a copy corrigida)` : ''}` : ''
+        jaExistiam > 0 ? ` · ${jaExistiam} já existiam${corrigidos > 0 ? ` (${corrigidos} corrigido${corrigidos > 1 ? 's' : ''})` : ''}` : ''
 
       if (novos.length === 0) {
         if (corrigidos > 0) onImported()
         setSucesso(
           (corrigidos > 0
-            ? `${corrigidos} ${corrigidos === 1 ? 'conteúdo teve a copy corrigida' : 'conteúdos tiveram a copy corrigida'} (foi pro campo Copy)`
+            ? `${corrigidos} ${corrigidos === 1 ? 'conteúdo corrigido' : 'conteúdos corrigidos'} (texto da arte na Copy, ideia na Ideia do conteúdo)`
             : 'Nada novo pra importar') +
             ` — ${jaExistiam} item(ns) já existiam` +
             (duplicados > 0 ? ` · ${duplicados} repetido(s) no texto` : ''),
@@ -290,24 +335,58 @@ export function ImportarConteudosModal({
           <p className="mt-1">
             <strong className="text-zinc-300">CONTEÚDO/ROTEIRO/COPY</strong> vai pro campo <strong>Copy</strong> da arte
             (texto dos slides / roteiro — o que o designer usa). <strong className="text-zinc-300">IDEIA</strong> é a
-            descrição curta que aparece no planejamento e no PDF. Colar de novo um conteúdo que já existe corrige a
-            copy dele (não duplica).
+            descrição curta que aparece no planejamento e no PDF — se ela vier grudada no começo do conteúdo
+            ("Ideia: … / Lâmina 1: …"), é separada sozinha. Colar de novo um conteúdo que já existe corrige a copy e a
+            ideia dele (não duplica).
           </p>
         </div>
 
         <div>
           <div className="mb-1 flex items-center justify-between">
             <label className="text-[11px] uppercase tracking-wider text-muted">Conteúdos</label>
-            {!raw && (
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setRaw(EXEMPLO)}
+                onClick={() => setFormatoAberto((v) => !v)}
                 className="text-[11px] text-brand-300 hover:underline"
+                title="Instruções de formato pra colar no prompt da IA que gera o planejamento"
               >
-                usar exemplo
+                {formatoAberto ? 'fechar formato' : 'formato pro prompt da IA'}
               </button>
-            )}
+              {!raw && (
+                <button
+                  type="button"
+                  onClick={() => setRaw(EXEMPLO)}
+                  className="text-[11px] text-brand-300 hover:underline"
+                >
+                  usar exemplo
+                </button>
+              )}
+            </div>
           </div>
+          {formatoAberto && (
+            <div className="mb-2 rounded-lg border border-brand-500/30 bg-brand-500/5 p-2.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-zinc-300">
+                  Cole isto no final do prompt que gera o planejamento — a IA passa a separar a ideia do texto da arte.
+                </p>
+                <Button size="sm" variant="outline" onClick={() => void copiarFormato()}>
+                  {formatoCopiado === 'ok' ? 'Copiado ✓' : 'Copiar'}
+                </Button>
+              </div>
+              <textarea
+                ref={formatoRef}
+                readOnly
+                value={FORMATO_PROMPT}
+                rows={6}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full rounded-md border border-border bg-bg-soft px-2 py-1.5 font-mono text-[11px] text-zinc-200 focus:outline-none"
+              />
+              {formatoCopiado === 'falhou' && (
+                <p className="mt-1 text-[10px] text-amber-300">Não deu pra copiar automaticamente — o texto está selecionado, use Ctrl+C.</p>
+              )}
+            </div>
+          )}
           <Textarea
             value={raw}
             onChange={(e) => {
