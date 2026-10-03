@@ -2,7 +2,7 @@
  * GoalsTable — Meta × Realizado de UMA plataforma numa tabela só:
  * Métrica | Meta | Realizado | % atingido, agrupada nas seções do funil.
  */
-import { Activity, AlertTriangle, MessageSquare, RefreshCw, Stethoscope, Trophy, Wallet } from 'lucide-react'
+import { Activity, AlertTriangle, MessageSquare, Pencil, RefreshCw, Stethoscope, Trophy, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
 import { SaveIndicator, type EstadoSalvar } from '@/components/trafego/TrafegoUI'
@@ -103,6 +103,15 @@ export function GoalsTable({
           })}
         </table>
       </div>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-4 py-2 text-[10.5px] text-muted">
+        <span className="inline-flex items-center gap-1">
+          <RefreshCw size={10} className="text-emerald-400" /> Realizado automático (vem do {nomePlataforma})
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Pencil size={10} className="text-amber-300/80" /> Realizado digitado pelo time (sem fonte automática)
+        </span>
+        <span>Sem ícone: calculado · Coluna Meta: projeção, sempre editável</span>
+      </p>
     </Card>
   )
 }
@@ -169,7 +178,12 @@ function Valor({
   if (celula.tipo === 'input' && celula.campo) {
     const campo = celula.campo
     return (
-      <div className="ml-auto flex w-36 items-center gap-1">
+      <div
+        className="ml-auto flex w-36 items-center gap-1"
+        title={celula.manual ? 'Digitado pelo time — ainda não há fonte automática pra este dado no sistema' : undefined}
+      >
+        {/* Realizado manual: lápis + borda tracejada (o automático tem o ícone de sincronizado). */}
+        {celula.manual && <Pencil size={10} className="shrink-0 text-amber-300/80" aria-label="Digitado manualmente" />}
         {formato === 'money' && <span className="shrink-0 text-[10.5px] text-muted">R$</span>}
         <input
           type="number"
@@ -178,7 +192,10 @@ function Valor({
           onChange={(e) => onChange(campo, e.target.value === '' ? null : Number(e.target.value))}
           onBlur={onBlur}
           placeholder="—"
-          className="h-7 w-full rounded-md border border-transparent bg-bg-soft/60 px-2 text-right text-[12.5px] font-medium text-zinc-100 placeholder:text-muted/50 hover:border-border focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className={cn(
+            'h-7 w-full rounded-md border bg-bg-soft/60 px-2 text-right text-[12.5px] font-medium text-zinc-100 placeholder:text-muted/50 hover:border-border focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20',
+            celula.manual ? 'border-dashed border-amber-500/40' : 'border-transparent',
+          )}
         />
       </div>
     )

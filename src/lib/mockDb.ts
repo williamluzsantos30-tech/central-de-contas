@@ -1328,6 +1328,14 @@ class Q {
   lt(f: string, v: any) { this._filters.push((r) => r[f] < v); return this }
   lte(f: string, v: any) { this._filters.push((r) => r[f] <= v); return this }
   in(f: string, arr: any[]) { this._filters.push((r) => arr.includes(r[f])); return this }
+  /** `.like`/`.ilike` do PostgREST: `%` = qualquer coisa, `_` = um caractere. */
+  like(f: string, padrao: string) { return this._like(f, padrao, '') }
+  ilike(f: string, padrao: string) { return this._like(f, padrao, 'i') }
+  private _like(f: string, padrao: string, flags: string) {
+    const re = new RegExp('^' + padrao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', flags + 's')
+    this._filters.push((r) => typeof r[f] === 'string' && re.test(r[f]))
+    return this
+  }
   /** `.is(field, null)` — filtra registros onde o campo é null/undefined */
   is(f: string, v: any) {
     this._filters.push((r) => {

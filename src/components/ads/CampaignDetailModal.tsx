@@ -31,6 +31,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
+import { logOptimization } from '@/lib/optimizationLogger'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn, formatDate, tipoOtimizacaoLabel } from '@/lib/utils'
 import type { Otimizacao, TipoOtimizacao } from '@/types/database'
@@ -145,22 +146,16 @@ export function CampaignDetailModal({
   const Icon = adapter.icon
 
   async function registrar(tipo: TipoOtimizacao, descricao: string): Promise<boolean> {
-    const { error } = await supabase.from('otimizacoes').insert({
-      cliente_id: clienteId,
-      responsavel_id: profile?.id ?? null,
-      plataforma: adapter.key,
-      tipo,
-      descricao,
-      resultado: null,
-      data_otimizacao: new Date().toISOString().slice(0, 10),
-    })
+    // Mesma escrita do "Nova otimização" — aparece no Log e nas Últimas otimizações.
+    const { error } = await logOptimization(clienteId, adapter.key, tipo, descricao, { autorId: profile?.id ?? null })
     if (error) {
-      setErro(`A ação foi aplicada, mas não deu pra registrar no Log de otimização: ${error.message}`)
+      setErro(`A ação foi aplicada, mas não deu pra registrar no Log de otimização: ${error}`)
       return false
     }
     setErro(null)
-    await carregarHistorico()
+    // O Log já foi gravado: avisa a ficha antes, e o histórico do modal não pode travar isso.
     onOtimizacaoRegistrada?.()
+    await carregarHistorico().catch(() => undefined)
     return true
   }
 
@@ -169,7 +164,8 @@ export function CampaignDetailModal({
     if (acao.tipo === 'pausar' && !window.confirm(`Pausar a campanha "${c.nome}"?`)) return
     setOcupado(true)
     const descricaoAcao = descreverAcao(acao, c)
-    const descricao = `${prefixo} ${descricaoAcao}${rec ? ` — ${rec.titulo}` : ''} (via ${adapter.nome}, simulado)`
+    // Ação do usuário: sem "(simulado)" — essa marcação fica só pros dados de mock pré-carregados.
+    const descricao = `${prefixo} ${descricaoAcao}${rec ? ` — ${rec.titulo}` : ''} (via ${adapter.nome})`
     adapter.aplicarAcaoCampanha(c, acao)
     setNonce((n) => n + 1)
     onChanged()

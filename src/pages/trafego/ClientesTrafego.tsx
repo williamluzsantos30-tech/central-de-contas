@@ -256,7 +256,7 @@ export default function ClientesTrafego() {
                   <th className="px-3 py-2.5">Squad</th>
                   <th className="px-3 py-2.5">Account Manager</th>
                   <th className="px-3 py-2.5">Gestor de Tráfego</th>
-                  <th className="px-3 py-2.5">Verba</th>
+                  <th className="px-3 py-2.5" title="Verba de mídia (Google + Meta) e quanto já foi investido no mês — não é o fee da agência">Verba de mídia</th>
                   <th className="px-3 py-2.5" title="Saúde da conta — o contrato fica no filtro acima">
                     Saúde
                   </th>
@@ -330,7 +330,7 @@ export default function ClientesTrafego() {
                         {c.gestor?.nome ?? '—'}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <p className="text-sm font-medium tabular-nums text-emerald-300">{formatCurrency(verbaTotal)}</p>
+                        <p className="text-sm font-medium tabular-nums text-emerald-300">{verbaTotal ? formatCurrency(verbaTotal) : "—"}</p>
                         <BudgetPacingCompact pacing={pacing} />
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">

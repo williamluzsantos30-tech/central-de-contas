@@ -78,10 +78,11 @@ export const COR_PACING: Record<NivelPacing, { barra: string; texto: string; ton
  * da aba Metas. A verba (planejado) é só a régua da comparação.
  * Mês passado: compara o gasto final (sem projeção).
  */
-export function pacingDoCliente(c: Pick<Cliente, 'id' | 'verba_google' | 'verba_meta' | 'verba_mensal'>, periodo: string) {
+export function pacingDoCliente(c: Pick<Cliente, 'id' | 'verba_google' | 'verba_meta'>, periodo: string) {
   const resumo = getClientTrafficSummary(c.id, periodo)
   const nenhumaConectada = resumo.plataformasAusentes.length === PLATAFORMAS_TRAFEGO.length
-  const verbaTotal = (c.verba_google ?? 0) + (c.verba_meta ?? 0) || c.verba_mensal
+  // Régua do pacing = verba de MÍDIA (Google + Meta). Nunca o fee da agência (verba_mensal = ticket mensal).
+  const verbaTotal = (c.verba_google ?? 0) + (c.verba_meta ?? 0)
   const [y, m] = periodo.slice(0, 7).split('-').map(Number)
   const hoje = new Date()
   const ehMesAtual = hoje.getFullYear() === y && hoje.getMonth() + 1 === m

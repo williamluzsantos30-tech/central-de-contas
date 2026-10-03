@@ -459,6 +459,12 @@ export function investimentoMock(plataforma: AdsPlatformKey, clienteId: string, 
   return Math.round((mesCheio * diasDecorridosNoPeriodo(p)) / diasNoMes)
 }
 
+/** Fração do mês já decorrida (mock: volumes do mês corrente crescem com os dias, como o gasto). */
+export function fracaoDoPeriodo(periodo: string): number {
+  const [y, m] = periodo.slice(0, 7).split('-').map(Number)
+  return diasDecorridosNoPeriodo(periodo) / new Date(y, m, 0).getDate()
+}
+
 /** Dias já decorridos do período (mês corrente = dia de hoje; passado = mês inteiro). */
 export function diasDecorridosNoPeriodo(periodo: string): number {
   const [y, m] = periodo.slice(0, 7).split('-').map(Number)

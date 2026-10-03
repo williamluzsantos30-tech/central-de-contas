@@ -4,8 +4,10 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabase'
+import { logOptimization } from '@/lib/optimizationLogger'
+import { hojeISO } from '@/lib/ocorrencias'
 import { useAuth } from '@/contexts/AuthContext'
+import type { PlataformaAds, TipoOtimizacao } from '@/types/database'
 
 interface Props {
   open: boolean
@@ -20,20 +22,16 @@ export function OtimizacaoForm({ open, onClose, clienteId, onCreated }: Props) {
   const [tipo, setTipo] = useState('ajuste_lance')
   const [descricao, setDescricao] = useState('')
   const [resultado, setResultado] = useState('')
-  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
+  const [data, setData] = useState(() => hojeISO())
   const [saving, setSaving] = useState(false)
 
   async function save() {
     if (!descricao.trim()) return
     setSaving(true)
-    await supabase.from('otimizacoes').insert({
-      cliente_id: clienteId,
-      responsavel_id: profile?.id ?? null,
-      plataforma,
-      tipo,
-      descricao: descricao.trim(),
-      resultado: resultado.trim() || null,
-      data_otimizacao: data,
+    await logOptimization(clienteId, plataforma as PlataformaAds, tipo as TipoOtimizacao, descricao, {
+      autorId: profile?.id ?? null,
+      data,
+      resultado,
     })
     setSaving(false)
     setDescricao('')

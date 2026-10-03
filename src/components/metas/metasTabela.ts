@@ -19,6 +19,8 @@ export interface Celula {
   valor: number | null
   /** Campo editável (tipo 'input'). */
   campo?: keyof MetasValores
+  /** Realizado digitado pelo time (sem fonte automática) — sinalizado na tela. */
+  manual?: boolean
 }
 
 export interface LinhaMeta {
@@ -104,6 +106,8 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
 
   const inp = (v: number | null | undefined, campo: keyof MetasValores): Celula => ({ tipo: 'input', valor: v ?? null, campo })
   const calc = (v: number | null): Celula => ({ tipo: 'calc', valor: v })
+  // Realizado sem fonte automática no sistema: digitado pelo time, sinalizado.
+  const manual = (v: number | null | undefined, campo: keyof MetasValores): Celula => ({ tipo: 'input', valor: v ?? null, campo, manual: true })
   // Mídia: sempre do resumo, só leitura (desconectada = 0).
   const midiaCel = (v: number | null | undefined): Celula => ({ tipo: 'integracao', valor: v ?? null })
 
@@ -112,7 +116,6 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
   const mFat = faturamento(m)
   // Realizado
   const rCustoMsg = div(r.investimento, r.mensagens)
-  const rFat = faturamento(r)
 
   const linha = (l: Omit<LinhaMeta, 'pct'>): LinhaMeta => ({ ...l, pct: pctAtingido(l.meta.valor, l.real.valor, l.custo) })
 
@@ -132,7 +135,7 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
         linha({ key: 'cliques', label: 'Cliques', formato: 'int', meta: { tipo: 'vazio', valor: null }, real: midiaCel(r.cliques) }),
         linha({ key: 'custo_mensagem', label: 'Custo por mensagem', formato: 'money', custo: true, meta: inp(m.custo_mensagem, 'custo_mensagem'), real: calc(rCustoMsg) }),
         linha({ key: 'mensagens', label: 'Mensagens', formula: 'investimento ÷ custo por mensagem', formato: 'int', meta: calc(mMensagens), real: midiaCel(r.mensagens) }),
-        linha({ key: 'mensagens_qualificadas', label: 'Mensagens qualificadas', formato: 'int', meta: inp(m.mensagens_qualificadas, 'mensagens_qualificadas'), real: inp(r.mensagens_qualificadas, 'mensagens_qualificadas') }),
+        linha({ key: 'mensagens_qualificadas', label: 'Mensagens qualificadas', formato: 'int', meta: inp(m.mensagens_qualificadas, 'mensagens_qualificadas'), real: manual(r.mensagens_qualificadas, 'mensagens_qualificadas') }),
         linha({ key: 'custo_mensagem_qualificada', label: 'Custo por mens. qualificada', formula: 'investimento ÷ mens. qualificadas', formato: 'money', custo: true, meta: calc(div(m.investimento, m.mensagens_qualificadas)), real: calc(div(r.investimento, r.mensagens_qualificadas)) }),
       ],
     },
@@ -140,8 +143,8 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
       key: 'consultas',
       label: 'Funil de consultas',
       linhas: [
-        linha({ key: 'numero_consultas', label: 'Nº de consultas', formato: 'int', meta: inp(m.numero_consultas, 'numero_consultas'), real: inp(r.numero_consultas, 'numero_consultas') }),
-        linha({ key: 'tm_consulta', label: 'Ticket médio (consulta)', formato: 'money', meta: inp(m.tm_consulta, 'tm_consulta'), real: inp(r.tm_consulta, 'tm_consulta') }),
+        linha({ key: 'numero_consultas', label: 'Nº de consultas', formato: 'int', meta: inp(m.numero_consultas, 'numero_consultas'), real: manual(r.numero_consultas, 'numero_consultas') }),
+        linha({ key: 'tm_consulta', label: 'Ticket médio (consulta)', formato: 'money', meta: inp(m.tm_consulta, 'tm_consulta'), real: manual(r.tm_consulta, 'tm_consulta') }),
         linha({ key: 'taxa_consulta', label: 'Taxa de conversão', formula: 'consultas ÷ mens. qualificadas', formato: 'percent', meta: calc(pctDe(m.numero_consultas, m.mensagens_qualificadas)), real: calc(pctDe(r.numero_consultas, r.mensagens_qualificadas)) }),
       ],
     },
@@ -149,8 +152,8 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
       key: 'procedimentos',
       label: 'Funil de procedimentos',
       linhas: [
-        linha({ key: 'numero_procedimentos', label: 'Nº de procedimentos', formato: 'int', meta: inp(m.numero_procedimentos, 'numero_procedimentos'), real: inp(r.numero_procedimentos, 'numero_procedimentos') }),
-        linha({ key: 'tm_procedimento', label: 'Ticket médio (procedimento)', formato: 'money', meta: inp(m.tm_procedimento, 'tm_procedimento'), real: inp(r.tm_procedimento, 'tm_procedimento') }),
+        linha({ key: 'numero_procedimentos', label: 'Nº de procedimentos', formato: 'int', meta: inp(m.numero_procedimentos, 'numero_procedimentos'), real: manual(r.numero_procedimentos, 'numero_procedimentos') }),
+        linha({ key: 'tm_procedimento', label: 'Ticket médio (procedimento)', formato: 'money', meta: inp(m.tm_procedimento, 'tm_procedimento'), real: manual(r.tm_procedimento, 'tm_procedimento') }),
         linha({ key: 'taxa_procedimento', label: 'Taxa de conversão', formula: 'procedimentos ÷ consultas', formato: 'percent', meta: calc(pctDe(m.numero_procedimentos, m.numero_consultas)), real: calc(pctDe(r.numero_procedimentos, r.numero_consultas)) }),
       ],
     },
@@ -158,8 +161,8 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo
       key: 'resultado',
       label: 'Resultado',
       linhas: [
-        linha({ key: 'faturamento', label: 'Faturamento', formula: '(consultas × TM consulta) + (procedimentos × TM procedimento)', formato: 'money', destaque: true, meta: calc(mFat), real: calc(rFat) }),
-        linha({ key: 'roas', label: 'ROAS', formula: 'faturamento ÷ investimento', formato: 'multiplier', destaque: true, meta: calc(div(mFat, m.investimento)), real: calc(div(rFat, r.investimento)) }),
+        linha({ key: 'faturamento', label: 'Faturamento', formula: '(consultas × TM consulta) + (procedimentos × TM procedimento)', formato: 'money', destaque: true, meta: calc(mFat), real: calc(resumo.faturamento) }),
+        linha({ key: 'roas', label: 'ROAS', formula: 'faturamento ÷ investimento', formato: 'multiplier', destaque: true, meta: calc(div(mFat, m.investimento)), real: calc(resumo.roas) }),
         linha({ key: 'cac', label: 'CAC', formula: 'investimento ÷ consultas', formato: 'money', custo: true, meta: calc(div(m.investimento, m.numero_consultas)), real: calc(resumo.cac) }),
       ],
     },

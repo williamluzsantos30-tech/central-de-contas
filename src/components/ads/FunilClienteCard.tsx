@@ -4,8 +4,10 @@
  *
  * Todos os números vêm de getClientTrafficSummary(...).total — a MESMA fonte
  * das abas Google Ads / Meta Ads e do Realizado da aba Metas. Nada de dado
- * próprio: plataforma desconectada conta 0 (e é sinalizada); consultas
- * (fechamentos, base do CAC) vêm do funil registrado na aba Metas.
+ * próprio: plataforma desconectada conta 0 (e é sinalizada); leads
+ * qualificados e consultas (fechamentos, base do CAC) vêm do funil do cliente
+ * registrado na aba Metas — o módulo Comercial não é fonte (lá são os leads
+ * da própria agência).
  */
 import { useEffect, useState } from 'react'
 import { ArrowRight, Receipt, RefreshCw, Stethoscope, Target, Users, Wallet } from 'lucide-react'
@@ -13,7 +15,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency } from '@/lib/utils'
 import {
-  fechamentosDoRealizado,
+  funilDoRealizado,
   getClientTrafficSummary,
   NOME_PLATAFORMA_TRAFEGO,
   PLATAFORMAS_TRAFEGO,
@@ -55,7 +57,7 @@ export function FunilClienteCard({
     }
   }, [cliente.id, periodo])
 
-  const resumo = getClientTrafficSummary(cliente.id, periodo, { fechamentos: fechamentosDoRealizado(realizado) })
+  const resumo = getClientTrafficSummary(cliente.id, periodo, { funil: funilDoRealizado(realizado) })
   const { total, plataformasAusentes } = resumo
   const nenhumaConectada = plataformasAusentes.length === PLATAFORMAS_TRAFEGO.length
   const conectadas = PLATAFORMAS_TRAFEGO.filter((p) => !plataformasAusentes.includes(p))
@@ -81,10 +83,10 @@ export function FunilClienteCard({
           <div className="grid grid-cols-2 gap-3">
             <Stat
               icon={<Users size={12} className="text-sky-300" />}
-              label="Leads"
-              valor={nenhumaConectada ? null : fmtNum(total.leads)}
-              semValorTitulo="Nenhuma plataforma conectada"
-              sincronizado={!nenhumaConectada}
+              label="Leads qualificados"
+              valor={total.leadsQualificados != null ? fmtNum(total.leadsQualificados) : null}
+              sub={nenhumaConectada ? undefined : `${fmtNum(total.leads)} leads nas plataformas`}
+              onPreencher={total.leadsQualificados == null ? onIrParaMetas : undefined}
             />
             <Stat
               icon={<Receipt size={12} className="text-emerald-300" />}

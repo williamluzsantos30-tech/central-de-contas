@@ -21,6 +21,7 @@ import {
   createAdsConnectionStore,
   gerarCampanhasMock,
   investimentoMock,
+  fracaoDoPeriodo,
   hash,
   ranged,
   type AdsMetricas,
@@ -62,14 +63,16 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const base = hash(`meta|${clienteId}|${p}`)
 
   const investimento = investimentoMock('meta_ads', clienteId, p, [1500, 20000])
-  const impressoes = ranged(hash(`${base}imp`), 60000, 1200000)
+  // Volumes acompanham os dias já passados do mês (como o investimento).
+  const f = fracaoDoPeriodo(p)
+  const impressoes = Math.round(ranged(hash(`${base}imp`), 60000, 1200000) * f)
   // Frequência típica 1,3–2,8 → alcance = impressões ÷ frequência
   const frequencia = 1.3 + (hash(`${base}freq`) % 150) / 100
   const alcance = Math.round(impressoes / frequencia)
   // CTR (link) típico do Meta: 0,6%–2,5%
   const ctrBase = 0.6 + (hash(`${base}ctr`) % 190) / 100
   const cliques = Math.round((impressoes * ctrBase) / 100)
-  const conversoes = ranged(hash(`${base}cv`), 10, Math.max(20, Math.round(cliques * 0.1)))
+  const conversoes = Math.round(ranged(hash(`${base}cv`), 10, Math.max(20, Math.round(cliques / Math.max(f, 0.01) * 0.1))) * f)
 
   return {
     clienteId,

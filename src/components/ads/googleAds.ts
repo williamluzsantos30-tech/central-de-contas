@@ -10,6 +10,7 @@ import {
   createAdsConnectionStore,
   gerarCampanhasMock,
   investimentoMock,
+  fracaoDoPeriodo,
   hash,
   ranged,
   type AdsMetricas,
@@ -53,9 +54,11 @@ function getMetrics(clienteId: string, periodo: string): AdsMetricas | null {
   const base = hash(`${clienteId}|${p}`)
 
   const investimento = investimentoMock('google_ads', clienteId, p, [1800, 24000])
-  const impressoes = ranged(hash(`${base}imp`), 40000, 900000)
-  const cliques = ranged(hash(`${base}cli`), 400, 22000)
-  const conversoes = ranged(hash(`${base}cv`), 8, Math.max(16, Math.round(cliques * 0.06)))
+  // Volumes acompanham os dias já passados do mês (como o investimento).
+  const f = fracaoDoPeriodo(p)
+  const impressoes = Math.round(ranged(hash(`${base}imp`), 40000, 900000) * f)
+  const cliques = Math.round(ranged(hash(`${base}cli`), 400, 22000) * f)
+  const conversoes = Math.round(ranged(hash(`${base}cv`), 8, Math.max(16, Math.round(cliques / Math.max(f, 0.01) * 0.06))) * f)
 
   return {
     clienteId,

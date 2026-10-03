@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  Check,
   Target,
   BarChart3,
   MapPin,
@@ -89,7 +90,15 @@ const statusVisual: Record<
   },
 }
 
-type BoaPratica = { title: string; items: (string | { label: string; items: string[] })[] }
+/** Funcional + verificado (botão "Marcar como verificado"). */
+const VISUAL_VERIFICADO = {
+  dot: 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.7)]',
+  pill: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
+  corner: 'from-emerald-500/15',
+  label: '✅ Verificado',
+}
+
+type BoaPratica ={ title: string; items: (string | { label: string; items: string[] })[] }
 
 const boasPraticasByTipo: Partial<Record<TipoAtivo, BoaPratica>> = {
   google_meu_negocio: {
@@ -146,10 +155,54 @@ export function AtivoCard({ ativo, onSaved }: { ativo: Ativo; onSaved: () => voi
     link: ativo.link ?? '',
     observacoes: ativo.observacoes ?? '',
   })
+  const [salvandoVerificacao, setSalvandoVerificacao] = useState(false)
+  const [erroVerificacao, setErroVerificacao] = useState<string | null>(null)
+  const [nomeVerificador, setNomeVerificador] = useState<string | null>(null)
   const Icon = iconByTipo[ativo.tipo]
   const tips = boasPraticasByTipo[ativo.tipo]
   const accent = accentByTipo[ativo.tipo]
-  const status = statusVisual[ativo.status]
+  // Verificado = funcional + data de verificação registrada.
+  const verificado = ativo.status === 'funcional' && !!ativo.ultima_verificacao
+  const status = verificado ? VISUAL_VERIFICADO : statusVisual[ativo.status]
+
+  useEffect(() => {
+    if (!ativo.verificado_por) {
+      setNomeVerificador(null)
+      return
+    }
+    let vivo = true
+    supabase
+      .from('profiles')
+      .select('nome')
+      .eq('id', ativo.verificado_por)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (vivo) setNomeVerificador((data as { nome: string } | null)?.nome ?? null)
+      })
+    return () => {
+      vivo = false
+    }
+  }, [ativo.verificado_por])
+
+  /** ✓ Marcar como verificado / Desfazer verificação. */
+  async function alternarVerificacao() {
+    setSalvandoVerificacao(true)
+    setErroVerificacao(null)
+    const { error } = await supabase
+      .from('ativos')
+      .update(
+        verificado
+          ? { status: 'pendente', ultima_verificacao: null, verificado_por: null }
+          : { status: 'funcional', ultima_verificacao: new Date().toISOString(), verificado_por: profile?.id ?? null },
+      )
+      .eq('id', ativo.id)
+    setSalvandoVerificacao(false)
+    if (error) {
+      setErroVerificacao(`Não foi possível salvar: ${error.message}`)
+      return
+    }
+    onSaved()
+  }
 
   async function save() {
     await supabase
@@ -308,12 +361,35 @@ export function AtivoCard({ ativo, onSaved }: { ativo: Ativo; onSaved: () => voi
                   {showTips && <BoasPraticasBlock tips={tips} />}
                 </>
               )}
-              <div className="flex items-center gap-1.5 text-[10.5px] text-muted">
-                <Clock size={10} className="opacity-60" />
-                {ativo.ultima_verificacao
-                  ? `Verificado ${formatDateTime(ativo.ultima_verificacao)}`
-                  : 'Ainda não verificado'}
+              {/* Verificação: botão explícito no lugar do badge estático. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[10.5px] text-muted">
+                  <Clock size={10} className="opacity-60" />
+                  {verificado && ativo.ultima_verificacao
+                    ? `Verificado em ${formatDateTime(ativo.ultima_verificacao)}${nomeVerificador ? ` por ${nomeVerificador}` : ''}`
+                    : 'Ainda não verificado'}
+                </span>
+                {verificado ? (
+                  <button
+                    type="button"
+                    onClick={() => void alternarVerificacao()}
+                    disabled={salvandoVerificacao}
+                    className="text-[10.5px] text-muted underline-offset-2 hover:text-zinc-200 hover:underline disabled:opacity-50"
+                  >
+                    {salvandoVerificacao ? 'Desfazendo…' : 'Desfazer verificação'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void alternarVerificacao()}
+                    disabled={salvandoVerificacao}
+                    className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                  >
+                    <Check size={11} /> {salvandoVerificacao ? 'Salvando…' : 'Marcar como verificado'}
+                  </button>
+                )}
               </div>
+              {erroVerificacao && <p className="text-[10.5px] text-red-300">{erroVerificacao}</p>}
             </div>
           </>
         )}

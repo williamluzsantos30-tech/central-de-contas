@@ -50,7 +50,8 @@ export function ResumoClientesKpi({
     const baseAtiva = clientes.filter((c) => !c.arquivado_em)
     const baseIds = new Set(baseAtiva.map((c) => c.id))
     const verba = baseAtiva.reduce(
-      (s, c) => s + ((c.verba_google ?? 0) + (c.verba_meta ?? 0) || (c.verba_mensal ?? 0)),
+      // Verba de MÍDIA sob gestão (Google + Meta) — o fee da agência (verba_mensal) não entra.
+      (s, c) => s + (c.verba_google ?? 0) + (c.verba_meta ?? 0),
       0,
     )
     const ativosProblema = ativos.filter(
@@ -64,7 +65,7 @@ export function ResumoClientesKpi({
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Kpi
           icon={<CircleDollarSign size={16} />}
-          label="Verba sob gestão"
+          label="Verba de mídia sob gestão"
           value={formatCurrency(kpis.verba)}
           tone="success"
         />

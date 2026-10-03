@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, Pencil, Plus } from 'lucide-react'
+import { ChevronLeft, Info, Pencil, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -123,7 +123,9 @@ export default function ClienteDetalhe() {
         .from('otimizacoes')
         .select('*, responsavel:profiles(*)')
         .eq('cliente_id', id)
-        .order('data_otimizacao', { ascending: false }),
+        .order('data_otimizacao', { ascending: false })
+        // Empate no dia: a mais recente primeiro (Últimas otimizações e Log).
+        .order('created_at', { ascending: false }),
       supabase.from('tarefa_comentarios').select('tarefa_id'),
       supabase.from('cliente_perfil_setup').select('*').eq('cliente_id', id).maybeSingle(),
       supabase.from('producoes_social_media').select('*').eq('cliente_id', id),
@@ -570,7 +572,7 @@ function ClienteHeader({
 
   // Pacing: investido do período lido do resumo de tráfego (mesma fonte das
   // abas de plataforma, do Funil e da aba Metas).
-  const { resumo, verbaTotal, pacing, origem: origemTxt } = pacingDoCliente(cliente, periodo)
+  const { resumo, pacing, origem: origemTxt } = pacingDoCliente(cliente, periodo)
   const invG = resumo.porPlataforma.googleAds
   const invM = resumo.porPlataforma.metaAds
 
@@ -584,13 +586,27 @@ function ClienteHeader({
           onEdit={onEdit}
           direita={
             <div className="flex flex-col items-end text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Verba Mensal
+              {/* Fee da agência (Ticket mensal do cadastro = verba_mensal) — NÃO é gasto em mídia. */}
+              <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Verba mensal (fee da agência)
+                <span
+                  className="cursor-help text-muted hover:text-zinc-200"
+                  title="O que o cliente paga pela gestão (Ticket mensal do cadastro). Não é gasto em anúncios: o investimento em mídia vem do Google Ads e do Meta Ads e aparece no Funil deste Cliente e no Investido abaixo."
+                  aria-label="Sobre a verba mensal (fee da agência)"
+                >
+                  <Info size={11} />
+                </span>
               </p>
               <p className="mt-0.5 text-3xl font-semibold text-emerald-300">
-                {formatCurrency(verbaTotal)}
+                {formatCurrency(cliente.verba_mensal)}
               </p>
               <div className="mt-1 flex items-center justify-end gap-3 text-[11px] text-muted">
+                <span
+                  className="text-[10px] uppercase tracking-wider"
+                  title="Quanto o cliente planeja investir em anúncios por mês, por plataforma. O Investido é o gasto real vindo das plataformas."
+                >
+                  Verba de mídia
+                </span>
                 <InlineVerba
                   label="Google"
                   value={cliente.verba_google}

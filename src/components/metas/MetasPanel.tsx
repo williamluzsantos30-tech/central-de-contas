@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency, monthKey } from '@/lib/utils'
-import { fechamentosDoRealizado, getClientTrafficSummary, NOME_PLATAFORMA_TRAFEGO, type ResumoTrafegoCliente } from '@/lib/traffic/summary'
+import { funilDoRealizado, funilDoRealizadoPlataforma, getClientTrafficSummary, NOME_PLATAFORMA_TRAFEGO, type ResumoTrafegoCliente } from '@/lib/traffic/summary'
 import type { EstadoSalvar } from '@/components/trafego/TrafegoUI'
 import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
 import { downloadRelatorioMetasPDF } from './RelatorioMetasPDF'
@@ -50,7 +50,7 @@ function normalize(raw: unknown): MetasPorPlataforma {
 /** Mês com o realizado de mídia vindo do resumo de tráfego (getClientTrafficSummary). */
 function comResumo(m: Meta, clienteId: string): MetaComResumo {
   const res = normalize(m.resultado_data)
-  const resumoTrafego = getClientTrafficSummary(clienteId, m.mes_ano, { fechamentos: fechamentosDoRealizado(res) })
+  const resumoTrafego = getClientTrafficSummary(clienteId, m.mes_ano, { funil: funilDoRealizado(res) })
   return {
     ...m,
     resultado_data: {
@@ -243,9 +243,9 @@ export function MetasPanel({ clienteId, cliente, mes, onMes }: Props) {
 
   const isCurrentMonth = selectedMonth === monthKey()
   // Fonte única: mesma função do Funil, do pacing e das abas de plataforma.
-  // Fechamentos (consultas) = o que está sendo digitado agora no Realizado.
+  // Funil (qualificadas, consultas, procedimentos, ticket) = o que está sendo digitado agora no Realizado.
   const resumo = getClientTrafficSummary(clienteId, selectedMonth, {
-    fechamentos: { googleAds: realG.local.numero_consultas, metaAds: realM.local.numero_consultas },
+    funil: { googleAds: funilDoRealizadoPlataforma(realG.local), metaAds: funilDoRealizadoPlataforma(realM.local) },
   })
   const historicoEfetivo = todosMeses.map((m) => comResumo(m, clienteId))
 
