@@ -25,7 +25,9 @@ import {
   pdf,
   Font,
 } from '@react-pdf/renderer'
-import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
+import type { Cliente, MetasPorPlataforma, MetasValores } from '@/types/database'
+import type { MetricasPlataforma } from '@/lib/traffic/summary'
+import type { MetaComResumo } from './MetasPanel'
 import { formatarValor, montarTabelaMetas, nivelPct } from './metasTabela'
 
 const LOGO_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/logo.png`
@@ -240,7 +242,8 @@ const styles = StyleSheet.create({
 
 interface Props {
   cliente: Cliente
-  historico: Meta[]
+  /** Cada mês com o resumo de tráfego (getClientTrafficSummary) — fonte do realizado de mídia e dos totais. */
+  historico: MetaComResumo[]
 }
 
 // ==============================================================
@@ -330,11 +333,13 @@ const COR_PCT_PDF = { bom: '#059669', medio: '#ea580c', ruim: '#dc2626' }
 function TabelaMetaVsResultado({
   meta,
   resultado,
+  resumo,
 }: {
   meta: MetasValores
   resultado: MetasValores
+  resumo: MetricasPlataforma
 }) {
-  const grupos = montarTabelaMetas(meta, resultado, null)
+  const grupos = montarTabelaMetas(meta, resultado, resumo)
   return (
     <View style={styles.tabela}>
       <View style={styles.tabelaHead}>
@@ -366,13 +371,12 @@ function TabelaMetaVsResultado({
   )
 }
 
-function PaginaMensal({ cliente, meta }: { cliente: Cliente; meta: Meta }) {
+function PaginaMensal({ cliente, meta }: { cliente: Cliente; meta: MetaComResumo }) {
   const metaP = normalize(meta.meta_data)
   const resP = normalize(meta.resultado_data)
 
-  // Consolidado do mes (Google + Meta)
-  const invTotal =
-    (resP.google.investimento ?? 0) + (resP.meta.investimento ?? 0)
+  // Consolidado do mes — investimento total vem do resumo de tráfego
+  const invTotal = meta.resumoTrafego.total.investimento
   const fatTotal = faturamento(resP.google) + faturamento(resP.meta)
   const roasTotal = invTotal > 0 && fatTotal > 0 ? fatTotal / invTotal : null
   const leadsTotal =
@@ -392,12 +396,12 @@ function PaginaMensal({ cliente, meta }: { cliente: Cliente; meta: Meta }) {
 
       <View style={styles.platBloco}>
         <Text style={styles.platTitulo}>GOOGLE ADS</Text>
-        <TabelaMetaVsResultado meta={metaP.google} resultado={resP.google} />
+        <TabelaMetaVsResultado meta={metaP.google} resultado={resP.google} resumo={meta.resumoTrafego.porPlataforma.googleAds} />
       </View>
 
       <View style={styles.platBloco}>
         <Text style={styles.platTitulo}>META ADS</Text>
-        <TabelaMetaVsResultado meta={metaP.meta} resultado={resP.meta} />
+        <TabelaMetaVsResultado meta={metaP.meta} resultado={resP.meta} resumo={meta.resumoTrafego.porPlataforma.metaAds} />
       </View>
 
       {/* Consolidado do mes */}
@@ -433,16 +437,14 @@ function PaginaMensal({ cliente, meta }: { cliente: Cliente; meta: Meta }) {
   )
 }
 
-function PaginaResumo({ cliente, historico }: { cliente: Cliente; historico: Meta[] }) {
+function PaginaResumo({ cliente, historico }: { cliente: Cliente; historico: MetaComResumo[] }) {
   // Totais acumulados sobre RESULTADO
   const totais = historico.reduce(
     (acc, m) => {
       const r = normalize(m.resultado_data)
-      const invG = r.google.investimento ?? 0
-      const invM = r.meta.investimento ?? 0
       const fatG = faturamento(r.google)
       const fatM = faturamento(r.meta)
-      acc.investimento += invG + invM
+      acc.investimento += m.resumoTrafego.total.investimento
       acc.faturamento += fatG + fatM
       acc.leads += (r.google.mensagens_qualificadas ?? 0) + (r.meta.mensagens_qualificadas ?? 0)
       acc.consultas += (r.google.numero_consultas ?? 0) + (r.meta.numero_consultas ?? 0)
@@ -533,7 +535,7 @@ function PaginaResumo({ cliente, historico }: { cliente: Cliente; historico: Met
         </View>
         {histAsc.map((m) => {
           const r = normalize(m.resultado_data)
-          const inv = (r.google.investimento ?? 0) + (r.meta.investimento ?? 0)
+          const inv = m.resumoTrafego.total.investimento
           const fat = faturamento(r.google) + faturamento(r.meta)
           const roasMes = inv > 0 && fat > 0 ? fat / inv : null
           const leads =

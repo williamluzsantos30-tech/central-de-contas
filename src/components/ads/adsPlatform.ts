@@ -434,26 +434,26 @@ export function gerarCampanhasMock(args: {
   })
 }
 
-// ── Investimento simulado seguindo a verba ───────────────────────────────────
-// SIMULAÇÃO: o investido do mock acompanha a verba da plataforma (registrada
-// pela tela do cliente/lista), num "ritmo" por cliente, e no mês corrente é
-// proporcional aos dias já passados — assim o pacing faz sentido. Na API real
-// o investimento vem da conta de anúncios e isto sai.
-const verbasMock = new Map<string, number>()
-/** Ritmos fixos dos clientes da demo (cobre no ritmo / abaixo / estourado). */
-const RITMO_DEMO: Record<string, number> = { 'c-1': 0.95, 'c-2': 0.62, 'c-3': 0.9, 'c-4': 1.28, 'c-6': 1.04 }
-
-export function registrarVerbaMock(plataforma: AdsPlatformKey, clienteId: string, verba: number | null | undefined) {
-  const k = `${plataforma}|${clienteId}`
-  if (verba && verba > 0) verbasMock.set(k, verba)
-  else verbasMock.delete(k)
+// ── Investimento simulado ────────────────────────────────────────────────────
+// SIMULAÇÃO do gasto que a conta de anúncios reporta. É dado DA PLATAFORMA:
+// não lê a verba planejada do cliente (são coisas diferentes — o pacing é que
+// compara as duas). No mês corrente é proporcional aos dias já passados. Na
+// API real o investimento vem da conta de anúncios e isto sai.
+/** Gasto de mês cheio dos clientes da demo (cobre no ritmo / abaixo / estourado). */
+const GASTO_MES_DEMO: Record<string, Partial<Record<AdsPlatformKey, number>>> = {
+  'c-1': { google_ads: 3325, meta_ads: 2375 },
+  'c-2': { google_ads: 2790 },
+  'c-3': { meta_ads: 2880 },
+  'c-4': { google_ads: 6400, meta_ads: 4480 },
+  'c-6': { google_ads: 4680, meta_ads: 3120 },
 }
 
 export function investimentoMock(plataforma: AdsPlatformKey, clienteId: string, periodo: string, faixa: [number, number]): number {
   const p = periodo.slice(0, 7)
-  const verba = verbasMock.get(`${plataforma}|${clienteId}`)
-  const ritmo = RITMO_DEMO[clienteId] ?? 0.6 + (hash(`${plataforma}|${clienteId}|ritmo`) % 70) / 100 // 0,60–1,29
-  const mesCheio = verba ? verba * ritmo : ranged(hash(`${plataforma}|${clienteId}|${p}|inv`), faixa[0], faixa[1])
+  const demo = GASTO_MES_DEMO[clienteId]?.[plataforma]
+  // Meses passados variam ±15% em volta do gasto de referência.
+  const variacaoMes = p === periodoAtualAds() ? 1 : 0.85 + (hash(`${plataforma}|${clienteId}|${p}|var`) % 30) / 100
+  const mesCheio = demo != null ? demo * variacaoMes : ranged(hash(`${plataforma}|${clienteId}|${p}|inv`), faixa[0], faixa[1])
   const [y, m] = p.split('-').map(Number)
   const diasNoMes = new Date(y, m, 0).getDate()
   return Math.round((mesCheio * diasDecorridosNoPeriodo(p)) / diasNoMes)

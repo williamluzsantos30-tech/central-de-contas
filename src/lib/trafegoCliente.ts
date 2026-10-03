@@ -1,14 +1,11 @@
 /**
- * Tráfego · cliente — pacing de verba, investido do mês por plataforma
- * (integração ou manual) e os dois conceitos de status separados:
+ * Tráfego · cliente — pacing de verba (investido lido do resumo de tráfego)
+ * e os dois conceitos de status separados:
  * CONTRATO (Ativo/Pausado/Encerrado) e SAÚDE DA CONTA (Estável/Atenção/Crítico).
  */
-import { googleAdsAdapter } from '@/components/ads/googleAds'
-import { metaAdsAdapter } from '@/components/ads/metaAds'
-import { registrarVerbaMock, type AdsPlatformAdapter } from '@/components/ads/adsPlatform'
+import { getClientTrafficSummary, NOME_PLATAFORMA_TRAFEGO, PLATAFORMAS_TRAFEGO } from '@/lib/traffic/summary'
 import type { Tone } from '@/components/ds'
-import { monthKey } from '@/lib/utils'
-import type { Cliente, MetasValores } from '@/types/database'
+import type { Cliente } from '@/types/database'
 
 // ── Pacing ──────────────────────────────────────────────────────────────────
 
@@ -73,89 +70,27 @@ export const COR_PACING: Record<NivelPacing, { barra: string; texto: string; ton
   sem_dado: { barra: 'bg-zinc-500/50', texto: 'text-muted', tone: 'neutral' },
 }
 
-// ── Investido do mês (integração → manual) ──────────────────────────────────
-
-export type OrigemDado = 'integracao' | 'manual' | null
-
-export interface DadoMidia {
-  investimento: number | null
-  cliques: number | null
-  /** Google: conversões · Meta: resultados (mensagens). */
-  conversoes: number | null
-  origem: OrigemDado
-  conectado: boolean
-  ultimaSincronizacao: string | null
-}
-
-export type PlataformaMetas = 'google' | 'meta'
-
-export const ADAPTER_POR_PLATAFORMA: Record<PlataformaMetas, AdsPlatformAdapter> = {
-  google: googleAdsAdapter,
-  meta: metaAdsAdapter,
-}
-
-export const NOME_PLATAFORMA: Record<PlataformaMetas, string> = { google: 'Google Ads', meta: 'Meta Ads' }
-
-/** Informa ao mock das integrações a verba de cada plataforma (o investido simulado segue ela). */
-export function registrarVerbasCliente(c: Pick<Cliente, 'id' | 'verba_google' | 'verba_meta'>) {
-  registrarVerbaMock('google_ads', c.id, c.verba_google)
-  registrarVerbaMock('meta_ads', c.id, c.verba_meta)
-}
+// ── Pacing a partir do resumo de tráfego ────────────────────────────────────
 
 /**
- * Mídia de uma plataforma no mês: da integração quando conectada; senão o
- * "Realizado" digitado na aba Metas (resultado_data). `periodo` = YYYY-MM.
+ * Pacing do cliente no período (Google + Meta). O investido vem SÓ de
+ * getClientTrafficSummary — mesma fonte das abas de plataforma, do Funil e
+ * da aba Metas. A verba (planejado) é só a régua da comparação.
+ * Mês passado: compara o gasto final (sem projeção).
  */
-export function midiaDoMes(clienteId: string, plataforma: PlataformaMetas, periodo: string, manual?: Partial<MetasValores> | null): DadoMidia {
-  const adapter = ADAPTER_POR_PLATAFORMA[plataforma]
-  const conexao = adapter.getState(clienteId)
-  const m = adapter.getMetrics(clienteId, periodo)
-  if (m) {
-    return {
-      investimento: m.investimento,
-      cliques: m.cliques,
-      conversoes: m.conversoes,
-      origem: 'integracao',
-      conectado: true,
-      ultimaSincronizacao: m.sincronizadoEm ?? conexao.ultimaSincronizacao ?? null,
-    }
-  }
-  const inv = manual?.investimento ?? null
-  return {
-    investimento: inv,
-    cliques: manual?.cliques ?? null,
-    conversoes: manual?.mensagens ?? null,
-    origem: inv != null ? 'manual' : null,
-    conectado: false,
-    ultimaSincronizacao: null,
-  }
-}
-
-/**
- * Pacing do mês do cliente (Google + Meta somados). Fonte única do cabeçalho
- * do Operacional Tráfego e da coluna Verba da lista. `manualMes` = Realizado
- * da aba Metas (resultado_data), usado só onde a integração não está conectada.
- */
-export function pacingDoCliente(
-  c: Pick<Cliente, 'id' | 'verba_google' | 'verba_meta' | 'verba_mensal'>,
-  manualMes?: Partial<Record<PlataformaMetas, Partial<MetasValores>>> | null,
-) {
-  registrarVerbasCliente(c)
-  const periodo = monthKey().slice(0, 7)
-  const google = midiaDoMes(c.id, 'google', periodo, manualMes?.google)
-  const meta = midiaDoMes(c.id, 'meta', periodo, manualMes?.meta)
-  const investido = google.investimento == null && meta.investimento == null ? null : (google.investimento ?? 0) + (meta.investimento ?? 0)
+export function pacingDoCliente(c: Pick<Cliente, 'id' | 'verba_google' | 'verba_meta' | 'verba_mensal'>, periodo: string) {
+  const resumo = getClientTrafficSummary(c.id, periodo)
+  const nenhumaConectada = resumo.plataformasAusentes.length === PLATAFORMAS_TRAFEGO.length
   const verbaTotal = (c.verba_google ?? 0) + (c.verba_meta ?? 0) || c.verba_mensal
-  const origens = [google, meta].filter((d) => d.origem).map((d) => d.origem)
+  const [y, m] = periodo.slice(0, 7).split('-').map(Number)
+  const hoje = new Date()
+  const ehMesAtual = hoje.getFullYear() === y && hoje.getMonth() + 1 === m
+  const referencia = ehMesAtual ? hoje : new Date(y, m, 0)
+  const pacing = calculateBudgetPacing(nenhumaConectada ? null : resumo.total.investimento, verbaTotal, referencia)
+  const conectadas = PLATAFORMAS_TRAFEGO.filter((p) => resumo.porPlataforma[p].conectada)
   const origem =
-    origens.length === 0
-      ? undefined
-      : origens.every((o) => o === 'integracao')
-        ? 'via integrações'
-        : origens.includes('integracao')
-          ? 'integração + manual'
-          : 'manual (aba Metas)'
-  return { google, meta, verbaTotal, pacing: calculateBudgetPacing(investido, verbaTotal), origem }
+    conectadas.length === 0 ? undefined : conectadas.length === 2 ? 'via integrações' : `via ${NOME_PLATAFORMA_TRAFEGO[conectadas[0]]}`
+  return { resumo, verbaTotal, pacing, origem }
 }
 
 // ── Status: contrato × saúde da conta ───────────────────────────────────────

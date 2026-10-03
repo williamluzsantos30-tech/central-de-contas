@@ -6,7 +6,7 @@ import { Activity, AlertTriangle, MessageSquare, RefreshCw, Stethoscope, Trophy,
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
 import { SaveIndicator, type EstadoSalvar } from '@/components/trafego/TrafegoUI'
-import type { DadoMidia } from '@/lib/trafegoCliente'
+import type { MetricasPlataforma } from '@/lib/traffic/summary'
 import type { MetasValores } from '@/types/database'
 import { formatarValor, montarTabelaMetas, nivelPct, type Celula, type GrupoMeta, type LinhaMeta } from './metasTabela'
 
@@ -29,7 +29,7 @@ export function GoalsTable({
   corTitulo,
   meta,
   real,
-  midia,
+  resumo,
   semVerba,
   estado,
   onRetry,
@@ -42,7 +42,8 @@ export function GoalsTable({
   corTitulo: string
   meta: MetasValores
   real: MetasValores
-  midia: DadoMidia
+  /** Esta plataforma no resumo de tráfego do período (fonte das abas de plataforma). */
+  resumo: MetricasPlataforma
   /** Cliente sem verba nesta plataforma — sem aviso de "integração desconectada". */
   semVerba?: boolean
   estado: EstadoSalvar
@@ -51,22 +52,22 @@ export function GoalsTable({
   onReal: (campo: keyof MetasValores, valor: number | null) => void
   onBlur: () => void
 }) {
-  const grupos = montarTabelaMetas(meta, real, midia)
+  const grupos = montarTabelaMetas(meta, real, resumo)
 
   return (
     <Card className="mb-6 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <h3 className={cn('text-[11px] font-bold uppercase tracking-widest', corTitulo)}>{titulo}</h3>
-          {midia.conectado ? (
+          {resumo.conectada ? (
             <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted" title={`Investimento, cliques e mensagens vêm do ${nomePlataforma}`}>
-              <RefreshCw size={10} className="text-emerald-400" /> Sincronizado com o {nomePlataforma} · {dataHora(midia.ultimaSincronizacao)}
+              <RefreshCw size={10} className="text-emerald-400" /> Sincronizado com o {nomePlataforma} · {dataHora(resumo.sincronizadoEm)}
             </p>
           ) : semVerba ? (
-            <p className="mt-0.5 text-[11px] text-muted">Sem verba de {nomePlataforma} neste cliente — preencha só se houver investimento.</p>
+            <p className="mt-0.5 text-[11px] text-muted">Sem verba de {nomePlataforma} neste cliente — {nomePlataforma} não conectado.</p>
           ) : (
             <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-orange-300">
-              <AlertTriangle size={10} /> Integração desconectada — investimento, cliques e mensagens do Realizado são digitados à mão (conecte na aba {nomePlataforma}).
+              <AlertTriangle size={10} /> {nomePlataforma} não conectado — investimento, cliques e mensagens do Realizado contam como 0 até conectar (aba {nomePlataforma}).
             </p>
           )}
         </div>

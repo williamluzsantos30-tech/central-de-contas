@@ -46,7 +46,6 @@ import type {
   Cliente,
   ClientePerfilSetup,
   ItemSocialMedia,
-  MetasValores,
   Otimizacao,
   PlanejamentoSocialMedia,
   TipoAtivo,
@@ -79,6 +78,9 @@ export default function ClienteDetalhe() {
   const [otimizacoes, setOtimizacoes] = useState<Otimizacao[]>([])
   const [comentariosCount, setComentariosCount] = useState<Map<string, number>>(new Map())
   const [tab, setTab] = useState<Tab>('visao')
+  // Período ÚNICO do Operacional Tráfego: Visão geral, Google Ads, Meta Ads,
+  // Metas e o pacing do cabeçalho leem o mesmo mês (o navegador da aba Metas troca).
+  const [periodoTrafego, setPeriodoTrafego] = useState(() => monthKey())
   // ?social=calendario&data=YYYY-MM-DD — "Ver no Calendário" da Produção
   // Social Media abre direto no calendário deste cliente, no dia da postagem.
   const socialParam = searchParams.get('social') as SocialTab | null
@@ -277,7 +279,7 @@ export default function ClienteDetalhe() {
       {/* Modo Tráfego: header + tabs originais */}
       {opTrafegoAtivo && (
         <>
-          <ClienteHeader cliente={cliente} onChanged={load} onEdit={() => setEditOpen(true)} />
+          <ClienteHeader cliente={cliente} periodo={periodoTrafego} onChanged={load} onEdit={() => setEditOpen(true)} />
           <div className="mb-6 flex gap-1 border-b border-border">
             {([
               ['visao', 'Visão geral'],
@@ -388,6 +390,7 @@ export default function ClienteDetalhe() {
           adapter={googleAdsAdapter}
           clienteId={cliente.id}
           nomeCliente={cliente.nome}
+          periodo={periodoTrafego.slice(0, 7)}
           onOtimizacaoRegistrada={load}
         />
       )}
@@ -396,13 +399,14 @@ export default function ClienteDetalhe() {
           adapter={metaAdsAdapter}
           clienteId={cliente.id}
           nomeCliente={cliente.nome}
+          periodo={periodoTrafego.slice(0, 7)}
           onOtimizacaoRegistrada={load}
         />
       )}
 
       {opTrafegoAtivo && tab === 'visao' && (
         <div className="space-y-4">
-          <FunilClienteCard cliente={cliente} onIrParaMetas={() => setTab('metas')} />
+          <FunilClienteCard cliente={cliente} periodo={periodoTrafego} onIrParaMetas={() => setTab('metas')} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card>
               <CardHeader>
@@ -485,7 +489,7 @@ export default function ClienteDetalhe() {
       )}
 
       {opTrafegoAtivo && tab === 'metas' && (
-        <MetasPanel clienteId={cliente.id} cliente={cliente} />
+        <MetasPanel clienteId={cliente.id} cliente={cliente} mes={periodoTrafego} onMes={setPeriodoTrafego} />
       )}
 
       {opTrafegoAtivo && tab === 'log' && (
@@ -549,10 +553,13 @@ function Row({
 
 function ClienteHeader({
   cliente,
+  periodo,
   onChanged,
   onEdit,
 }: {
   cliente: Cliente
+  /** Período da ficha (YYYY-MM-01). */
+  periodo: string
   onChanged: () => void
   onEdit: () => void
 }) {
@@ -561,21 +568,11 @@ function ClienteHeader({
     onChanged()
   }
 
-  // Pacing: investido do mês (integração; sem ela, o Realizado da aba Metas).
-  const [manualMes, setManualMes] = useState<Record<'google' | 'meta', MetasValores> | null>(null)
-  useEffect(() => {
-    supabase
-      .from('metas')
-      .select('resultado_data')
-      .eq('cliente_id', cliente.id)
-      .eq('mes_ano', monthKey())
-      .maybeSingle()
-      .then(({ data }) => {
-        const r = ((data as { resultado_data: Record<string, MetasValores> } | null)?.resultado_data ?? {}) as Record<string, MetasValores>
-        setManualMes({ google: r.google ?? ({} as MetasValores), meta: r.meta ?? ({} as MetasValores) })
-      })
-  }, [cliente.id])
-  const { google: invG, meta: invM, verbaTotal, pacing, origem: origemTxt } = pacingDoCliente(cliente, manualMes)
+  // Pacing: investido do período lido do resumo de tráfego (mesma fonte das
+  // abas de plataforma, do Funil e da aba Metas).
+  const { resumo, verbaTotal, pacing, origem: origemTxt } = pacingDoCliente(cliente, periodo)
+  const invG = resumo.porPlataforma.googleAds
+  const invM = resumo.porPlataforma.metaAds
 
   return (
     <Card className="mb-5">
@@ -597,14 +594,14 @@ function ClienteHeader({
                 <InlineVerba
                   label="Google"
                   value={cliente.verba_google}
-                  investido={invG.investimento}
+                  investido={invG.conectada ? invG.investimento : null}
                   onChange={(v) => updateField('verba_google', v)}
                 />
                 <span className="text-zinc-700">·</span>
                 <InlineVerba
                   label="Meta"
                   value={cliente.verba_meta}
-                  investido={invM.investimento}
+                  investido={invM.conectada ? invM.investimento : null}
                   onChange={(v) => updateField('verba_meta', v)}
                 />
               </div>

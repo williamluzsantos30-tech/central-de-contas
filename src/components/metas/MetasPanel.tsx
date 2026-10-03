@@ -7,17 +7,25 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { cn, formatCurrency, monthKey } from '@/lib/utils'
-import { midiaDoMes, NOME_PLATAFORMA, registrarVerbasCliente, type PlataformaMetas } from '@/lib/trafegoCliente'
+import { fechamentosDoRealizado, getClientTrafficSummary, NOME_PLATAFORMA_TRAFEGO, type ResumoTrafegoCliente } from '@/lib/traffic/summary'
 import type { EstadoSalvar } from '@/components/trafego/TrafegoUI'
 import type { Cliente, Meta, MetasPorPlataforma, MetasValores } from '@/types/database'
 import { downloadRelatorioMetasPDF } from './RelatorioMetasPDF'
 import { GoalsTable } from './GoalsTable'
-import { resultadoEfetivo, VALORES_VAZIOS } from './metasTabela'
+import { realizadoComResumo, semMidiaRealizado, VALORES_VAZIOS } from './metasTabela'
 
 interface Props {
   clienteId: string
   cliente: Cliente
+  /** Período da ficha (YYYY-MM-01) — o mesmo das abas Google Ads, Meta Ads e Visão geral. */
+  mes: string
+  onMes: (mes: string) => void
 }
+
+type PlataformaMetas = 'google' | 'meta'
+
+/** Mês das metas + o resumo de tráfego dele (fonte do realizado de mídia). */
+export type MetaComResumo = Meta & { resumoTrafego: ResumoTrafegoCliente }
 
 type Seccao = 'meta_data' | 'resultado_data'
 
@@ -39,16 +47,17 @@ function normalize(raw: unknown): MetasPorPlataforma {
   return { google: { ...VALORES_VAZIOS, ...(r as unknown as MetasValores) }, meta: { ...VALORES_VAZIOS } }
 }
 
-/** Realizado de cada mês com a mídia da integração por cima (quando conectada). */
-function comMidiaIntegrada(m: Meta, clienteId: string): Meta {
+/** Mês com o realizado de mídia vindo do resumo de tráfego (getClientTrafficSummary). */
+function comResumo(m: Meta, clienteId: string): MetaComResumo {
   const res = normalize(m.resultado_data)
-  const periodo = m.mes_ano.slice(0, 7)
+  const resumoTrafego = getClientTrafficSummary(clienteId, m.mes_ano, { fechamentos: fechamentosDoRealizado(res) })
   return {
     ...m,
     resultado_data: {
-      google: resultadoEfetivo(res.google, midiaDoMes(clienteId, 'google', periodo, res.google)),
-      meta: resultadoEfetivo(res.meta, midiaDoMes(clienteId, 'meta', periodo, res.meta)),
+      google: realizadoComResumo(res.google, resumoTrafego.porPlataforma.googleAds),
+      meta: realizadoComResumo(res.meta, resumoTrafego.porPlataforma.metaAds),
     },
+    resumoTrafego,
   }
 }
 
@@ -130,8 +139,8 @@ function usePlanilha(externo: MetasValores, salvar: (v: MetasValores) => Promise
 const PESO_ESTADO: Record<EstadoSalvar, number> = { error: 3, saving: 2, saved: 1, idle: 0 }
 const combinar = (a: EstadoSalvar, b: EstadoSalvar) => (PESO_ESTADO[a] >= PESO_ESTADO[b] ? a : b)
 
-export function MetasPanel({ clienteId, cliente }: Props) {
-  const [selectedMonth, setSelectedMonth] = useState(monthKey())
+export function MetasPanel({ clienteId, cliente, mes, onMes }: Props) {
+  const selectedMonth = mes
   const [todosMeses, setTodosMeses] = useState<Meta[]>([])
   const [loading, setLoading] = useState(true)
   const [gerandoPdf, setGerandoPdf] = useState(false)
@@ -139,9 +148,6 @@ export function MetasPanel({ clienteId, cliente }: Props) {
   // Saves em fila: dois saves do mesmo mês (Google e Meta, meta e realizado)
   // não podem criar a linha do mês duas vezes.
   const filaRef = useRef<Promise<unknown>>(Promise.resolve())
-
-  // O investido simulado das integrações segue a verba de cada plataforma.
-  registrarVerbasCliente(cliente)
 
   async function load() {
     if (!initializedRef.current) setLoading(true)
@@ -191,9 +197,10 @@ export function MetasPanel({ clienteId, cliente }: Props) {
   }
 
   const metaG = usePlanilha(metaData.google, (v) => salvarSecao('meta_data', 'google', v))
-  const realG = usePlanilha(resultadoData.google, (v) => salvarSecao('resultado_data', 'google', v))
+  // Realizado: mídia não é gravada (vem do resumo de tráfego) — só o funil depois do clique.
+  const realG = usePlanilha(resultadoData.google, (v) => salvarSecao('resultado_data', 'google', semMidiaRealizado(v)))
   const metaM = usePlanilha(metaData.meta, (v) => salvarSecao('meta_data', 'meta', v))
-  const realM = usePlanilha(resultadoData.meta, (v) => salvarSecao('resultado_data', 'meta', v))
+  const realM = usePlanilha(resultadoData.meta, (v) => salvarSecao('resultado_data', 'meta', semMidiaRealizado(v)))
 
   async function flushAll() {
     await Promise.allSettled([metaG.flush(), realG.flush(), metaM.flush(), realM.flush()])
@@ -201,7 +208,7 @@ export function MetasPanel({ clienteId, cliente }: Props) {
 
   async function baixarPdf() {
     await flushAll()
-    const historico = todosMeses.map((m) => comMidiaIntegrada(m, clienteId))
+    const historico = todosMeses.map((m) => comResumo(m, clienteId))
     if (historico.length === 0) {
       alert('Não há metas registradas pra esse cliente ainda.')
       return
@@ -223,7 +230,7 @@ export function MetasPanel({ clienteId, cliente }: Props) {
 
   async function irParaMes(mes: string) {
     await flushAll()
-    setSelectedMonth(mes)
+    onMes(mes)
   }
 
   function shiftMonth(delta: number) {
@@ -235,10 +242,12 @@ export function MetasPanel({ clienteId, cliente }: Props) {
   if (loading) return <p className="text-sm text-muted">Carregando...</p>
 
   const isCurrentMonth = selectedMonth === monthKey()
-  const periodo = selectedMonth.slice(0, 7)
-  const midiaG = midiaDoMes(clienteId, 'google', periodo, realG.local)
-  const midiaM = midiaDoMes(clienteId, 'meta', periodo, realM.local)
-  const historicoEfetivo = todosMeses.map((m) => comMidiaIntegrada(m, clienteId))
+  // Fonte única: mesma função do Funil, do pacing e das abas de plataforma.
+  // Fechamentos (consultas) = o que está sendo digitado agora no Realizado.
+  const resumo = getClientTrafficSummary(clienteId, selectedMonth, {
+    fechamentos: { googleAds: realG.local.numero_consultas, metaAds: realM.local.numero_consultas },
+  })
+  const historicoEfetivo = todosMeses.map((m) => comResumo(m, clienteId))
 
   return (
     <div>
@@ -284,11 +293,11 @@ export function MetasPanel({ clienteId, cliente }: Props) {
 
       <GoalsTable
         titulo="Google Ads — Captação de Leads"
-        nomePlataforma={NOME_PLATAFORMA.google}
+        nomePlataforma={NOME_PLATAFORMA_TRAFEGO.googleAds}
         corTitulo="text-blue-300"
         meta={metaG.local}
         real={realG.local}
-        midia={midiaG}
+        resumo={resumo.porPlataforma.googleAds}
         semVerba={!cliente.verba_google}
         estado={combinar(metaG.estado, realG.estado)}
         onRetry={() => void Promise.allSettled([metaG.flush(), realG.flush()])}
@@ -298,11 +307,11 @@ export function MetasPanel({ clienteId, cliente }: Props) {
       />
       <GoalsTable
         titulo="Meta Ads — Captação de Leads"
-        nomePlataforma={NOME_PLATAFORMA.meta}
+        nomePlataforma={NOME_PLATAFORMA_TRAFEGO.metaAds}
         corTitulo="text-violet-300"
         meta={metaM.local}
         real={realM.local}
-        midia={midiaM}
+        resumo={resumo.porPlataforma.metaAds}
         semVerba={!cliente.verba_meta}
         estado={combinar(metaM.estado, realM.estado)}
         onRetry={() => void Promise.allSettled([metaM.flush(), realM.flush()])}
@@ -338,9 +347,9 @@ interface Agregado {
   vendas: number | null
 }
 
-function combinaMes(m: Meta): Agregado {
+function combinaMes(m: MetaComResumo): Agregado {
   const res = normalize(m.resultado_data)
-  const investimento = (res.google.investimento ?? 0) + (res.meta.investimento ?? 0)
+  const investimento = m.resumoTrafego.total.investimento
   const faturamento = faturamentoDe(res.google) + faturamentoDe(res.meta)
   const leads =
     (res.google.mensagens_qualificadas ?? 0) + (res.meta.mensagens_qualificadas ?? 0)
@@ -363,7 +372,7 @@ function HistoricoTable({
   onDelete,
   onSelect,
 }: {
-  historico: Meta[]
+  historico: MetaComResumo[]
   selectedMonth: string
   onDelete: (id: string) => void
   onSelect: (mes: string) => void

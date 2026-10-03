@@ -16,18 +16,20 @@ export function AdsPlatformPanel({
   adapter,
   clienteId,
   nomeCliente,
+  periodo = periodoAtualAds(),
   onOtimizacaoRegistrada,
 }: {
   adapter: AdsPlatformAdapter
   clienteId: string
   nomeCliente: string
+  /** YYYY-MM — o período da ficha (o mesmo da Visão geral e de Metas). */
+  periodo?: string
   /** Uma ação de campanha foi registrada no Log de otimização (Ficha recarrega). */
   onOtimizacaoRegistrada?: () => void
 }) {
   // Re-render após conectar/sincronizar/desconectar (o mock é lido no render).
   const [, setNonce] = useState(0)
   const bump = () => setNonce((n) => n + 1)
-  const periodo = periodoAtualAds()
 
   useEffect(() => {
     adapter.loadCache().then(bump)

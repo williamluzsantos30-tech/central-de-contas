@@ -6,7 +6,8 @@
  */
 import { KPICard } from '@/components/ds'
 import { cn } from '@/lib/utils'
-import { formatKpi, periodoAnteriorAds, type AdsPlatformAdapter } from './adsPlatform'
+import { rotuloPeriodo } from '@/lib/traffic/summary'
+import { formatKpi, periodoAnteriorAds, periodoAtualAds, type AdsPlatformAdapter } from './adsPlatform'
 
 export function AdsPerformanceKpis({
   adapter,
@@ -26,7 +27,7 @@ export function AdsPerformanceKpis({
     <section>
       <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
         <Icon size={12} className={adapter.cores.texto} />
-        Performance do mês · {adapter.nome}
+        {periodo === periodoAtualAds() ? 'Performance do mês' : `Performance · ${rotuloPeriodo(periodo)}`} · {adapter.nome}
       </h3>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {adapter.kpis.map((k) => {

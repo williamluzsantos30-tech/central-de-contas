@@ -1,40 +1,40 @@
 /**
  * FunilClienteCard — "Funil deste Cliente" na Visão geral do Operacional
- * Tráfego, mês atual, Google + Meta somados.
+ * Tráfego, no período da ficha, Google + Meta somados.
  *
- * Investimento vem das INTEGRAÇÕES (Google Ads / Meta Ads) quando conectadas;
- * sem integração, do Realizado digitado na aba Metas. Leads qualificados, nº
- * de consultas e CAC dependem de dado manual (aba Metas / CRM): sem dado,
- * mostra "Preencher em Metas →" — nunca um 0 que parece resultado.
+ * Todos os números vêm de getClientTrafficSummary(...).total — a MESMA fonte
+ * das abas Google Ads / Meta Ads e do Realizado da aba Metas. Nada de dado
+ * próprio: plataforma desconectada conta 0 (e é sinalizada); consultas
+ * (fechamentos, base do CAC) vêm do funil registrado na aba Metas.
  */
 import { useEffect, useState } from 'react'
 import { ArrowRight, Receipt, RefreshCw, Stethoscope, Target, Users, Wallet } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { supabase } from '@/lib/supabase'
-import { cn, formatCurrency, monthKey } from '@/lib/utils'
-import { midiaDoMes, NOME_PLATAFORMA, registrarVerbasCliente, type PlataformaMetas } from '@/lib/trafegoCliente'
-import { resultadoEfetivo, VALORES_VAZIOS } from '@/components/metas/metasTabela'
+import { cn, formatCurrency } from '@/lib/utils'
+import {
+  fechamentosDoRealizado,
+  getClientTrafficSummary,
+  NOME_PLATAFORMA_TRAFEGO,
+  PLATAFORMAS_TRAFEGO,
+  rotuloPeriodo,
+} from '@/lib/traffic/summary'
 import type { Cliente, MetasValores } from '@/types/database'
 
-/** Aceita formato antigo (valores direto) e novo ({google, meta}). */
-function normalize(raw: unknown): Record<PlataformaMetas, MetasValores> {
-  const r = (raw ?? {}) as Record<string, unknown>
-  if ('google' in r || 'meta' in r) {
-    return {
-      google: { ...VALORES_VAZIOS, ...((r.google ?? {}) as MetasValores) },
-      meta: { ...VALORES_VAZIOS, ...((r.meta ?? {}) as MetasValores) },
-    }
-  }
-  return { google: { ...VALORES_VAZIOS, ...(r as unknown as MetasValores) }, meta: { ...VALORES_VAZIOS } }
-}
-
 const fmtNum = (n: number) => new Intl.NumberFormat('pt-BR').format(Math.round(n))
-/** Soma que distingue "sem dado" (null) de zero de verdade. */
-const soma = (a: number | null | undefined, b: number | null | undefined) => (a == null && b == null ? null : (a ?? 0) + (b ?? 0))
 
-export function FunilClienteCard({ cliente, onIrParaMetas }: { cliente: Cliente; onIrParaMetas: () => void }) {
+export function FunilClienteCard({
+  cliente,
+  periodo,
+  onIrParaMetas,
+}: {
+  cliente: Cliente
+  /** Período da ficha (YYYY-MM-01) — o mesmo das abas de plataforma e de Metas. */
+  periodo: string
+  onIrParaMetas: () => void
+}) {
   const [loading, setLoading] = useState(true)
-  const [resultado, setResultado] = useState<unknown | null>(null)
+  const [realizado, setRealizado] = useState<Partial<Record<'google' | 'meta', MetasValores>> | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -43,37 +43,24 @@ export function FunilClienteCard({ cliente, onIrParaMetas }: { cliente: Cliente;
       .from('metas')
       .select('resultado_data')
       .eq('cliente_id', cliente.id)
-      .eq('mes_ano', monthKey())
+      .eq('mes_ano', periodo)
       .maybeSingle()
       .then(({ data }) => {
         if (!vivo) return
-        setResultado((data as { resultado_data: unknown } | null)?.resultado_data ?? null)
+        setRealizado(((data as { resultado_data: Partial<Record<'google' | 'meta', MetasValores>> } | null)?.resultado_data ?? null))
         setLoading(false)
       })
     return () => {
       vivo = false
     }
-  }, [cliente.id])
+  }, [cliente.id, periodo])
 
-  registrarVerbasCliente(cliente)
-  const periodo = monthKey().slice(0, 7)
-  const res = normalize(resultado)
-  const midia = {
-    google: midiaDoMes(cliente.id, 'google', periodo, res.google),
-    meta: midiaDoMes(cliente.id, 'meta', periodo, res.meta),
-  }
-  const ef = { google: resultadoEfetivo(res.google, midia.google), meta: resultadoEfetivo(res.meta, midia.meta) }
-
-  const investimento = soma(ef.google.investimento, ef.meta.investimento)
-  const leads = soma(ef.google.mensagens_qualificadas, ef.meta.mensagens_qualificadas)
-  const consultas = soma(ef.google.numero_consultas, ef.meta.numero_consultas)
-  const cac = investimento != null && consultas ? investimento / consultas : null
-  const conectadas = (['google', 'meta'] as const).filter((p) => midia[p].conectado)
-  // Origem por plataforma que tem dado — ex.: "Google Ads (integração) + Meta Ads (manual)".
-  const origemInvest = (['google', 'meta'] as const)
-    .filter((p) => midia[p].origem)
-    .map((p) => `${NOME_PLATAFORMA[p]} (${midia[p].origem === 'integracao' ? 'integração' : 'manual'})`)
-    .join(' + ')
+  const resumo = getClientTrafficSummary(cliente.id, periodo, { fechamentos: fechamentosDoRealizado(realizado) })
+  const { total, plataformasAusentes } = resumo
+  const nenhumaConectada = plataformasAusentes.length === PLATAFORMAS_TRAFEGO.length
+  const conectadas = PLATAFORMAS_TRAFEGO.filter((p) => !plataformasAusentes.includes(p))
+  const origem = conectadas.map((p) => NOME_PLATAFORMA_TRAFEGO[p]).join(' + ')
+  const ausentesTxt = plataformasAusentes.map((p) => NOME_PLATAFORMA_TRAFEGO[p]).join(' e ')
 
   return (
     <Card>
@@ -84,7 +71,7 @@ export function FunilClienteCard({ cliente, onIrParaMetas }: { cliente: Cliente;
           </div>
           <div>
             <p className="text-sm font-semibold text-zinc-100">🎯 Funil deste Cliente</p>
-            <p className="mt-0.5 text-[11px] text-muted">Mês atual · Google + Meta somados.</p>
+            <p className="mt-0.5 text-[11px] text-muted">{rotuloPeriodo(periodo)} · Google + Meta somados.</p>
           </div>
         </div>
 
@@ -92,24 +79,40 @@ export function FunilClienteCard({ cliente, onIrParaMetas }: { cliente: Cliente;
           <p className="py-4 text-center text-xs text-muted">Carregando…</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            <Stat icon={<Users size={12} className="text-sky-300" />} label="Leads qualificados" valor={leads != null ? fmtNum(leads) : null} onPreencher={onIrParaMetas} />
+            <Stat
+              icon={<Users size={12} className="text-sky-300" />}
+              label="Leads"
+              valor={nenhumaConectada ? null : fmtNum(total.leads)}
+              semValorTitulo="Nenhuma plataforma conectada"
+              sincronizado={!nenhumaConectada}
+            />
             <Stat
               icon={<Receipt size={12} className="text-emerald-300" />}
               label="CAC"
-              valor={cac != null ? formatCurrency(cac) : null}
-              onPreencher={consultas == null ? onIrParaMetas : undefined}
-              semValorTitulo={consultas === 0 ? 'Sem consultas no mês — CAC não se aplica' : undefined}
+              valor={total.cac != null ? formatCurrency(total.cac) : null}
+              semValorTitulo="Sem conversões no período"
               tone="success"
             />
             <Stat
               icon={<Wallet size={12} className="text-sky-300" />}
               label="Investimento total"
-              valor={investimento != null ? formatCurrency(investimento) : null}
-              sub={investimento != null ? origemInvest : undefined}
-              sincronizado={conectadas.length > 0}
+              valor={nenhumaConectada ? null : formatCurrency(total.investimento)}
+              sub={
+                nenhumaConectada
+                  ? 'Conecte Google Ads ou Meta Ads'
+                  : plataformasAusentes.length
+                    ? `${origem} · ${ausentesTxt} não conectado (conta 0)`
+                    : origem
+              }
+              semValorTitulo="Nenhuma plataforma conectada"
+              sincronizado={!nenhumaConectada}
+            />
+            <Stat
+              icon={<Stethoscope size={12} className="text-sky-300" />}
+              label="Nº de consultas"
+              valor={total.conversoes != null ? fmtNum(total.conversoes) : null}
               onPreencher={onIrParaMetas}
             />
-            <Stat icon={<Stethoscope size={12} className="text-sky-300" />} label="Nº de consultas" valor={consultas != null ? fmtNum(consultas) : null} onPreencher={onIrParaMetas} />
           </div>
         )}
       </CardBody>
@@ -142,7 +145,7 @@ function Stat({
       <div className="flex items-center gap-1.5 text-muted">
         {icon}
         <p className="text-[10px] font-semibold uppercase tracking-wider">{label}</p>
-        {sincronizado && valor != null && <RefreshCw size={9} className="text-emerald-400" aria-label="Sincronizado" />}
+        {sincronizado && valor != null && <RefreshCw size={9} className="text-emerald-400" aria-label="Vem das plataformas" />}
       </div>
       {valor != null ? (
         <p className={cn('mt-1 text-lg font-bold tabular-nums', tone === 'success' ? 'text-emerald-300' : 'text-zinc-100')}>{valor}</p>
@@ -158,7 +161,7 @@ function Stat({
           )}
         </p>
       )}
-      {sub && <p className="mt-0.5 truncate text-[10px] text-muted">{sub}</p>}
+      {sub && <p className="mt-0.5 truncate text-[10px] text-muted" title={sub}>{sub}</p>}
     </div>
   )
 }

@@ -2,12 +2,14 @@
  * Tabela unificada Meta × Realizado (aba Metas do Tráfego) — linhas, fórmulas
  * e "% atingido". Pura: usada pela tela (GoalsTable) e pelo PDF.
  *
- * Realizado de mídia (investimento, cliques, mensagens/conversões) vem da
- * integração (Google Ads / Meta Ads) quando conectada; desconectada, é
- * digitado à mão. O resto do funil é manual; os derivados são calculados.
+ * Realizado de mídia (investimento, cliques, mensagens) vem SEMPRE do resumo
+ * de tráfego (getClientTrafficSummary — mesma fonte das abas de plataforma):
+ * não é editável nem tem campo manual; plataforma desconectada conta 0. O
+ * funil depois do clique (qualificadas, consultas, procedimentos, ticket) é
+ * registrado pelo time; os derivados são calculados.
  */
 import type { MetasValores } from '@/types/database'
-import type { DadoMidia } from '@/lib/trafegoCliente'
+import type { MetricasPlataforma } from '@/lib/traffic/summary'
 
 export type Formato = 'money' | 'int' | 'percent' | 'multiplier'
 export type TipoCelula = 'input' | 'integracao' | 'calc' | 'vazio'
@@ -55,16 +57,18 @@ export const VALORES_VAZIOS: MetasValores = {
 const div = (a: number | null | undefined, b: number | null | undefined) => (a != null && b ? a / b : null)
 const mult = (a: number | null | undefined, b: number | null | undefined) => (a != null && b != null ? a * b : null)
 
-/** Realizado com a mídia da integração por cima (quando conectada). Mensagens legadas (custo digitado) são derivadas. */
-export function resultadoEfetivo(real: MetasValores, midia: DadoMidia | null): MetasValores {
-  const r = { ...VALORES_VAZIOS, ...real }
-  if (midia?.conectado) {
-    r.investimento = midia.investimento
-    r.cliques = midia.cliques
-    r.mensagens = midia.conversoes
-  } else if (r.mensagens == null && r.investimento && r.custo_mensagem) {
-    r.mensagens = Math.floor(r.investimento / r.custo_mensagem)
-  }
+/** Campos de mídia do Realizado — vêm do resumo de tráfego, nunca do banco/digitação. */
+export const CAMPOS_MIDIA_REALIZADO: (keyof MetasValores)[] = ['investimento', 'cliques', 'mensagens', 'custo_mensagem']
+
+/** Realizado com a mídia do resumo de tráfego (o que estiver gravado nesses campos é ignorado). */
+export function realizadoComResumo(real: MetasValores, resumo: MetricasPlataforma): MetasValores {
+  return { ...VALORES_VAZIOS, ...real, investimento: resumo.investimento, cliques: resumo.cliques, mensagens: resumo.leads, custo_mensagem: null }
+}
+
+/** Tira do Realizado os campos de mídia antes de salvar (não guardar cópia do que vem das plataformas). */
+export function semMidiaRealizado(real: MetasValores): MetasValores {
+  const r = { ...real }
+  for (const k of CAMPOS_MIDIA_REALIZADO) delete r[k]
   return r
 }
 
@@ -90,24 +94,24 @@ export function formatarValor(v: number | null, formato: Formato): string {
 }
 
 /**
- * Monta os grupos de linhas. `midia` = dado da integração da plataforma
- * (null no PDF, onde o realizado já vem mesclado).
+ * Monta os grupos de linhas. `resumo` = a plataforma no resumo de tráfego do
+ * período (getClientTrafficSummary(...).porPlataforma[p]), calculado com os
+ * fechamentos (consultas) deste Realizado.
  */
-export function montarTabelaMetas(meta: MetasValores, real: MetasValores, midia: DadoMidia | null): GrupoMeta[] {
+export function montarTabelaMetas(meta: MetasValores, real: MetasValores, resumo: MetricasPlataforma): GrupoMeta[] {
   const m = { ...VALORES_VAZIOS, ...meta }
-  const conectado = !!midia?.conectado
-  const r = resultadoEfetivo(real, midia)
+  const r = realizadoComResumo(real, resumo)
 
   const inp = (v: number | null | undefined, campo: keyof MetasValores): Celula => ({ tipo: 'input', valor: v ?? null, campo })
   const calc = (v: number | null): Celula => ({ tipo: 'calc', valor: v })
-  const midiaCel = (v: number | null | undefined, campo: keyof MetasValores): Celula =>
-    conectado ? { tipo: 'integracao', valor: v ?? null } : inp(v, campo)
+  // Mídia: sempre do resumo, só leitura (desconectada = 0).
+  const midiaCel = (v: number | null | undefined): Celula => ({ tipo: 'integracao', valor: v ?? null })
 
   // Meta
   const mMensagens = m.investimento && m.custo_mensagem ? Math.floor(m.investimento / m.custo_mensagem) : null
   const mFat = faturamento(m)
   // Realizado
-  const rCustoMsg = r.mensagens ? div(r.investimento, r.mensagens) : r.custo_mensagem ?? null
+  const rCustoMsg = div(r.investimento, r.mensagens)
   const rFat = faturamento(r)
 
   const linha = (l: Omit<LinhaMeta, 'pct'>): LinhaMeta => ({ ...l, pct: pctAtingido(l.meta.valor, l.real.valor, l.custo) })
@@ -117,7 +121,7 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, midia:
       key: 'investimento',
       label: 'Investimento',
       linhas: [
-        linha({ key: 'investimento', label: 'Investimento', formato: 'money', neutro: true, meta: inp(m.investimento, 'investimento'), real: midiaCel(r.investimento, 'investimento') }),
+        linha({ key: 'investimento', label: 'Investimento', formato: 'money', neutro: true, meta: inp(m.investimento, 'investimento'), real: midiaCel(r.investimento) }),
         linha({ key: 'valor_diario', label: 'Valor diário', formula: 'investimento ÷ 30', formato: 'money', neutro: true, meta: calc(div(m.investimento, 30)), real: calc(div(r.investimento, 30)) }),
       ],
     },
@@ -125,9 +129,9 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, midia:
       key: 'mensagens',
       label: 'Funil de mensagens',
       linhas: [
-        linha({ key: 'cliques', label: 'Cliques', formato: 'int', meta: { tipo: 'vazio', valor: null }, real: midiaCel(r.cliques, 'cliques') }),
+        linha({ key: 'cliques', label: 'Cliques', formato: 'int', meta: { tipo: 'vazio', valor: null }, real: midiaCel(r.cliques) }),
         linha({ key: 'custo_mensagem', label: 'Custo por mensagem', formato: 'money', custo: true, meta: inp(m.custo_mensagem, 'custo_mensagem'), real: calc(rCustoMsg) }),
-        linha({ key: 'mensagens', label: 'Mensagens', formula: 'investimento ÷ custo por mensagem', formato: 'int', meta: calc(mMensagens), real: midiaCel(r.mensagens, 'mensagens') }),
+        linha({ key: 'mensagens', label: 'Mensagens', formula: 'investimento ÷ custo por mensagem', formato: 'int', meta: calc(mMensagens), real: midiaCel(r.mensagens) }),
         linha({ key: 'mensagens_qualificadas', label: 'Mensagens qualificadas', formato: 'int', meta: inp(m.mensagens_qualificadas, 'mensagens_qualificadas'), real: inp(r.mensagens_qualificadas, 'mensagens_qualificadas') }),
         linha({ key: 'custo_mensagem_qualificada', label: 'Custo por mens. qualificada', formula: 'investimento ÷ mens. qualificadas', formato: 'money', custo: true, meta: calc(div(m.investimento, m.mensagens_qualificadas)), real: calc(div(r.investimento, r.mensagens_qualificadas)) }),
       ],
@@ -156,7 +160,7 @@ export function montarTabelaMetas(meta: MetasValores, real: MetasValores, midia:
       linhas: [
         linha({ key: 'faturamento', label: 'Faturamento', formula: '(consultas × TM consulta) + (procedimentos × TM procedimento)', formato: 'money', destaque: true, meta: calc(mFat), real: calc(rFat) }),
         linha({ key: 'roas', label: 'ROAS', formula: 'faturamento ÷ investimento', formato: 'multiplier', destaque: true, meta: calc(div(mFat, m.investimento)), real: calc(div(rFat, r.investimento)) }),
-        linha({ key: 'cac', label: 'CAC', formula: 'investimento ÷ consultas', formato: 'money', custo: true, meta: calc(div(m.investimento, m.numero_consultas)), real: calc(div(r.investimento, r.numero_consultas)) }),
+        linha({ key: 'cac', label: 'CAC', formula: 'investimento ÷ consultas', formato: 'money', custo: true, meta: calc(div(m.investimento, m.numero_consultas)), real: calc(resumo.cac) }),
       ],
     },
   ]

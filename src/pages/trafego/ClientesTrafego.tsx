@@ -19,7 +19,6 @@ import {
   pacingDoCliente,
   saudeDaConta,
   type Contrato,
-  type PlataformaMetas,
 } from '@/lib/trafegoCliente'
 import { temAlgumCargo, temCargo } from '@/lib/cargos'
 import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
@@ -37,9 +36,7 @@ import { addDias, hojeISO, segundaDaSemana, type RegistroOcorrencia } from '@/li
 import { carregarRegistros, desdeFallback } from '@/lib/ocorrenciasStore'
 import { useSquads } from '@/hooks/useSquads'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Cliente, MetasValores, Profile, Tarefa } from '@/types/database'
-
-type RealizadoMes = Partial<Record<PlataformaMetas, Partial<MetasValores>>>
+import type { Cliente, Profile, Tarefa } from '@/types/database'
 
 /** Mesmas cores da Saúde no cabeçalho do cliente. */
 const SAUDE_CLS: Record<keyof typeof SAUDE_INFO, string> = {
@@ -61,8 +58,6 @@ export default function ClientesTrafego() {
   const [fSquad, setFSquad] = useState('')
   const [fGestor, setFGestor] = useState('')
   const [fContrato, setFContrato] = useState<Contrato | ''>('')
-  // Realizado do mês (aba Metas) por cliente — só vale onde a integração não está conectada.
-  const [realizadoMes, setRealizadoMes] = useState<Map<string, RealizadoMes>>(new Map())
   const [fJornada, setFJornada] = useState('')
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
@@ -89,7 +84,7 @@ export default function ClientesTrafego() {
     const hoje = hojeISO()
     // Janela das ocorrências: perdidas dos últimos 7 dias + semana e mês em aberto.
     const desde = [addDias(hoje, -8), segundaDaSemana(hoje), `${hoje.slice(0, 7)}-01`].sort()[0]
-    const [cRes, gRes, tRes, mRes, regs] = await Promise.all([
+    const [cRes, gRes, tRes, regs] = await Promise.all([
       supabase
         .from('clientes')
         .select(
@@ -109,15 +104,9 @@ export default function ClientesTrafego() {
         .from('tarefas')
         .select('*, cliente:clientes(*), template:task_templates(*)')
         .in('status', ['pendente', 'em_andamento']),
-      supabase.from('metas').select('cliente_id, resultado_data').eq('mes_ano', monthKey()),
       carregarRegistros({ desde }),
     ])
     setRegistros(regs)
-    const realizado = new Map<string, RealizadoMes>()
-    for (const m of (mRes.data as { cliente_id: string; resultado_data: RealizadoMes | null }[] | null) ?? []) {
-      if (m.resultado_data) realizado.set(m.cliente_id, m.resultado_data)
-    }
-    setRealizadoMes(realizado)
     setClientes((cRes.data as Cliente[]) ?? [])
     setGestores(gRes.data.filter((p) => temCargo(p, 'gestor_trafego')))
     setTarefas((tRes.data as Tarefa[]) ?? [])
@@ -294,7 +283,7 @@ export default function ClientesTrafego() {
                   filtered.map((c) => {
                     const nAtrasadas = atrasadasPorCliente.get(c.id) ?? 0
                     const nPerdidas = tarefasDoDia.perdidasPorCliente.get(c.id) ?? 0
-                    const { pacing, verbaTotal } = pacingDoCliente(c, realizadoMes.get(c.id))
+                    const { pacing, verbaTotal } = pacingDoCliente(c, monthKey())
                     const saude = saudeDaConta(c)
                     const contrato = contratoDoCliente(c)
                     return (
