@@ -5,6 +5,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TarefaDrawer } from '@/components/tarefas/TarefaDrawer'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { cn, isOverdue, prioridadeLabel, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Tarefa } from '@/types/database'
@@ -21,11 +22,16 @@ export default function MinhasTarefas() {
   async function load() {
     if (!profile) return
     setLoading(true)
-    const { data } = await supabase
-      .from('tarefas')
-      .select('*, cliente:clientes(*), responsavel:profiles(*)')
-      .eq('responsavel_id', profile.id)
-      .order('data_vencimento', { ascending: true })
+    // Paginado: inclui o histórico de concluídas, que só cresce.
+    const { data } = await buscarTodos<Tarefa>((de, ate) =>
+      supabase
+        .from('tarefas')
+        .select('*, cliente:clientes(*), responsavel:profiles(*)')
+        .eq('responsavel_id', profile.id)
+        .order('data_vencimento', { ascending: true })
+        .order('id')
+        .range(de, ate),
+    )
     // Filtra tarefas cujo cliente esta em churn/arquivado — nao faz sentido
     // aparecer na lista pra alguem que ja nao trabalha mais com o cliente
     setTarefas(

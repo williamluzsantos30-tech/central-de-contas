@@ -11,6 +11,7 @@ import { CircleDollarSign, AlertTriangle, ShieldAlert } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { TodayTasksPanel } from '@/components/tarefas/TodayTasksPanel'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { formatCurrency } from '@/lib/utils'
 import type { TarefasDoDia } from '@/lib/tarefasDoDia'
 import type { Ativo, Cliente } from '@/types/database'
@@ -32,7 +33,10 @@ export function ResumoClientesKpi({
   useEffect(() => {
     let cancel = false
     async function load() {
-      const aRes = await supabase.from('ativos').select('cliente_id, status')
+      // Paginado: 5 ativos por cliente passa de 1000 linhas com ~200 clientes.
+      const aRes = await buscarTodos<Pick<Ativo, 'cliente_id' | 'status'>>((de, ate) =>
+        supabase.from('ativos').select('id, cliente_id, status').order('id').range(de, ate),
+      )
       if (cancel) return
       setAtivos((aRes.data as Pick<Ativo, 'cliente_id' | 'status'>[]) ?? [])
     }

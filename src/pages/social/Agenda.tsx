@@ -25,6 +25,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
@@ -103,8 +104,9 @@ export default function Agenda() {
   async function load() {
     setLoading(true)
     const [iRes, pRes] = await Promise.all([
-      supabase.from('producoes_social_media_items').select('*'),
-      supabase.from('producoes_social_media').select('*, cliente:clientes(*)'),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+      buscarTodos((de, ate) => supabase.from('producoes_social_media_items').select('*').order('id').range(de, ate)),
+      buscarTodos((de, ate) => supabase.from('producoes_social_media').select('*, cliente:clientes(*)').order('id').range(de, ate)),
     ])
     const allItems = (iRes.data as ItemSocialMedia[]) ?? []
     const planejamentos = (pRes.data as PlanejamentoSocialMedia[]) ?? []

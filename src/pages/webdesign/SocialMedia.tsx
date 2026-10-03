@@ -30,6 +30,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos, buscarTodosPorIds } from '@/lib/buscarTodos'
 import { uploadToStorageSafe, stripBlobUrl, stripBlobUrls, isDeadBlobUrl } from '@/lib/storage'
 import { formatDateBR, isDateOverdue } from '@/lib/dates'
 import {
@@ -172,28 +173,38 @@ export default function SocialMedia() {
     // Esteira de produção mostra SÓ planejamentos aprovados pelo cliente.
     // Enquanto está no Planejamento Mensal sem aprovação, não polui a esteira
     // — assim o designer só vê o que pode/deve trabalhar.
+    // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
     const [pRes, cRes, eq] = await Promise.all([
-      supabase
-        .from('producoes_social_media')
-        .select('*, cliente:clientes(*), responsavel:profiles(*)')
-        .not('aprovado_em', 'is', null)
-        .order('aprovado_em', { ascending: false }),
+      buscarTodos<PlanejamentoSocialMedia>((de, ate) =>
+        supabase
+          .from('producoes_social_media')
+          .select('*, cliente:clientes(*), responsavel:profiles(*)')
+          .not('aprovado_em', 'is', null)
+          .order('aprovado_em', { ascending: false })
+          .order('id')
+          .range(de, ate),
+      ),
       supabase.from('clientes').select('*').is('arquivado_em', null).order('nome'),
       // Responsáveis: Criativos/Social Media pelo papel da Equipe Operacional.
       carregarEquipeSocial(),
     ])
-    const planejamentosAprovados = (pRes.data as PlanejamentoSocialMedia[]) ?? []
+    const planejamentosAprovados = pRes.data
     const idsAprovados = planejamentosAprovados.map((p) => p.id)
-    // Items só dos planejamentos aprovados
-    const iRes = idsAprovados.length
-      ? await supabase
-          .from('producoes_social_media_items')
-          .select('*, responsavel:profiles!responsavel_id(*)')
-          .in('producao_id', idsAprovados)
-          .order('ordem', { ascending: true })
-      : { data: [] as ItemSocialMedia[] }
+    // Items só dos planejamentos aprovados. Numa consulta só (ordenada por
+    // `ordem` e cortada em 1000 linhas) cada planejamento ficava só com as
+    // primeiras artes — bug visto na Central (6 de 24).
+    const iRes = await buscarTodosPorIds<ItemSocialMedia>(idsAprovados, (lote, de, ate) =>
+      supabase
+        .from('producoes_social_media_items')
+        .select('*, responsavel:profiles!responsavel_id(*)')
+        .in('producao_id', lote)
+        .order('ordem', { ascending: true })
+        .order('id')
+        .range(de, ate),
+    )
+    if (pRes.error || iRes.error) console.error('[Produção Social] falha ao carregar:', pRes.error ?? iRes.error)
     setPlanejamentos(planejamentosAprovados)
-    setItems((iRes.data as ItemSocialMedia[]) ?? [])
+    setItems(iRes.data)
     setClientes((cRes.data as Cliente[]) ?? [])
     setEquipe(eq)
     if (!silent) setLoading(false)

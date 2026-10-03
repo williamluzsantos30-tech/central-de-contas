@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Kpi } from '@/components/clientes/ResumoClientesKpi'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { useAuth } from '@/contexts/AuthContext'
 import { isOverdue, relativeDueLabel, rotaCliente } from '@/lib/utils'
 import type { Cliente, Tarefa } from '@/types/database'
@@ -45,7 +46,16 @@ export function ResumoSocialKpi({ clientes }: { clientes: Cliente[] }) {
               .neq('status', 'concluida')
               .order('prioridade', { ascending: false })
           : Promise.resolve({ data: [] as Tarefa[] }),
-        supabase.from('tarefas').select('cliente_id').lt('data_vencimento', today).neq('status', 'concluida'),
+        // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+        buscarTodos<{ cliente_id: string }>((de, ate) =>
+          supabase
+            .from('tarefas')
+            .select('id, cliente_id')
+            .lt('data_vencimento', today)
+            .neq('status', 'concluida')
+            .order('id')
+            .range(de, ate),
+        ),
         supabase
           .from('cliente_perfil_setup')
           .select('cliente_id, foto_status, bio_status, destaques_status, contato_status'),

@@ -12,6 +12,7 @@ import { CallAlinhamentoCell } from '@/components/clientes/CallAlinhamentoCell'
 import { ResumoClientesKpi } from '@/components/clientes/ResumoClientesKpi'
 import { BudgetPacingCompact } from '@/components/trafego/TrafegoUI'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import {
   CONTRATO_INFO,
   SAUDE_INFO,
@@ -100,10 +101,16 @@ export default function ClientesTrafego() {
         supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome'),
       ),
       // Tarefas ativas (recorrentes = modelo; esporádicas em aberto).
-      supabase
-        .from('tarefas')
-        .select('*, cliente:clientes(*), template:task_templates(*)')
-        .in('status', ['pendente', 'em_andamento']),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro) —
+      // ~150 clientes × 7 recorrentes já passa disso.
+      buscarTodos<Tarefa>((de, ate) =>
+        supabase
+          .from('tarefas')
+          .select('*, cliente:clientes(*), template:task_templates(*)')
+          .in('status', ['pendente', 'em_andamento'])
+          .order('id')
+          .range(de, ate),
+      ),
       carregarRegistros({ desde }),
     ])
     setRegistros(regs)

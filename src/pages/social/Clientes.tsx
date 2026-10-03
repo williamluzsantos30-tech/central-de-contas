@@ -27,6 +27,7 @@ import { loadInstagramCache } from '@/components/social/mockInstagram'
 import { downloadRelatorioSemanalSocialPDF } from '@/components/social/RelatorioClientesSemanalPDF'
 import { getPostsForDateRange } from '@/lib/socialPosts'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { buscarProfilesComPapel } from '@/lib/profilesComPapel'
 import { parseLocalDate } from '@/lib/dates'
 import { temCargo } from '@/lib/cargos'
@@ -115,8 +116,9 @@ export default function SocialClientes({ embedded = false }: { embedded?: boolea
         )
         .not('social_media_id', 'is', null)
         .order('nome'),
-      supabase.from('producoes_social_media').select('*'),
-      supabase.from('producoes_social_media_items').select('*'),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+      buscarTodos((de, ate) => supabase.from('producoes_social_media').select('*').order('id').range(de, ate)),
+      buscarTodos((de, ate) => supabase.from('producoes_social_media_items').select('*').order('id').range(de, ate)),
       // Filtro de "Todos social media": quem é social media pelo cargo OU
       // pelo papel da Equipe Operacional (filtrado abaixo com temCargo).
       buscarProfilesComPapel((sel) => supabase.from('profiles').select(sel).eq('ativo', true).eq('aprovado', true).order('nome')),

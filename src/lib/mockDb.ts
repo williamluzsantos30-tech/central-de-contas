@@ -1196,13 +1196,21 @@ function hydrateFromStorage() {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return
     const saved = JSON.parse(raw) as Partial<Record<Tables, Row[]>>
+    let maiorId = counter
     for (const key of PERSISTED_TABLES) {
       const rows = saved[key]
       if (Array.isArray(rows)) {
         db[key].length = 0
         db[key].push(...rows)
+        for (const r of rows) {
+          const n = typeof r.id === 'string' && /^m-\d+$/.test(r.id) ? Number(r.id.slice(2)) : 0
+          if (n > maiorId) maiorId = n
+        }
       }
     }
+    // Ids novos continuam depois dos já salvos (senão o próximo insert repetia
+    // um id persistido — chave duplicada na tela).
+    counter = maiorId
   } catch {
     /* silencia — se der erro, mantém o seed */
   }
@@ -1378,6 +1386,20 @@ class Q {
     return this
   }
   limit(n: number) { this._limit = n; return this }
+  /** `.or('a.eq.x,b.cs.{y}')` do PostgREST — só os operadores que o app usa (eq, cs). */
+  or(expr: string) {
+    const clausulas = expr.split(/,(?![^{]*})/).map((c) => {
+      const [campo, op, ...resto] = c.split('.')
+      const valor = resto.join('.')
+      if (op === 'cs') {
+        const alvo = valor.replace(/^\{|\}$/g, '').split(',').filter(Boolean)
+        return (r: Row) => Array.isArray(r[campo]) && alvo.every((x) => r[campo].includes(x))
+      }
+      return (r: Row) => String(r[campo]) === valor
+    })
+    this._filters.push((r) => clausulas.some((f) => f(r)))
+    return this
+  }
   /** Paginação do PostgREST: linhas `from` a `to` (inclusive). */
   range(from: number, to: number) { this._offset = from; this._limit = to - from + 1; return this }
 
@@ -1461,6 +1483,10 @@ class Q {
         })
       }
       if (this._offset || this._limit) filtered = filtered.slice(this._offset, this._limit ? this._offset + this._limit : undefined)
+      // Simula o "max rows" do PostgREST (1000 no Supabase) pra testar paginação:
+      // localStorage.setItem('mock-max-rows', '5').
+      const maxRows = Number(globalThis.localStorage?.getItem('mock-max-rows')) || 0
+      if (maxRows > 0) filtered = filtered.slice(0, maxRows)
       const count = filtered.length
       if (this._head) return resolve({ data: null, error: null, count })
       const joins = parseJoins(this._select)

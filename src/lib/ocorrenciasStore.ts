@@ -8,6 +8,7 @@
  * painéis que ainda leem o vencimento continuarem coerentes.
  */
 import { supabase } from '@/lib/supabase'
+import { buscarTodos, buscarTodosPorIds } from '@/lib/buscarTodos'
 import {
   hojeISO,
   modeloDaTarefa,
@@ -22,7 +23,6 @@ const TABELA = 'tarefa_ocorrencias'
 const CHAVE_LOCAL = 'tarefa-ocorrencias-local'
 const CHAVE_DESDE = 'tarefa-ocorrencias-desde-local'
 const COLUNAS = 'id, tarefa_id, data_prevista, status, concluida_em, concluida_por, observacao'
-const PAGINA = 1000
 
 let modoBanco: boolean | null = null
 
@@ -81,23 +81,23 @@ function agrupar(regs: RegistroOcorrencia[]): Map<string, RegistroOcorrencia[]> 
  */
 export async function carregarRegistros(filtro: { tarefaIds?: string[]; desde?: string }): Promise<Map<string, RegistroOcorrencia[]>> {
   if (filtro.tarefaIds && filtro.tarefaIds.length === 0) return new Map()
-  const todos: RegistroOcorrencia[] = []
-  for (let pagina = 0; pagina < 20; pagina++) {
+  const consulta = (de: number, ate: number, ids?: string[]) => {
     let q = supabase.from(TABELA).select(COLUNAS)
-    if (filtro.tarefaIds) q = q.in('tarefa_id', filtro.tarefaIds)
+    if (ids) q = q.in('tarefa_id', ids)
     if (filtro.desde) q = q.gte('data_prevista', filtro.desde)
-    const { data, error } = await q.order('data_prevista', { ascending: true }).range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1)
-    if (error) {
-      modoBanco = false
-      const ids = filtro.tarefaIds ? new Set(filtro.tarefaIds) : null
-      return agrupar(Object.values(lerLocal()).filter((r) => (!ids || ids.has(r.tarefa_id)) && (!filtro.desde || r.data_prevista >= filtro.desde)))
-    }
-    modoBanco = true
-    const linhas = (data as RegistroOcorrencia[] | null) ?? []
-    todos.push(...linhas)
-    if (linhas.length < PAGINA) break
+    // Ordem estável (id no desempate) — senão as páginas se repetem.
+    return q.order('data_prevista', { ascending: true }).order('id').range(de, ate)
   }
-  return agrupar(todos)
+  const { data, error } = filtro.tarefaIds
+    ? await buscarTodosPorIds<RegistroOcorrencia>(filtro.tarefaIds, (lote, de, ate) => consulta(de, ate, lote))
+    : await buscarTodos<RegistroOcorrencia>((de, ate) => consulta(de, ate))
+  if (error) {
+    modoBanco = false
+    const ids = filtro.tarefaIds ? new Set(filtro.tarefaIds) : null
+    return agrupar(Object.values(lerLocal()).filter((r) => (!ids || ids.has(r.tarefa_id)) && (!filtro.desde || r.data_prevista >= filtro.desde)))
+  }
+  modoBanco = true
+  return agrupar(data)
 }
 
 async function gravar(reg: RegistroOcorrencia): Promise<void> {

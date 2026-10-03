@@ -47,6 +47,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import { formatDateBR } from '@/lib/dates'
@@ -230,8 +231,9 @@ export default function HeadSocial() {
         .contains('modulos', ['social_media'])
         .in('status', ['ativo', 'atencao'])
         .is('arquivado_em', null),
-      supabase.from('producoes_social_media').select('id, cliente_id'),
-      supabase.from('producoes_social_media_items').select('*'),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+      buscarTodos((de, ate) => supabase.from('producoes_social_media').select('id, cliente_id').order('id').range(de, ate)),
+      buscarTodos((de, ate) => supabase.from('producoes_social_media_items').select('*').order('id').range(de, ate)),
       supabase.from('cliente_perfil_setup').select('*'),
       supabase
         .from('profiles')

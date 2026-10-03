@@ -25,6 +25,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
@@ -74,8 +75,9 @@ export default function MetricasSocialMedia({ embedded = false }: { embedded?: b
   async function load() {
     setLoading(true)
     const [iRes, pRes, cRes] = await Promise.all([
-      supabase.from('producoes_social_media_items').select('*'),
-      supabase.from('producoes_social_media').select('*'),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+      buscarTodos((de, ate) => supabase.from('producoes_social_media_items').select('*').order('id').range(de, ate)),
+      buscarTodos((de, ate) => supabase.from('producoes_social_media').select('*').order('id').range(de, ate)),
       supabase.from('clientes').select('*').eq('status', 'ativo').order('nome'),
     ])
     setItems((iRes.data as ItemSocialMedia[]) ?? [])

@@ -33,6 +33,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
+import { buscarTodos } from '@/lib/buscarTodos'
 import { cn } from '@/lib/utils'
 import { isDateOverdue } from '@/lib/dates'
 import { temCargo } from '@/lib/cargos'
@@ -96,8 +97,9 @@ export default function CalendarioPostagens() {
   async function load() {
     setLoading(true)
     const [iRes, pRes, cRes] = await Promise.all([
-      supabase.from('producoes_social_media_items').select('*'),
-      supabase.from('producoes_social_media').select('*, cliente:clientes(*)'),
+      // Paginado: o Supabase corta em 1000 linhas por consulta (sem erro).
+      buscarTodos((de, ate) => supabase.from('producoes_social_media_items').select('*').order('id').range(de, ate)),
+      buscarTodos((de, ate) => supabase.from('producoes_social_media').select('*, cliente:clientes(*)').order('id').range(de, ate)),
       supabase.from('clientes').select('*').eq('status', 'ativo').is('arquivado_em', null).order('nome'),
     ])
     const allItems = (iRes.data as ItemSocialMedia[]) ?? []
