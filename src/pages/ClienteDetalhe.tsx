@@ -572,7 +572,7 @@ function ClienteHeader({
 
   // Pacing: investido do período lido do resumo de tráfego (mesma fonte das
   // abas de plataforma, do Funil e da aba Metas).
-  const { resumo, pacing, origem: origemTxt } = pacingDoCliente(cliente, periodo)
+  const { resumo, verbaTotal, pacing, origem: origemTxt } = pacingDoCliente(cliente, periodo)
   const invG = resumo.porPlataforma.googleAds
   const invM = resumo.porPlataforma.metaAds
 
@@ -586,27 +586,22 @@ function ClienteHeader({
           onEdit={onEdit}
           direita={
             <div className="flex flex-col items-end text-right">
-              {/* Fee da agência (Ticket mensal do cadastro = verba_mensal) — NÃO é gasto em mídia. */}
+              {/* Bloco todo de MÍDIA: verba planejada (Google + Meta) × investido.
+                  O fee da agência (Ticket mensal) fica na Ficha, não aqui. */}
               <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Verba mensal (fee da agência)
+                Verba de mídia (mensal)
                 <span
                   className="cursor-help text-muted hover:text-zinc-200"
-                  title="O que o cliente paga pela gestão (Ticket mensal do cadastro). Não é gasto em anúncios: o investimento em mídia vem do Google Ads e do Meta Ads e aparece no Funil deste Cliente e no Investido abaixo."
-                  aria-label="Sobre a verba mensal (fee da agência)"
+                  title="Quanto o cliente planeja investir em anúncios por mês (Google + Meta). O Investido abaixo é o gasto real vindo das plataformas. O fee da agência (Ticket mensal) não entra aqui."
+                  aria-label="Sobre a verba de mídia"
                 >
                   <Info size={11} />
                 </span>
               </p>
               <p className="mt-0.5 text-3xl font-semibold text-emerald-300">
-                {formatCurrency(cliente.verba_mensal)}
+                {verbaTotal ? formatCurrency(verbaTotal) : '—'}
               </p>
               <div className="mt-1 flex items-center justify-end gap-3 text-[11px] text-muted">
-                <span
-                  className="text-[10px] uppercase tracking-wider"
-                  title="Quanto o cliente planeja investir em anúncios por mês, por plataforma. O Investido é o gasto real vindo das plataformas."
-                >
-                  Verba de mídia
-                </span>
                 <InlineVerba
                   label="Google"
                   value={cliente.verba_google}
